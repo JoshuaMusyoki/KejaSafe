@@ -1,0 +1,471 @@
+# Auth / profile
+
+mutation UpsertMyUser(
+  $email: String!
+  $username: String!
+  $fullName: String!
+  $role: String!
+  $googleId: String
+  $phone: String
+) @auth(level: USER) {
+  user_upsert(
+    data: {
+      id_expr: "auth.uid"
+      email: $email
+      username: $username
+      fullName: $fullName
+      role: $role
+      googleId: $googleId
+      phone: $phone
+      kycStatus: "NOT_SUBMITTED"
+    }
+  )
+}
+
+mutation UpdateMyProfile(
+  $fullName: String!
+  $username: String!
+  $major: String
+  $yearOfStudy: Int
+  $roommatePreferences: String
+  $phone: String
+  $businessName: String
+  $profilePictureUrl: String
+) @auth(level: USER) {
+  user_update(
+    id_expr: "auth.uid"
+    data: {
+      fullName: $fullName
+      username: $username
+      major: $major
+      yearOfStudy: $yearOfStudy
+      roommatePreferences: $roommatePreferences
+      phone: $phone
+      businessName: $businessName
+      profilePictureUrl: $profilePictureUrl
+    }
+  )
+}
+
+mutation SubmitKyc(
+  $documentType: String!
+  $documentNumber: String!
+  $documentFrontImageUrl: String!
+  $documentBackImageUrl: String
+  $selfieImageUrl: String!
+) @auth(level: USER) @transaction {
+  kycSubmission_insert(
+    data: {
+      userId_expr: "auth.uid"
+      documentType: $documentType
+      documentNumber: $documentNumber
+      documentFrontImageUrl: $documentFrontImageUrl
+      documentBackImageUrl: $documentBackImageUrl
+      selfieImageUrl: $selfieImageUrl
+    }
+  )
+  user_update(
+    id_expr: "auth.uid"
+    data: { kycStatus: "PENDING" }
+  )
+}
+
+# Listings
+
+mutation CreateListing(
+  $title: String!
+  $address: String!
+  $pricePerMonth: Float
+  $proximity: String
+  $university: String
+  $propertyType: String!
+  $unitsCount: Int!
+  $garbageCollection: Float!
+  $water: Float!
+  $electricityBilling: String!
+  $electricityMonthly: Float!
+  $extraChargesJson: String!
+  $deposit: Float!
+) @auth(level: USER) {
+  listing_insert(
+    data: {
+      landlordId_expr: "auth.uid"
+      title: $title
+      address: $address
+      pricePerMonth: $pricePerMonth
+      proximity: $proximity
+      university: $university
+      propertyType: $propertyType
+      unitsCount: $unitsCount
+      garbageCollection: $garbageCollection
+      water: $water
+      electricityBilling: $electricityBilling
+      electricityMonthly: $electricityMonthly
+      extraChargesJson: $extraChargesJson
+      deposit: $deposit
+      status: "VERIFIED"
+      currency: "KES"
+    }
+  )
+}
+
+mutation UpdateListing(
+  $id: UUID!
+  $title: String
+  $address: String
+  $pricePerMonth: Float
+  $proximity: String
+  $university: String
+  $propertyType: String
+  $unitsCount: Int
+  $garbageCollection: Float
+  $water: Float
+  $electricityBilling: String
+  $electricityMonthly: Float
+  $extraChargesJson: String
+  $deposit: Float
+  $status: String
+) @auth(
+  level: USER
+  insecureReason: "Ownership enforced via @check: listing.landlord.id == auth.uid"
+) @transaction {
+  query
+  @check(
+    expr: "this.listing != null && this.listing.landlord.id == auth.uid"
+    message: "Not your listing"
+  )
+  @redact {
+    listing(id: $id) {
+      landlord {
+        id
+      }
+    }
+  }
+  listing_update(
+    id: $id
+    data: {
+      title: $title
+      address: $address
+      pricePerMonth: $pricePerMonth
+      proximity: $proximity
+      university: $university
+      propertyType: $propertyType
+      unitsCount: $unitsCount
+      garbageCollection: $garbageCollection
+      water: $water
+      electricityBilling: $electricityBilling
+      electricityMonthly: $electricityMonthly
+      extraChargesJson: $extraChargesJson
+      deposit: $deposit
+      status: $status
+    }
+  )
+}
+
+mutation AddListingPhoto(
+  $listingId: UUID!
+  $url: String!
+  $sortOrder: Int!
+) @auth(
+  level: USER
+  insecureReason: "Ownership enforced via @check: listing.landlord.id == auth.uid"
+) @transaction {
+  query
+  @check(
+    expr: "this.listing != null && this.listing.landlord.id == auth.uid"
+    message: "Not your listing"
+  )
+  @redact {
+    listing(id: $listingId) {
+      landlord {
+        id
+      }
+    }
+  }
+  listingPhoto_insert(
+    data: {
+      listingId: $listingId
+      url: $url
+      sortOrder: $sortOrder
+    }
+  )
+}
+
+mutation DeleteListingPhoto($id: UUID!) @auth(
+  level: USER
+  insecureReason: "Ownership enforced via @check: photo.listing.landlord.id == auth.uid"
+) @transaction {
+  query
+  @check(
+    expr: "this.listingPhoto != null && this.listingPhoto.listing.landlord.id == auth.uid"
+    message: "Not your listing photo"
+  )
+  @redact {
+    listingPhoto(id: $id) {
+      listing {
+        landlord {
+          id
+        }
+      }
+    }
+  }
+  listingPhoto_delete(id: $id)
+}
+
+mutation BookListing(
+  $listingId: UUID!
+  $landlordId: String!
+  $guestName: String!
+  $startDate: Timestamp!
+  $endDate: Timestamp!
+  $notes: String!
+  $slotCount: Int!
+) @auth(level: USER) {
+  listingBooking_insert(
+    data: {
+      listingId: $listingId
+      landlordId: $landlordId
+      guestUserId_expr: "auth.uid"
+      guestName: $guestName
+      startDate: $startDate
+      endDate: $endDate
+      status: "PENDING"
+      notes: $notes
+      slotCount: $slotCount
+    }
+  )
+}
+
+mutation ApproveBooking($id: UUID!) @auth(
+  level: USER
+  insecureReason: "Ownership enforced via @check: listingBooking.landlord.id == auth.uid"
+) @transaction {
+  query
+  @check(
+    expr: "this.listingBooking != null && this.listingBooking.landlord.id == auth.uid"
+    message: "Not your booking"
+  )
+  @redact {
+    listingBooking(id: $id) {
+      landlord {
+        id
+      }
+    }
+  }
+  listingBooking_update(id: $id, data: { status: "CONFIRMED" })
+}
+
+mutation DeclineBooking($id: UUID!) @auth(
+  level: USER
+  insecureReason: "Ownership enforced via @check: listingBooking.landlord.id == auth.uid"
+) @transaction {
+  query
+  @check(
+    expr: "this.listingBooking != null && this.listingBooking.landlord.id == auth.uid"
+    message: "Not your booking"
+  )
+  @redact {
+    listingBooking(id: $id) {
+      landlord {
+        id
+      }
+    }
+  }
+  listingBooking_update(id: $id, data: { status: "DECLINED" })
+}
+
+mutation RecordListingView($listingId: UUID!) @auth(level: USER) @transaction {
+  listingEvent_insert(
+    data: {
+      listingId: $listingId
+      eventType: "VIEW"
+      userId_expr: "auth.uid"
+    }
+  )
+  listing_update(
+    id: $listingId
+    data: { totalViews_update: { inc: 1 } }
+  )
+}
+
+# Rent
+
+mutation CreateBill(
+  $userId: String!
+  $propertyId: UUID!
+  $propertyTitle: String!
+  $tenantName: String!
+  $bookingId: UUID
+  $month: Int!
+  $year: Int!
+  $totalAmount: Float!
+  $dueDate: Timestamp!
+  $depositIncluded: Boolean!
+  $electricityNote: String
+) @auth(
+  level: USER
+  insecureReason: "Ownership enforced via @check: listing.landlord.id == auth.uid"
+) @transaction {
+  query
+  @check(
+    expr: "this.listing != null && this.listing.landlord.id == auth.uid"
+    message: "Not your listing"
+  )
+  @redact {
+    listing(id: $propertyId) {
+      landlord {
+        id
+      }
+    }
+  }
+  bill_insert(
+    data: {
+      userId: $userId
+      propertyId: $propertyId
+      propertyTitle: $propertyTitle
+      tenantName: $tenantName
+      bookingId: $bookingId
+      month: $month
+      year: $year
+      totalAmount: $totalAmount
+      dueDate: $dueDate
+      status: "UNPAID"
+      depositIncluded: $depositIncluded
+      electricityNote: $electricityNote
+      paymentRequested: false
+    }
+  )
+}
+
+mutation AddBillItem(
+  $billId: UUID!
+  $propertyId: UUID!
+  $name: String!
+  $amount: Float!
+) @auth(
+  level: USER
+  insecureReason: "Ownership enforced via @check: listing.landlord.id == auth.uid"
+) @transaction {
+  query
+  @check(
+    expr: "this.listing != null && this.listing.landlord.id == auth.uid && this.bill != null"
+    message: "Not your listing's bill"
+  )
+  @redact {
+    listing(id: $propertyId) {
+      landlord {
+        id
+      }
+    }
+    bill(id: $billId) {
+      propertyId
+    }
+  }
+  billItem_insert(data: { billId: $billId, name: $name, amount: $amount })
+}
+
+mutation PayBill($id: UUID!) @auth(
+  level: USER
+  insecureReason: "Ownership enforced via @check: bill.user.id == auth.uid"
+) @transaction {
+  query
+  @check(
+    expr: "this.bill != null && this.bill.user.id == auth.uid"
+    message: "Not your bill"
+  )
+  @redact {
+    bill(id: $id) {
+      user {
+        id
+      }
+    }
+  }
+  bill_update(id: $id, data: { status: "PAID" })
+}
+
+mutation RequestBillPayment($id: UUID!) @auth(
+  level: USER
+  insecureReason: "Ownership enforced via @check: bill.user.id == auth.uid"
+) @transaction {
+  query
+  @check(
+    expr: "this.bill != null && this.bill.user.id == auth.uid"
+    message: "Not your bill"
+  )
+  @redact {
+    bill(id: $id) {
+      user {
+        id
+      }
+    }
+  }
+  bill_update(id: $id, data: { paymentRequested: true })
+}
+
+mutation UpdateBill(
+  $id: UUID!
+  $propertyId: UUID!
+  $totalAmount: Float
+  $depositIncluded: Boolean
+  $electricityNote: String
+) @auth(
+  level: USER
+  insecureReason: "Ownership enforced via @check: listing.landlord.id == auth.uid"
+) @transaction {
+  query
+  @check(
+    expr: "this.listing != null && this.listing.landlord.id == auth.uid && this.bill != null"
+    message: "Not your listing's bill"
+  )
+  @redact {
+    listing(id: $propertyId) {
+      landlord {
+        id
+      }
+    }
+    bill(id: $id) {
+      propertyId
+    }
+  }
+  bill_update(
+    id: $id
+    data: {
+      totalAmount: $totalAmount
+      depositIncluded: $depositIncluded
+      electricityNote: $electricityNote
+    }
+  )
+}
+
+# Chat
+
+mutation CreateConversation($name: String) @auth(
+  level: USER
+  insecureReason: "Conversation row has no owner field; creator must call JoinConversation with auth.uid"
+) {
+  conversation_insert(data: { name: $name })
+}
+
+mutation JoinConversation($conversationId: UUID!) @auth(level: USER) {
+  conversationParticipant_insert(
+    data: {
+      conversationId: $conversationId
+      userId_expr: "auth.uid"
+    }
+  )
+}
+
+mutation SendMessage(
+  $conversationId: UUID!
+  $content: String!
+  $type: String!
+) @auth(level: USER) {
+  message_insert(
+    data: {
+      conversationId: $conversationId
+      senderId_expr: "auth.uid"
+      content: $content
+      type: $type
+    }
+  )
+}

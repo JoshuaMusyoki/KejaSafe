@@ -1,0 +1,6 @@
+connectorId: kejasafe
+generate:
+  kotlinSdk:
+    # From server/dataconnect/kejasafe → core androidMain
+    outputDir: ../../../core/src/androidMain/kotlin
+    package: com.rotd.kejasafe.dataconnect

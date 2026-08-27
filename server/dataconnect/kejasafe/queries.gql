@@ -1,0 +1,358 @@
+# Profile / auth-adjacent reads
+
+query GetMyUser @auth(level: USER) {
+  user(id_expr: "auth.uid") {
+    id
+    email
+    username
+    fullName
+    role
+    kycStatus
+    profilePictureUrl
+    googleId
+    major
+    yearOfStudy
+    roommatePreferences
+    phone
+    businessName
+  }
+}
+
+query GetUserByUsername($username: String!) @auth(
+  level: PUBLIC
+  insecureReason: "Needed for username→email login before the client has a Firebase session"
+) {
+  users(where: { username: { eq: $username } }, limit: 1) {
+    id
+    email
+    username
+  }
+}
+
+query BrowseListings @auth(
+  level: PUBLIC
+  insecureReason: "Verified/pending listings are intentionally public for the student browse feed"
+) {
+  listings(
+    where: {
+      status: { in: ["VERIFIED", "PENDING"] }
+    }
+    orderBy: [{ createdAt: DESC }]
+  ) {
+    id
+    title
+    address
+    pricePerMonth
+    currency
+    status
+    proximity
+    university
+    propertyType
+    unitsCount
+    garbageCollection
+    water
+    electricityBilling
+    electricityMonthly
+    extraChargesJson
+    deposit
+    activeBookings
+    totalViews
+    inquiries
+    createdAt
+    landlord {
+      id
+      username
+      fullName
+      businessName
+    }
+    listingPhotos_on_listing(orderBy: [{ sortOrder: ASC }]) {
+      id
+      url
+      sortOrder
+    }
+  }
+}
+
+query GetListing($id: UUID!) @auth(
+  level: PUBLIC
+  insecureReason: "Listing detail pages are public so guests can view housing before signing in"
+) {
+  listing(id: $id) {
+    id
+    title
+    address
+    pricePerMonth
+    currency
+    status
+    proximity
+    university
+    propertyType
+    unitsCount
+    garbageCollection
+    water
+    electricityBilling
+    electricityMonthly
+    extraChargesJson
+    deposit
+    activeBookings
+    totalViews
+    inquiries
+    createdAt
+    landlord {
+      id
+      username
+      fullName
+      businessName
+      phone
+    }
+    listingPhotos_on_listing(orderBy: [{ sortOrder: ASC }]) {
+      id
+      url
+      sortOrder
+      createdAt
+    }
+  }
+}
+
+query MyListings @auth(level: USER) {
+  listings(
+    where: { landlordId: { eq_expr: "auth.uid" } }
+    orderBy: [{ createdAt: DESC }]
+  ) {
+    id
+    title
+    address
+    pricePerMonth
+    currency
+    status
+    proximity
+    university
+    propertyType
+    unitsCount
+    garbageCollection
+    water
+    electricityBilling
+    electricityMonthly
+    extraChargesJson
+    deposit
+    activeBookings
+    totalViews
+    inquiries
+    createdAt
+    listingPhotos_on_listing(orderBy: [{ sortOrder: ASC }]) {
+      id
+      url
+      sortOrder
+    }
+  }
+}
+
+query MyBookings @auth(level: USER) {
+  listingBookings(
+    where: { guestUserId: { eq_expr: "auth.uid" } }
+    orderBy: [{ createdAt: DESC }]
+  ) {
+    id
+    guestName
+    startDate
+    endDate
+    status
+    notes
+    slotCount
+    createdAt
+    listing {
+      id
+      title
+      address
+      pricePerMonth
+      currency
+    }
+    landlord {
+      id
+      fullName
+      phone
+    }
+  }
+}
+
+query IncomingRequests @auth(level: USER) {
+  listingRequests(
+    where: { landlordId: { eq_expr: "auth.uid" } }
+    orderBy: [{ createdAt: DESC }]
+  ) {
+    id
+    requesterName
+    type
+    propertyTitle
+    detail
+    timeLabel
+    createdAt
+    listing {
+      id
+      title
+    }
+  }
+}
+
+query LandlordBookings @auth(level: USER) {
+  listingBookings(
+    where: { landlordId: { eq_expr: "auth.uid" } }
+    orderBy: [{ createdAt: DESC }]
+  ) {
+    id
+    guestName
+    startDate
+    endDate
+    status
+    notes
+    slotCount
+    createdAt
+    guestUser {
+      id
+      fullName
+      email
+      phone
+    }
+    listing {
+      id
+      title
+    }
+  }
+}
+
+query MyBills @auth(level: USER) {
+  bills(
+    where: { userId: { eq_expr: "auth.uid" } }
+    orderBy: [{ dueDate: DESC }]
+  ) {
+    id
+    propertyId
+    propertyTitle
+    tenantName
+    bookingId
+    month
+    year
+    totalAmount
+    dueDate
+    status
+    depositIncluded
+    electricityNote
+    paymentRequested
+    user {
+      id
+      fullName
+    }
+    billItems_on_bill {
+      id
+      name
+      amount
+    }
+  }
+}
+
+query BillsForLandlordListings($listingIds: [UUID!]!) @auth(
+  level: USER
+  insecureReason: "Bill.propertyId is not a typed Listing relation; client must pass only listing IDs from MyListings (landlordId == auth.uid)"
+) {
+  bills(
+    where: { propertyId: { in: $listingIds } }
+    orderBy: [{ dueDate: DESC }]
+  ) {
+    id
+    propertyId
+    propertyTitle
+    tenantName
+    bookingId
+    month
+    year
+    totalAmount
+    dueDate
+    status
+    depositIncluded
+    electricityNote
+    paymentRequested
+    user {
+      id
+      fullName
+    }
+    billItems_on_bill {
+      id
+      name
+      amount
+    }
+  }
+}
+
+query GetBill($id: UUID!) @auth(
+  level: USER
+  insecureReason: "Bill is readable by its tenant; landlords use BillsForLandlordListings. Enforce bill.userId == auth.uid in the client until Bill↔Listing relation exists"
+) {
+  bill(id: $id) {
+    id
+    propertyId
+    propertyTitle
+    tenantName
+    bookingId
+    month
+    year
+    totalAmount
+    dueDate
+    status
+    depositIncluded
+    electricityNote
+    paymentRequested
+    user {
+      id
+      fullName
+      email
+    }
+    billItems_on_bill {
+      id
+      name
+      amount
+    }
+  }
+}
+
+query MyConversations @auth(level: USER) {
+  conversationParticipants(
+    where: { userId: { eq_expr: "auth.uid" } }
+  ) {
+    conversation {
+      id
+      name
+      messages_on_conversation(orderBy: [{ timestamp: DESC }], limit: 1) {
+        id
+        content
+        type
+        timestamp
+        sender {
+          id
+          username
+          fullName
+        }
+      }
+    }
+  }
+}
+
+query ConversationMessages($conversationId: UUID!) @auth(
+  level: USER
+  insecureReason: "Messages are scoped by conversationId; clients must only open threads from MyConversations (participant userId == auth.uid)"
+) {
+  messages(
+    where: { conversationId: { eq: $conversationId } }
+    orderBy: [{ timestamp: ASC }]
+  ) {
+    id
+    content
+    type
+    timestamp
+    sender {
+      id
+      username
+      fullName
+      profilePictureUrl
+    }
+  }
+}

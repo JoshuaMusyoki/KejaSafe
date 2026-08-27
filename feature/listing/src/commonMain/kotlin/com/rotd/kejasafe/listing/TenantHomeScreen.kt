@@ -1,0 +1,207 @@
+package com.rotd.kejasafe.listing
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.koin.compose.viewmodel.koinViewModel
+import com.rotd.kejasafe.components.KejaSafeAppBar
+import com.rotd.kejasafe.components.KejaSafeAppBarContentInset
+import com.rotd.kejasafe.components.KejaSafeBody
+import com.rotd.kejasafe.components.KejaSafeErrorState
+import com.rotd.kejasafe.components.KejaSafeFloatingNavBar
+import com.rotd.kejasafe.components.KejaSafeNavTab
+import com.rotd.kejasafe.components.KejaSafeOfflineBanner
+import com.rotd.kejasafe.components.KejaSafePrimaryButton
+import com.rotd.kejasafe.components.KejaSafeTextField
+import com.rotd.kejasafe.components.StudentInsightCard
+import com.rotd.kejasafe.components.TenantListingsShimmer
+import com.rotd.kejasafe.components.TenantPropertyCard
+import com.rotd.kejasafe.theme.KejaSafeTheme
+
+@Composable
+fun TenantHomeScreen(
+    selectedTab: KejaSafeNavTab = KejaSafeNavTab.HOME,
+    onTabSelected: (KejaSafeNavTab) -> Unit,
+    onNavigateToProfile: () -> Unit,
+    onNavigateToProperty: (String) -> Unit,
+    viewModel: TenantHomeViewModel = koinViewModel()
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val listings = viewModel.filteredListings()
+    val showShimmer = state.isLoading && state.listings.isEmpty()
+    val showEmpty = !state.isLoading && state.listings.isEmpty() && state.error == null
+
+    LaunchedEffect(Unit) {
+        viewModel.refresh(showLoading = state.listings.isEmpty())
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            KejaSafeFloatingNavBar(
+                selectedTab = selectedTab,
+                onTabSelected = onTabSelected
+            )
+        }
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = padding.calculateBottomPadding())
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = KejaSafeTheme.spacing.containerMarginMobile,
+                    end = KejaSafeTheme.spacing.containerMarginMobile,
+                    // Extra room under frosted app bar so the hero isn’t cramped into the overlay.
+                    top = KejaSafeAppBarContentInset + 28.dp,
+                    bottom = 8.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Find your next keja",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        KejaSafeBody(
+                            text = if (showShimmer) {
+                                "Loading places near campus…"
+                            } else {
+                                "Verified student housing near campus."
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+
+                if (state.error != null && state.listings.isEmpty()) {
+                    item {
+                        KejaSafeErrorState(
+                            message = state.error.orEmpty(),
+                            onRetry = { viewModel.refresh() }
+                        )
+                    }
+                }
+
+                if (state.syncWarning != null && state.listings.isNotEmpty()) {
+                    item {
+                        KejaSafeOfflineBanner(
+                            message = state.syncWarning.orEmpty(),
+                            onRetry = { viewModel.refresh(showLoading = false) }
+                        )
+                    }
+                }
+
+                item {
+                    KejaSafeTextField(
+                        value = state.searchQuery,
+                        onValueChange = viewModel::onSearchChange,
+                        placeholder = "Search by area, university, or style",
+                        enabled = !showShimmer,
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                item { StudentInsightCard() }
+
+                item {
+                    Text(
+                        text = "Nearby Listings",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                when {
+                    showShimmer -> {
+                        item { TenantListingsShimmer(count = 3) }
+                    }
+                    showEmpty -> {
+                        item {
+                            Text(
+                                text = "No houses available right now. Check back soon.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    else -> {
+                        if (state.error != null) {
+                            item {
+                                Text(
+                                    text = state.error.orEmpty(),
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                        items(listings, key = { it.id }) { listing ->
+                            TenantPropertyCard(
+                                listing = listing,
+                                onClick = { onNavigateToProperty(listing.id) }
+                            )
+                        }
+                        if (listings.isEmpty() && state.searchQuery.isNotBlank()) {
+                            item {
+                                Text(
+                                    text = "No houses match “${state.searchQuery.trim()}”.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item { Spacer(modifier = Modifier.height(24.dp)) }
+            }
+
+            KejaSafeAppBar(
+                onTuneClick = {},
+                onProfileClick = onNavigateToProfile,
+                frosted = true,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        }
+    }
+}

@@ -1,0 +1,14 @@
+# Data Connect service config — Cloud SQL (paused).
+# Active app DB is H2 via :server (Exposed). Revisit when upgrading Firebase plan.
+specVersion: "v1"
+serviceId: "kejasafe"
+location: "us-central1"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "kejasafe-fdc"
+      cloudSql:
+        # CLOUD SQL INSTANCE — deleted / not provisioned while on H2
+        instanceId: "kejasafe-fdc"
+connectorDirs: ["./kejasafe"]

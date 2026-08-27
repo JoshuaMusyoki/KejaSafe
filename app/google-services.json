@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "661471410260",
+    "project_id": "kejasafe",
+    "storage_bucket": "kejasafe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:661471410260:android:e2727247e79c841f5195c1",
+        "android_client_info": {
+          "package_name": "com.rotd.kejasafe"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAbvJUFNE8nUZqH-0bVJmUuN6WU17n48ug"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

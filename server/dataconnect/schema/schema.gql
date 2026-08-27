@@ -1,0 +1,139 @@
+# KejaSafe SQL Connect schema
+# User.id is Firebase Auth uid (no passwordHash — credentials live in Firebase Auth).
+
+type User @table {
+  id: String! @default(expr: "auth.uid")
+  email: String! @unique @col(dataType: "varchar(100)")
+  username: String! @unique @col(dataType: "varchar(50)")
+  fullName: String! @col(dataType: "varchar(100)")
+  role: String! @col(dataType: "varchar(20)")
+  kycStatus: String! @default(value: "NOT_SUBMITTED") @col(dataType: "varchar(20)")
+  profilePictureUrl: String @col(dataType: "varchar(500)")
+  googleId: String @unique @col(dataType: "varchar(100)")
+  major: String @col(dataType: "varchar(100)")
+  yearOfStudy: Int
+  roommatePreferences: String @col(dataType: "varchar(500)")
+  phone: String @col(dataType: "varchar(40)")
+  businessName: String @col(dataType: "varchar(150)")
+}
+
+type KycSubmission @table {
+  id: UUID! @default(expr: "uuidV4()")
+  user: User!
+  documentType: String! @col(dataType: "varchar(50)")
+  documentNumber: String! @col(dataType: "varchar(50)")
+  documentFrontImageUrl: String! @col(dataType: "varchar(500)")
+  documentBackImageUrl: String @col(dataType: "varchar(500)")
+  selfieImageUrl: String! @col(dataType: "varchar(500)")
+  submittedAt: Timestamp! @default(expr: "request.time")
+}
+
+type Bill @table {
+  id: UUID! @default(expr: "uuidV4()")
+  user: User!
+  propertyId: UUID!
+  propertyTitle: String! @col(dataType: "varchar(200)")
+  tenantName: String! @col(dataType: "varchar(120)")
+  bookingId: UUID
+  month: Int!
+  year: Int!
+  totalAmount: Float!
+  dueDate: Timestamp!
+  status: String! @default(value: "UNPAID") @col(dataType: "varchar(20)")
+  depositIncluded: Boolean! @default(value: false)
+  electricityNote: String @col(dataType: "varchar(200)")
+  paymentRequested: Boolean! @default(value: false)
+}
+
+type BillItem @table {
+  id: UUID! @default(expr: "uuidV4()")
+  bill: Bill!
+  name: String! @col(dataType: "varchar(100)")
+  amount: Float!
+}
+
+type Listing @table {
+  id: UUID! @default(expr: "uuidV4()")
+  landlord: User!
+  title: String! @col(dataType: "varchar(200)")
+  address: String! @col(dataType: "varchar(300)")
+  pricePerMonth: Float
+  currency: String! @default(value: "KES") @col(dataType: "varchar(10)")
+  status: String! @default(value: "PENDING") @col(dataType: "varchar(20)")
+  proximity: String @col(dataType: "varchar(30)")
+  university: String @col(dataType: "varchar(150)")
+  propertyType: String! @col(dataType: "varchar(30)")
+  unitsCount: Int! @default(value: 1)
+  garbageCollection: Float! @default(value: 0.0)
+  water: Float! @default(value: 0.0)
+  electricityBilling: String! @default(value: "TOKEN") @col(dataType: "varchar(20)")
+  electricityMonthly: Float! @default(value: 0.0)
+  extraChargesJson: String! @default(value: "[]")
+  deposit: Float! @default(value: 0.0)
+  activeBookings: Int! @default(value: 0)
+  totalViews: Int! @default(value: 0)
+  inquiries: Int! @default(value: 0)
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type ListingPhoto @table {
+  id: UUID! @default(expr: "uuidV4()")
+  listing: Listing!
+  url: String! @col(dataType: "varchar(500)")
+  sortOrder: Int! @default(value: 0)
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type ListingRequest @table {
+  id: UUID! @default(expr: "uuidV4()")
+  listing: Listing!
+  landlord: User!
+  requesterName: String! @col(dataType: "varchar(120)")
+  type: String! @col(dataType: "varchar(30)")
+  propertyTitle: String! @col(dataType: "varchar(200)")
+  detail: String! @default(value: "") @col(dataType: "varchar(500)")
+  timeLabel: String! @col(dataType: "varchar(80)")
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type ListingBooking @table {
+  id: UUID! @default(expr: "uuidV4()")
+  listing: Listing!
+  landlord: User!
+  guestUser: User
+  guestName: String! @col(dataType: "varchar(120)")
+  startDate: Timestamp!
+  endDate: Timestamp!
+  status: String! @col(dataType: "varchar(20)")
+  notes: String! @default(value: "") @col(dataType: "varchar(500)")
+  slotCount: Int! @default(value: 1)
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# View / inquiry analytics (from former H2 ListingEventsTable)
+type ListingEvent @table {
+  id: UUID! @default(expr: "uuidV4()")
+  listing: Listing!
+  eventType: String! @col(dataType: "varchar(20)")
+  user: User
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type Conversation @table {
+  id: UUID! @default(expr: "uuidV4()")
+  name: String @col(dataType: "varchar(200)")
+}
+
+type ConversationParticipant @table(key: ["conversation", "user"]) {
+  conversation: Conversation!
+  user: User!
+}
+
+type Message @table {
+  id: UUID! @default(expr: "uuidV4()")
+  conversation: Conversation!
+  sender: User!
+  content: String!
+  type: String! @default(value: "TEXT") @col(dataType: "varchar(30)")
+  timestamp: Timestamp! @default(expr: "request.time")
+}
