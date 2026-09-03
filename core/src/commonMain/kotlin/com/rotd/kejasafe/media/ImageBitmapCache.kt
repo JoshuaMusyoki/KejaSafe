@@ -7,7 +7,7 @@ import androidx.compose.ui.graphics.ImageBitmap
  * (and cancel mid-write) on every recomposition.
  */
 object ImageBitmapCache {
-    private const val maxEntries = 48
+    private const val maxEntries = 72
     private val lock = Any()
     private val entries = LinkedHashMap<String, ImageBitmap>(maxEntries, 0.75f, true)
 

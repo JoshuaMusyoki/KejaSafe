@@ -80,6 +80,11 @@ data class ChatThreadUiState(
     val isSending: Boolean = false,
     val error: String? = null,
     val selectedMessage: ApartmentChatMessage? = null,
+    /** True until the first page of messages is ready to show. */
+    val isInitialLoading: Boolean = true,
+    /** True while older history is being revealed. */
+    val isLoadingOlder: Boolean = false,
+    val hasMoreOlder: Boolean = false,
 )
 
 class ChatInboxViewModel(
@@ -263,12 +268,64 @@ class ChatThreadViewModel(
     val state: StateFlow<ChatThreadUiState> = _state.asStateFlow()
 
     private var observeJob: Job? = null
+    private var allMessages: List<ApartmentChatMessage> = emptyList()
+    /** How many newest messages are currently visible. */
+    private var visibleCount: Int = 0
+    private var initialRevealDone: Boolean = false
 
     init {
         observeJob = viewModelScope.launch {
             chatRepository.observeMessages(peer.listingId, peer.userId).collect { messages ->
-                _state.update { it.copy(messages = messages) }
+                allMessages = messages.sortedBy { it.timestamp }
+                if (!initialRevealDone) {
+                    revealInitialPage()
+                } else {
+                    // Keep the user's history window; always include the newest messages.
+                    val minWindow = PAGE_SIZE.coerceAtMost(allMessages.size)
+                    if (visibleCount < minWindow) visibleCount = minWindow
+                    if (visibleCount > allMessages.size) visibleCount = allMessages.size
+                    publishVisible(isInitialLoading = false)
+                }
             }
+        }
+    }
+
+    fun loadOlderMessages() {
+        if (_state.value.isLoadingOlder || !_state.value.hasMoreOlder) return
+        viewModelScope.launch {
+            _state.update { it.copy(isLoadingOlder = true) }
+            // Short delay so the top shimmer is visible before history expands.
+            kotlinx.coroutines.delay(220)
+            visibleCount = (visibleCount + PAGE_SIZE).coerceAtMost(allMessages.size)
+            publishVisible(isInitialLoading = false, isLoadingOlder = false)
+        }
+    }
+
+    private suspend fun revealInitialPage() {
+        _state.update { it.copy(isInitialLoading = true) }
+        // Brief skeleton so heavy threads don't flash a full dump.
+        kotlinx.coroutines.delay(280)
+        visibleCount = PAGE_SIZE.coerceAtMost(allMessages.size)
+        initialRevealDone = true
+        publishVisible(isInitialLoading = false)
+    }
+
+    private fun publishVisible(
+        isInitialLoading: Boolean,
+        isLoadingOlder: Boolean = false,
+    ) {
+        val visible = if (visibleCount <= 0) {
+            emptyList()
+        } else {
+            allMessages.takeLast(visibleCount)
+        }
+        _state.update {
+            it.copy(
+                messages = visible,
+                isInitialLoading = isInitialLoading,
+                isLoadingOlder = isLoadingOlder,
+                hasMoreOlder = visibleCount < allMessages.size,
+            )
         }
     }
 
@@ -357,5 +414,9 @@ class ChatThreadViewModel(
     override fun onCleared() {
         observeJob?.cancel()
         super.onCleared()
+    }
+
+    companion object {
+        private const val PAGE_SIZE = 18
     }
 }

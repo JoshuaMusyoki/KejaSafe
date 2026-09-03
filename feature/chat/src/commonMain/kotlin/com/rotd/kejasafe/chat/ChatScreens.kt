@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -60,7 +61,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,10 +86,13 @@ import com.rotd.kejasafe.chat.components.PeerProfileBottomSheet
 import com.rotd.kejasafe.chat.components.formatJoinedDate
 import com.rotd.kejasafe.components.KejaSafeFloatingNavBar
 import com.rotd.kejasafe.components.KejaSafeNavTab
+import com.rotd.kejasafe.components.ShimmerBlock
+import com.rotd.kejasafe.components.rememberShimmerBrush
 import com.rotd.kejasafe.domain.chat.ApartmentChatMessage
 import com.rotd.kejasafe.domain.chat.ApartmentChatPeer
 import com.rotd.kejasafe.domain.chat.ChatTimelineItem
 import com.rotd.kejasafe.domain.chat.buildChatTimeline
+import com.rotd.kejasafe.media.ImageBitmapCache
 import com.rotd.kejasafe.media.PdfReaderScreen
 import com.rotd.kejasafe.media.decodeToImageBitmap
 import com.rotd.kejasafe.media.renderPdfFirstPage
@@ -95,6 +101,7 @@ import com.rotd.kejasafe.media.rememberPdfPickerLauncher
 import com.rotd.kejasafe.media.rememberPdfShareHandler
 import com.rotd.kejasafe.network.SessionManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.viewmodel.koinViewModel
@@ -582,15 +589,67 @@ fun ChatThreadScreen(
     val timeline = remember(state.messages) {
         buildChatTimeline(state.messages, nowMillis = System.currentTimeMillis())
     }
+    val timelineSize by rememberUpdatedState(timeline.size)
+    /** index, offset, timeline size before older page was prepended */
+    var pendingOlderAnchor by remember {
+        mutableStateOf<Triple<Int, Int, Int>?>(null)
+    }
+    var paginationReady by remember { mutableStateOf(false) }
 
     LaunchedEffect(peer.listingId, peer.userId) {
+        paginationReady = false
         viewModel.onThreadVisible()
     }
 
-    LaunchedEffect(timeline.size) {
-        if (timeline.isNotEmpty()) {
+    LaunchedEffect(timeline.size, state.isInitialLoading) {
+        if (!state.isInitialLoading && timeline.isNotEmpty() && pendingOlderAnchor == null) {
             listState.animateScrollToItem(timeline.lastIndex)
+            // Wait until we've settled at the bottom before allowing history fetch.
+            kotlinx.coroutines.delay(320)
+            paginationReady = true
         }
+    }
+
+    LaunchedEffect(timeline.size, state.isLoadingOlder) {
+        val anchor = pendingOlderAnchor ?: return@LaunchedEffect
+        if (!state.isLoadingOlder) {
+            val (index, offset, oldTimelineSize) = anchor
+            val delta = (timeline.size - oldTimelineSize).coerceAtLeast(0)
+            listState.scrollToItem((index + delta).coerceAtLeast(0), offset)
+            pendingOlderAnchor = null
+        }
+    }
+
+    LaunchedEffect(
+        listState,
+        state.hasMoreOlder,
+        state.isLoadingOlder,
+        state.isInitialLoading,
+        paginationReady,
+    ) {
+        if (!paginationReady) return@LaunchedEffect
+        snapshotFlow {
+            Triple(
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
+                listState.canScrollForward,
+            )
+        }
+            .distinctUntilChanged()
+            .collect { (index, offset, canScrollForward) ->
+                // Only fetch while scrolled away from the newest messages (not on first open).
+                if (
+                    !state.isInitialLoading &&
+                    !state.isLoadingOlder &&
+                    state.hasMoreOlder &&
+                    canScrollForward &&
+                    index <= 1 &&
+                    pendingOlderAnchor == null
+                ) {
+                    pendingOlderAnchor = Triple(index, offset, timelineSize)
+                    viewModel.loadOlderMessages()
+                }
+            }
     }
 
     openPdf?.let { (name, bytes) ->
@@ -770,34 +829,66 @@ fun ChatThreadScreen(
             }
         }
     ) { padding ->
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 12.dp)
-        ) {
-            items(
-                items = timeline,
-                key = { item ->
-                    when (item) {
-                        is ChatTimelineItem.DayHeader -> "day_${item.dayKey}"
-                        is ChatTimelineItem.Bubble -> item.message.id
+        when {
+            state.isInitialLoading -> {
+                ChatThreadShimmer(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .padding(horizontal = 12.dp)
+                )
+            }
+            else -> {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .padding(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    if (state.isLoadingOlder || state.hasMoreOlder) {
+                        item(key = "older_shimmer") {
+                            if (state.isLoadingOlder) {
+                                ChatBubbleShimmerRow(mine = false)
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = "Scroll up for earlier messages",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                }
+                            }
+                        }
                     }
-                },
-            ) { item ->
-                when (item) {
-                    is ChatTimelineItem.DayHeader -> DateHeaderChip(item.label)
-                    is ChatTimelineItem.Bubble -> MessageBubble(
-                        message = item.message,
-                        isMine = item.message.senderId == state.myUserId,
-                        loadAttachment = viewModel::loadAttachment,
-                        onLongPress = { viewModel.selectMessage(item.message) },
-                        onOpenImage = { openImage = it },
-                        onOpenPdf = { name, bytes -> openPdf = name to bytes },
-                    )
+                    items(
+                        items = timeline,
+                        key = { item ->
+                            when (item) {
+                                is ChatTimelineItem.DayHeader -> "day_${item.dayKey}"
+                                is ChatTimelineItem.Bubble -> item.message.id
+                            }
+                        },
+                    ) { item ->
+                        when (item) {
+                            is ChatTimelineItem.DayHeader -> DateHeaderChip(item.label)
+                            is ChatTimelineItem.Bubble -> MessageBubble(
+                                message = item.message,
+                                isMine = item.message.senderId == state.myUserId,
+                                loadAttachment = viewModel::loadAttachment,
+                                onLongPress = { viewModel.selectMessage(item.message) },
+                                onOpenImage = { openImage = it },
+                                onOpenPdf = { name, bytes -> openPdf = name to bytes },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -944,14 +1035,28 @@ private fun ChatPdfThumb(
 ) {
     var bitmap by remember(attachmentId) { mutableStateOf<ImageBitmap?>(null) }
     var failed by remember(attachmentId) { mutableStateOf(false) }
+    val brush = rememberShimmerBrush()
     LaunchedEffect(attachmentId) {
-        val bytes = attachmentId?.let(loadAttachment)
-        bitmap = bytes?.let {
+        val cacheKey = attachmentId?.let { "chat-pdf:$it" }
+        val cached = cacheKey?.let { ImageBitmapCache.get(it) }
+        if (cached != null) {
+            bitmap = cached
+            failed = false
+            return@LaunchedEffect
+        }
+        val bytes = withContext(Dispatchers.Default) {
+            attachmentId?.let(loadAttachment)
+        }
+        val decoded = bytes?.let {
             withContext(Dispatchers.Default) {
                 renderPdfFirstPage(it, maxWidthPx = 720, maxHeightPx = 960)
             }
         }
-        failed = bitmap == null
+        if (decoded != null && cacheKey != null) {
+            ImageBitmapCache.put(cacheKey, decoded)
+        }
+        bitmap = decoded
+        failed = decoded == null
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(
@@ -976,10 +1081,10 @@ private fun ChatPdfThumb(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(48.dp),
                 )
-                else -> CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.primary,
+                else -> ShimmerBlock(
+                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    brush = brush,
+                    shape = RoundedCornerShape(8.dp),
                 )
             }
         }
@@ -1005,10 +1110,25 @@ private fun ChatImageThumb(
     loadAttachment: (String) -> ByteArray?,
 ) {
     var bitmap by remember(attachmentId) { mutableStateOf<ImageBitmap?>(null) }
+    val brush = rememberShimmerBrush()
     LaunchedEffect(attachmentId) {
-        bitmap = attachmentId
-            ?.let(loadAttachment)
-            ?.decodeToImageBitmap()
+        val cacheKey = attachmentId?.let { "chat-img:$it" }
+        val cached = cacheKey?.let { ImageBitmapCache.get(it) }
+        if (cached != null) {
+            bitmap = cached
+            return@LaunchedEffect
+        }
+        // Keep shimmer visible briefly so media feels progressive, not a sudden dump.
+        kotlinx.coroutines.delay(90)
+        val decoded = withContext(Dispatchers.Default) {
+            attachmentId
+                ?.let(loadAttachment)
+                ?.decodeToImageBitmap()
+        }
+        if (decoded != null && cacheKey != null) {
+            ImageBitmapCache.put(cacheKey, decoded)
+        }
+        bitmap = decoded
     }
     Box(
         modifier = Modifier
@@ -1026,12 +1146,58 @@ private fun ChatImageThumb(
                 contentScale = ContentScale.Crop,
             )
         } else {
-            CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
-                strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.onPrimary,
+            ShimmerBlock(
+                modifier = Modifier.fillMaxWidth().height(160.dp),
+                brush = brush,
+                shape = RoundedCornerShape(8.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun ChatThreadShimmer(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.padding(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        ChatBubbleShimmerRow(mine = false)
+        ChatBubbleShimmerRow(mine = true)
+        ChatBubbleShimmerRow(mine = false, tallMedia = true)
+        ChatBubbleShimmerRow(mine = true)
+        ChatBubbleShimmerRow(mine = false)
+        ChatBubbleShimmerRow(mine = true, tallMedia = true)
+    }
+}
+
+@Composable
+private fun ChatBubbleShimmerRow(
+    mine: Boolean,
+    tallMedia: Boolean = false,
+) {
+    val brush = rememberShimmerBrush()
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
+    ) {
+        ShimmerBlock(
+            modifier = Modifier
+                .fillMaxWidth(if (tallMedia) 0.72f else 0.55f)
+                .height(if (tallMedia) 140.dp else 44.dp),
+            brush = brush,
+            shape = RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = if (mine) 16.dp else 4.dp,
+                bottomEnd = if (mine) 4.dp else 16.dp,
+            ),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        ShimmerBlock(
+            modifier = Modifier.width(48.dp).height(10.dp),
+            brush = brush,
+            shape = RoundedCornerShape(4.dp),
+        )
     }
 }
 
