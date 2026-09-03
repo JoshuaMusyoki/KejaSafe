@@ -23,7 +23,11 @@ actual fun rememberImagePickerLauncher(
                 val fileName = uri.lastPathSegment
                     ?.substringAfterLast('/')
                     ?.ifBlank { null }
-                    ?: "house_${System.currentTimeMillis()}.jpg"
+                    ?.takeUnless { segment ->
+                        segment.all { it.isDigit() } ||
+                            (':' in segment && segment.substringAfter(':').all { it.isDigit() })
+                    }
+                    ?: "image_${System.currentTimeMillis()}.jpg"
                 val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
                     ?: return@mapNotNull null
                 PickedImage(

@@ -1,10 +1,12 @@
 package com.rotd.kejasafe.chat
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -32,9 +34,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,27 +57,46 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rotd.kejasafe.chat.components.ApartmentMessageActionSheet
 import com.rotd.kejasafe.chat.components.ChatPeopleSearchField
+import com.rotd.kejasafe.chat.components.MessageReceiptTicks
 import com.rotd.kejasafe.chat.components.PeerProfileBottomSheet
 import com.rotd.kejasafe.chat.components.formatJoinedDate
 import com.rotd.kejasafe.components.KejaSafeFloatingNavBar
 import com.rotd.kejasafe.components.KejaSafeNavTab
 import com.rotd.kejasafe.domain.chat.ApartmentChatMessage
 import com.rotd.kejasafe.domain.chat.ApartmentChatPeer
+import com.rotd.kejasafe.domain.chat.ChatTimelineItem
+import com.rotd.kejasafe.domain.chat.buildChatTimeline
+import com.rotd.kejasafe.media.PdfReaderScreen
+import com.rotd.kejasafe.media.decodeToImageBitmap
+import com.rotd.kejasafe.media.renderPdfFirstPage
+import com.rotd.kejasafe.media.rememberImagePickerLauncher
+import com.rotd.kejasafe.media.rememberPdfPickerLauncher
+import com.rotd.kejasafe.media.rememberPdfShareHandler
 import com.rotd.kejasafe.network.SessionManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -79,6 +105,7 @@ fun ChatInboxScreen(
     selectedTab: KejaSafeNavTab = KejaSafeNavTab.CHAT,
     onTabSelected: (KejaSafeNavTab) -> Unit = {},
     onOpenThread: (ApartmentChatPeer) -> Unit,
+    onOpenLiveTour: (sessionId: String) -> Unit = {},
     onCreateListingClick: (() -> Unit)? = null,
     viewModel: ChatInboxViewModel = koinViewModel(),
 ) {
@@ -90,6 +117,12 @@ fun ChatInboxScreen(
 
     LaunchedEffect(SessionManager.currentUser.value?.id) {
         viewModel.refresh()
+    }
+
+    LaunchedEffect(state.navigateToLiveTourId) {
+        val id = state.navigateToLiveTourId ?: return@LaunchedEffect
+        viewModel.consumeLiveTourNavigation()
+        onOpenLiveTour(id)
     }
 
     val profileRow = state.profilePeer?.let { peer ->
@@ -118,6 +151,9 @@ fun ChatInboxScreen(
                 viewModel.dismissProfile()
                 onOpenThread(row.peer)
             },
+            onCall = viewModel::startCallWithProfilePeer,
+            callBusy = state.callBusy,
+            callError = state.callError,
         )
     }
 
@@ -189,6 +225,7 @@ fun ChatInboxScreen(
                         onOpenThread = onOpenThread,
                         onOpenProfile = viewModel::openProfile,
                         onRetry = viewModel::refresh,
+                        loadAttachment = viewModel::loadAttachment,
                     )
                 }
                 ChatInboxTab.PEOPLE -> {
@@ -211,6 +248,7 @@ fun ChatInboxScreen(
                         onConnect = viewModel::connect,
                         onAccept = viewModel::accept,
                         onRetry = viewModel::refresh,
+                        loadAttachment = viewModel::loadAttachment,
                     )
                 }
             }
@@ -224,6 +262,7 @@ private fun MessagesTabContent(
     onOpenThread: (ApartmentChatPeer) -> Unit,
     onOpenProfile: (ApartmentChatPeer) -> Unit,
     onRetry: () -> Unit,
+    loadAttachment: (String) -> ByteArray?,
 ) {
     when {
         state.isLoading && state.messageRows.isEmpty() -> LoadingBlock()
@@ -247,6 +286,7 @@ private fun MessagesTabContent(
                         showConnectActions = false,
                         onClick = { onOpenThread(row.peer) },
                         onProfileClick = { onOpenProfile(row.peer) },
+                        loadAttachment = loadAttachment,
                     )
                 }
             }
@@ -262,6 +302,7 @@ private fun PeopleTabContent(
     onConnect: (String) -> Unit,
     onAccept: (String) -> Unit,
     onRetry: () -> Unit,
+    loadAttachment: (String) -> ByteArray?,
 ) {
     when {
         state.isLoading && state.peopleRows.isEmpty() -> LoadingBlock()
@@ -292,6 +333,7 @@ private fun PeopleTabContent(
                         onProfileClick = { onOpenProfile(row.peer) },
                         onConnect = { onConnect(row.peer.userId) },
                         onAccept = { onAccept(row.peer.userId) },
+                        loadAttachment = loadAttachment,
                     )
                 }
             }
@@ -329,6 +371,7 @@ private fun PeerRow(
     onProfileClick: () -> Unit,
     onConnect: (() -> Unit)? = null,
     onAccept: (() -> Unit)? = null,
+    loadAttachment: (String) -> ByteArray? = { null },
 ) {
     val peer = row.peer
     val action = row.actionFor(myUserId)
@@ -380,24 +423,40 @@ private fun PeerRow(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Text(
-                text = when {
-                    row.lastMessage?.content?.isNotBlank() == true -> row.lastMessage.content
-                    action == PeerConnectAction.PENDING_OUTGOING -> "Request pending"
-                    action == PeerConnectAction.ACCEPT -> "Wants to connect"
-                    action == PeerConnectAction.CONNECT -> "Tap to connect"
-                    peer.peerIsLandlord -> "Your landlord"
-                    else -> "Your tenant"
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = when (action) {
-                    PeerConnectAction.ACCEPT, PeerConnectAction.CONNECT ->
-                        MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                val last = row.lastMessage
+                if (last != null && last.senderId == myUserId) {
+                    MessageReceiptTicks(status = last.status)
+                }
+                if (last != null && last.isImage()) {
+                    InboxImageThumb(
+                        attachmentId = last.attachmentId,
+                        loadAttachment = loadAttachment,
+                    )
+                }
+                Text(
+                    text = when {
+                        last != null -> last.previewText()
+                        action == PeerConnectAction.PENDING_OUTGOING -> "Request pending"
+                        action == PeerConnectAction.ACCEPT -> "Wants to connect"
+                        action == PeerConnectAction.CONNECT -> "Tap to connect"
+                        peer.peerIsLandlord -> "Your landlord"
+                        else -> "Your tenant"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = when (action) {
+                        PeerConnectAction.ACCEPT, PeerConnectAction.CONNECT ->
+                            MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
         }
         if (showConnectActions) {
             when (action) {
@@ -424,6 +483,43 @@ private fun PeerRow(
                 imageVector = Icons.Default.Person,
                 contentDescription = "View profile",
                 tint = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
+private fun InboxImageThumb(
+    attachmentId: String?,
+    loadAttachment: (String) -> ByteArray?,
+) {
+    var bitmap by remember(attachmentId) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(attachmentId) {
+        bitmap = attachmentId
+            ?.let(loadAttachment)
+            ?.decodeToImageBitmap()
+    }
+    val image = bitmap
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.surface),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (image != null) {
+            Image(
+                bitmap = image,
+                contentDescription = "Image",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Icon(
+                Icons.Default.AddPhotoAlternate,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(16.dp),
             )
         }
     }
@@ -473,10 +569,61 @@ fun ChatThreadScreen(
     val listState = rememberLazyListState()
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
+    var attachMenuOpen by remember { mutableStateOf(false) }
+    var openPdf by remember { mutableStateOf<Pair<String, ByteArray>?>(null) }
+    var openImage by remember { mutableStateOf<ImageBitmap?>(null) }
+    val sharePdf = rememberPdfShareHandler()
+    val pickImages = rememberImagePickerLauncher { files ->
+        viewModel.sendAttachments(files, ApartmentChatMessage.TYPE_IMAGE)
+    }
+    val pickPdfs = rememberPdfPickerLauncher { files ->
+        viewModel.sendAttachments(files, ApartmentChatMessage.TYPE_PDF)
+    }
+    val timeline = remember(state.messages) {
+        buildChatTimeline(state.messages, nowMillis = System.currentTimeMillis())
+    }
 
-    LaunchedEffect(state.messages.size) {
-        if (state.messages.isNotEmpty()) {
-            listState.animateScrollToItem(state.messages.lastIndex)
+    LaunchedEffect(peer.listingId, peer.userId) {
+        viewModel.onThreadVisible()
+    }
+
+    LaunchedEffect(timeline.size) {
+        if (timeline.isNotEmpty()) {
+            listState.animateScrollToItem(timeline.lastIndex)
+        }
+    }
+
+    openPdf?.let { (name, bytes) ->
+        PdfReaderScreen(
+            fileName = name,
+            bytes = bytes,
+            onBack = { openPdf = null },
+            onShare = sharePdf,
+        )
+        return
+    }
+
+    openImage?.let { bitmap ->
+        Dialog(
+            onDismissRequest = { openImage = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.92f))
+                    .clickable { openImage = null },
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = "Shared photo",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
         }
     }
 
@@ -486,10 +633,18 @@ fun ChatThreadScreen(
             isMine = selected.senderId == state.myUserId,
             onDismiss = { viewModel.selectMessage(null) },
             onCopy = {
-                clipboard.setText(AnnotatedString(selected.content))
+                clipboard.setText(AnnotatedString(selected.previewText()))
             },
             onDelete = {
                 scope.launch { viewModel.deleteSelectedMessage() }
+            },
+            onOpen = selected.attachmentId?.takeIf { selected.isPdf() }?.let { attachmentId ->
+                {
+                    val bytes = viewModel.loadAttachment(attachmentId)
+                    if (bytes != null) {
+                        openPdf = (selected.fileName ?: "document.pdf") to bytes
+                    }
+                }
             },
         )
     }
@@ -540,6 +695,39 @@ fun ChatThreadScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    Box {
+                        IconButton(
+                            onClick = { attachMenuOpen = true },
+                            enabled = !state.isSending,
+                        ) {
+                            Icon(Icons.Default.AttachFile, contentDescription = "Attach")
+                        }
+                        DropdownMenu(
+                            expanded = attachMenuOpen,
+                            onDismissRequest = { attachMenuOpen = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Photo") },
+                                onClick = {
+                                    attachMenuOpen = false
+                                    pickImages()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("PDF") },
+                                onClick = {
+                                    attachMenuOpen = false
+                                    pickPdfs()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.PictureAsPdf, contentDescription = null)
+                                },
+                            )
+                        }
+                    }
                     OutlinedTextField(
                         value = state.draft,
                         onValueChange = viewModel::updateDraft,
@@ -591,12 +779,26 @@ fun ChatThreadScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 12.dp)
         ) {
-            items(state.messages, key = { it.id }) { message ->
-                MessageBubble(
-                    message = message,
-                    isMine = message.senderId == state.myUserId,
-                    onLongPress = { viewModel.selectMessage(message) }
-                )
+            items(
+                items = timeline,
+                key = { item ->
+                    when (item) {
+                        is ChatTimelineItem.DayHeader -> "day_${item.dayKey}"
+                        is ChatTimelineItem.Bubble -> item.message.id
+                    }
+                },
+            ) { item ->
+                when (item) {
+                    is ChatTimelineItem.DayHeader -> DateHeaderChip(item.label)
+                    is ChatTimelineItem.Bubble -> MessageBubble(
+                        message = item.message,
+                        isMine = item.message.senderId == state.myUserId,
+                        loadAttachment = viewModel::loadAttachment,
+                        onLongPress = { viewModel.selectMessage(item.message) },
+                        onOpenImage = { openImage = it },
+                        onOpenPdf = { name, bytes -> openPdf = name to bytes },
+                    )
+                }
             }
         }
     }
@@ -607,7 +809,10 @@ fun ChatThreadScreen(
 private fun MessageBubble(
     message: ApartmentChatMessage,
     isMine: Boolean,
+    loadAttachment: (String) -> ByteArray?,
     onLongPress: () -> Unit,
+    onOpenImage: (ImageBitmap) -> Unit,
+    onOpenPdf: (String, ByteArray) -> Unit,
 ) {
     val bubbleColor = if (isMine) {
         MaterialTheme.colorScheme.primary
@@ -636,19 +841,197 @@ private fun MessageBubble(
                 )
                 .background(bubbleColor)
                 .combinedClickable(
-                    onClick = {},
+                    onClick = {
+                        val id = message.attachmentId ?: return@combinedClickable
+                        val bytes = loadAttachment(id) ?: return@combinedClickable
+                        when {
+                            message.isImage() -> {
+                                bytes.decodeToImageBitmap()?.let(onOpenImage)
+                            }
+                            message.isPdf() -> {
+                                onOpenPdf(message.fileName ?: "document.pdf", bytes)
+                            }
+                        }
+                    },
                     onLongClick = onLongPress
                 )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            Text(text = message.content, color = textColor, style = MaterialTheme.typography.bodyMedium)
+            when {
+                message.isImage() -> {
+                    ChatImageThumb(
+                        attachmentId = message.attachmentId,
+                        loadAttachment = loadAttachment,
+                    )
+                    if (message.content.isNotBlank() &&
+                        message.content != "Photo" &&
+                        message.content != "Image"
+                    ) {
+                        Text(
+                            text = message.content,
+                            color = textColor,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
+                message.isPdf() -> {
+                    ChatPdfThumb(
+                        attachmentId = message.attachmentId,
+                        fileName = message.fileName ?: "PDF",
+                        textColor = textColor,
+                        loadAttachment = loadAttachment,
+                    )
+                    if (message.content.isNotBlank() &&
+                        message.content != "PDF" &&
+                        message.content != message.fileName
+                    ) {
+                        Text(
+                            text = message.content,
+                            color = textColor,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
+                else -> {
+                    Text(text = message.content, color = textColor, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = formatChatTime(message.timestamp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            if (isMine) {
+                MessageReceiptTicks(status = message.status)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DateHeaderChip(label: String) {
+    Box(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun ChatPdfThumb(
+    attachmentId: String?,
+    fileName: String,
+    textColor: Color,
+    loadAttachment: (String) -> ByteArray?,
+) {
+    var bitmap by remember(attachmentId) { mutableStateOf<ImageBitmap?>(null) }
+    var failed by remember(attachmentId) { mutableStateOf(false) }
+    LaunchedEffect(attachmentId) {
+        val bytes = attachmentId?.let(loadAttachment)
+        bitmap = bytes?.let {
+            withContext(Dispatchers.Default) {
+                renderPdfFirstPage(it, maxWidthPx = 720, maxHeightPx = 960)
+            }
+        }
+        failed = bitmap == null
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 140.dp, max = 240.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.White),
+            contentAlignment = Alignment.Center,
+        ) {
+            val preview = bitmap
+            when {
+                preview != null -> Image(
+                    bitmap = preview,
+                    contentDescription = fileName,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                failed -> Icon(
+                    Icons.Default.PictureAsPdf,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp),
+                )
+                else -> CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
         Text(
-            text = formatChatTime(message.timestamp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+            text = fileName,
+            color = textColor,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
+        Text(
+            text = "Tap to open",
+            color = textColor.copy(alpha = 0.8f),
+            style = MaterialTheme.typography.labelSmall,
+        )
+    }
+}
+
+@Composable
+private fun ChatImageThumb(
+    attachmentId: String?,
+    loadAttachment: (String) -> ByteArray?,
+) {
+    var bitmap by remember(attachmentId) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(attachmentId) {
+        bitmap = attachmentId
+            ?.let(loadAttachment)
+            ?.decodeToImageBitmap()
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 120.dp, max = 220.dp)
+            .clip(RoundedCornerShape(8.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        val image = bitmap
+        if (image != null) {
+            Image(
+                bitmap = image,
+                contentDescription = "Shared photo",
+                modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
+        }
     }
 }
 

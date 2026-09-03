@@ -4,5 +4,11 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>KejaSafe uses Face ID so you can sign in securely on this device.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>KejaSafe needs camera access for live house tours with landlords.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>KejaSafe needs microphone access for live house tour audio.</string>
 </dict>
 </plist>

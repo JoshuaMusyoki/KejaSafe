@@ -8,7 +8,10 @@ import com.rotd.kejasafe.RegistrationRequest
 import com.rotd.kejasafe.UpdateProfileRequest
 import com.rotd.kejasafe.User
 import com.rotd.kejasafe.UserRole
+import com.rotd.kejasafe.domain.biometric.BiometricAuthSupport
+import com.rotd.kejasafe.domain.biometric.BiometricAuthenticator
 import com.rotd.kejasafe.domain.repository.AuthRepository
+import com.rotd.kejasafe.domain.storage.SecureStorage
 import com.rotd.kejasafe.network.AuthClient
 import com.rotd.kejasafe.network.SessionManager
 import kotlinx.coroutines.flow.Flow
@@ -18,7 +21,11 @@ import kotlinx.coroutines.flow.flowOf
  * Non-Android fallback that still talks to the Ktor API until those targets
  * get a Firebase Auth / SQL Connect client.
  */
-class KtorBridgeAuthRepository : AuthRepository {
+class KtorBridgeAuthRepository(
+    biometricAuthenticator: BiometricAuthenticator,
+    secureStorage: SecureStorage,
+) : AuthRepository {
+    private val biometricSupport = BiometricAuthSupport(biometricAuthenticator, secureStorage)
     override val currentUser: Flow<User?> = flowOf(SessionManager.currentUser.value)
 
     override suspend fun registerWithEmail(
@@ -66,6 +73,22 @@ class KtorBridgeAuthRepository : AuthRepository {
     }
 
     override fun isSignedIn(): Boolean = SessionManager.isLogged()
+
+    override fun isBiometricAvailable(): Boolean = biometricSupport.isAvailable()
+
+    override fun isBiometricEnabled(): Boolean = biometricSupport.isEnabled()
+
+    override suspend fun enableBiometricLogin(identifier: String, password: String): Result<Unit> =
+        biometricSupport.enable(identifier, password)
+
+    override suspend fun disableBiometricLogin() {
+        biometricSupport.disable()
+    }
+
+    override suspend fun signInWithBiometrics(): Result<User> {
+        val credentials = biometricSupport.unlockCredentials().getOrElse { return Result.failure(it) }
+        return signInWithIdentifier(credentials.first, credentials.second)
+    }
 
     private fun Result<AuthResponse>.mapSession(): Result<User> = map {
         SessionManager.saveSession(it.token, it.user)

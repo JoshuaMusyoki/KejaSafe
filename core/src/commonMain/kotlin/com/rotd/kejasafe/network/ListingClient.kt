@@ -12,6 +12,7 @@ import com.rotd.kejasafe.PropertyListing
 import com.rotd.kejasafe.GenerateBillRequest
 import com.rotd.kejasafe.PaymentRequest
 import com.rotd.kejasafe.RentBill
+import com.rotd.kejasafe.RoommateMatch
 import com.rotd.kejasafe.UpdateBillRequest
 import com.rotd.kejasafe.error.AppException
 import io.ktor.client.HttpClient
@@ -203,6 +204,54 @@ object ListingClient {
             Result.success(response.body())
         } else {
             httpFailure(response, "Decline failed")
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(AppException.from(e))
+    }
+
+    suspend fun getRoommateMatch(matchId: String): Result<RoommateMatch> = try {
+        val token = authHeader() ?: return notSignedIn()
+        val response = client.get("${AuthClient.BASE_URL}/listings/roommate-matches/$matchId") {
+            header(HttpHeaders.Authorization, token)
+        }
+        if (response.status.isSuccess()) {
+            Result.success(response.body())
+        } else {
+            httpFailure(response, "Failed to load roommate match")
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(AppException.from(e))
+    }
+
+    suspend fun approveRoommateMatch(matchId: String): Result<RoommateMatch> = try {
+        val token = authHeader() ?: return notSignedIn()
+        val response = client.post("${AuthClient.BASE_URL}/listings/roommate-matches/$matchId/approve") {
+            header(HttpHeaders.Authorization, token)
+        }
+        if (response.status.isSuccess()) {
+            Result.success(response.body())
+        } else {
+            httpFailure(response, "Approve match failed")
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(AppException.from(e))
+    }
+
+    suspend fun declineRoommateMatch(matchId: String): Result<RoommateMatch> = try {
+        val token = authHeader() ?: return notSignedIn()
+        val response = client.post("${AuthClient.BASE_URL}/listings/roommate-matches/$matchId/decline") {
+            header(HttpHeaders.Authorization, token)
+        }
+        if (response.status.isSuccess()) {
+            Result.success(response.body())
+        } else {
+            httpFailure(response, "Decline match failed")
         }
     } catch (e: CancellationException) {
         throw e

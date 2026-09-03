@@ -641,8 +641,8 @@ class ChatRepositoryImpl(
             if (type != AttachmentType.IMAGE && type != AttachmentType.STICKER) {
                 val fileSize = getFileSize(uri)
                 val limit = when(type) {
-                    AttachmentType.VIDEO -> 15 * 1024 * 1024L // 15MB
-                    else -> 10 * 1024 * 1024L // 10MB (PDF/Documents)
+                    AttachmentType.VIDEO -> 50 * 1024 * 1024L // 15MB
+                    else -> 30 * 1024 * 1024L // 10MB (PDF/Documents)
                 }
                 if (fileSize > limit) {
                     val label = if (type == AttachmentType.VIDEO) "Video" else "Document"

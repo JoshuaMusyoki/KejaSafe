@@ -29,17 +29,43 @@ fun LoginScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val identifier by viewModel.identifier.collectAsStateWithLifecycle()
     val password by viewModel.password.collectAsStateWithLifecycle()
+    val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
+    val offerEnableBiometric by viewModel.offerEnableBiometric.collectAsStateWithLifecycle()
 
     var passwordVisible by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) {
+        viewModel.refreshBiometricState()
+    }
+
     // ViewModels can be activity-scoped and retain Success after logout; only navigate when session is live.
-    LaunchedEffect(state) {
-        if (state is LoginState.Success) {
+    LaunchedEffect(state, offerEnableBiometric) {
+        if (state is LoginState.Success && !offerEnableBiometric) {
             if (SessionManager.isLogged()) {
                 onLoginSuccess()
             }
             viewModel.consumeSuccess()
         }
+    }
+
+    if (offerEnableBiometric) {
+        AlertDialog(
+            onDismissRequest = { viewModel.skipEnableBiometric() },
+            title = { Text("Enable biometric login?") },
+            text = {
+                Text("Use fingerprint or Face ID next time instead of typing your password on this device.")
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmEnableBiometric() }) {
+                    Text("Enable")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.skipEnableBiometric() }) {
+                    Text("Not now")
+                }
+            },
+        )
     }
 
     Scaffold(
@@ -128,16 +154,19 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            IconButton(
-                onClick = { viewModel.loginWithFingerprint() },
-                modifier = Modifier.size(64.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Fingerprint,
-                    contentDescription = "Fingerprint Login",
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+            if (biometricEnabled) {
+                IconButton(
+                    onClick = { viewModel.loginWithFingerprint() },
+                    modifier = Modifier.size(64.dp),
+                    enabled = state !is LoginState.Loading
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Fingerprint,
+                        contentDescription = "Fingerprint Login",
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             TextButton(onClick = onNavigateToRegister) {

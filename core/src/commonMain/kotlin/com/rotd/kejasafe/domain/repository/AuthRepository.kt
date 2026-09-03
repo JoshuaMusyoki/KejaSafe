@@ -47,4 +47,19 @@ interface AuthRepository {
     suspend fun signOut()
 
     fun isSignedIn(): Boolean
+
+    fun isBiometricAvailable(): Boolean
+
+    fun isBiometricEnabled(): Boolean
+
+    /**
+     * After a successful password login, confirm biometrics then store credentials
+     * on this device only.
+     */
+    suspend fun enableBiometricLogin(identifier: String, password: String): Result<Unit>
+
+    suspend fun disableBiometricLogin()
+
+    /** Prompt for fingerprint / Face ID, then sign in with stored credentials. */
+    suspend fun signInWithBiometrics(): Result<User>
 }

@@ -9,6 +9,9 @@ import com.rotd.kejasafe.domain.chat.ConnectionStatus
 import com.rotd.kejasafe.domain.chat.connectionIdFor
 import com.rotd.kejasafe.domain.repository.ApartmentChatRepository
 import com.rotd.kejasafe.error.userMessage
+import com.rotd.kejasafe.error.authUserMessage
+import com.rotd.kejasafe.PickedImage
+import com.rotd.kejasafe.network.LiveTourClient
 import com.rotd.kejasafe.network.SessionManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,6 +66,10 @@ data class ChatInboxUiState(
         "Connected chats appear here. Your landlord is ready to message; connect with other tenants from People.",
     val emptyPeopleHint: String =
         "Confirmed stays appear here. Your landlord is connected automatically — other tenants need a connect request.",
+    val callBusy: Boolean = false,
+    val callError: String? = null,
+    /** When set, UI navigates to LiveTourCall. */
+    val navigateToLiveTourId: String? = null,
 )
 
 data class ChatThreadUiState(
@@ -133,7 +140,36 @@ class ChatInboxViewModel(
     }
 
     fun dismissProfile() {
-        _state.update { it.copy(profilePeer = null) }
+        _state.update {
+            it.copy(profilePeer = null, callError = null, callBusy = false)
+        }
+    }
+
+    fun startCallWithProfilePeer() {
+        val peer = _state.value.profilePeer ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(callBusy = true, callError = null) }
+            LiveTourClient.startDirectTour(
+                listingId = peer.listingId,
+                peerUserId = peer.userId,
+            ).onSuccess { session ->
+                _state.update {
+                    it.copy(
+                        callBusy = false,
+                        profilePeer = null,
+                        navigateToLiveTourId = session.id,
+                    )
+                }
+            }.onFailure { e ->
+                _state.update {
+                    it.copy(callBusy = false, callError = e.userMessage())
+                }
+            }
+        }
+    }
+
+    fun consumeLiveTourNavigation() {
+        _state.update { it.copy(navigateToLiveTourId = null) }
     }
 
     fun connect(peerUserId: String) {
@@ -174,6 +210,9 @@ class ChatInboxViewModel(
                 }
         }
     }
+
+    fun loadAttachment(attachmentId: String): ByteArray? =
+        chatRepository.loadAttachment(attachmentId)
 
     private suspend fun rebuildRows(
         peers: List<ApartmentChatPeer>,
@@ -256,6 +295,47 @@ class ChatThreadViewModel(
             }.onFailure { e ->
                 _state.update { it.copy(isSending = false, error = e.userMessage()) }
             }
+        }
+    }
+
+    fun sendAttachments(files: List<PickedImage>, type: String) {
+        if (files.isEmpty() || _state.value.isSending) return
+        viewModelScope.launch {
+            _state.update { it.copy(isSending = true, error = null) }
+            var lastError: String? = null
+            for (file in files) {
+                chatRepository.sendMessage(
+                    listingId = peer.listingId,
+                    bookingId = peer.bookingId,
+                    peerUserId = peer.userId,
+                    content = _state.value.draft,
+                    type = type,
+                    fileName = file.fileName,
+                    mimeType = file.mimeType,
+                    attachmentBytes = file.bytes,
+                ).onFailure { e ->
+                    lastError = e.authUserMessage()
+                }
+            }
+            _state.update {
+                it.copy(
+                    draft = if (lastError == null) "" else it.draft,
+                    isSending = false,
+                    error = lastError,
+                )
+            }
+        }
+    }
+
+    fun loadAttachment(attachmentId: String): ByteArray? =
+        chatRepository.loadAttachment(attachmentId) ?: run {
+            _state.update { it.copy(error = "Could not load this file. Try sending it again.") }
+            null
+        }
+
+    fun onThreadVisible() {
+        viewModelScope.launch {
+            chatRepository.markMessagesRead(peer.listingId, peer.userId)
         }
     }
 

@@ -50,6 +50,10 @@ sealed interface KejaSafeDestination : NavKey {
     @Serializable
     data object LandlordBookings : KejaSafeDestination
 
+    /** LiveKit live house tour session. */
+    @Serializable
+    data class LiveTourCall(val sessionId: String) : KejaSafeDestination
+
     /** Apartment-scoped landlord ↔ tenant messaging. */
     @Serializable
     data object Chat : KejaSafeDestination

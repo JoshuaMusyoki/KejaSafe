@@ -2,6 +2,7 @@ package com.rotd.kejasafe.di
 
 import com.rotd.kejasafe.auth.LoginViewModel
 import com.rotd.kejasafe.auth.RegisterViewModel
+import com.rotd.kejasafe.call.di.callModule
 import com.rotd.kejasafe.chat.di.chatModule
 import com.rotd.kejasafe.listing.di.listingModule
 import com.rotd.kejasafe.profile.di.profileModule
@@ -24,6 +25,7 @@ fun appModules() = listOf(
     rentModule,
     profileModule,
     chatModule,
+    callModule,
 )
 
 /**

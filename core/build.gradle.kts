@@ -15,12 +15,18 @@ kotlin {
             implementation(libs.firebaseAuth)
             implementation(libs.firebaseDataconnect)
             implementation(libs.kotlinxCoroutinesPlayServices)
+            implementation(libs.androidxBiometric)
+            implementation(libs.androidxSecurityCrypto)
+            implementation(libs.androidxFragmentKtx)
             // Keep gRPC artifacts aligned with firebase-dataconnect (avoids
             // NoClassDefFoundError: InternalGlobalInterceptors from mixed versions).
             implementation("io.grpc:grpc-android:1.62.2")
             implementation("io.grpc:grpc-okhttp:1.62.2")
             implementation("io.grpc:grpc-protobuf-lite:1.62.2")
             implementation("io.grpc:grpc-stub:1.62.2")
+        }
+        commonTest.dependencies {
+            implementation(libs.kotlinxCoroutinesTest)
         }
     }
 }

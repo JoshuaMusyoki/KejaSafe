@@ -31,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -74,6 +75,7 @@ private fun typeLabel(type: PropertyType): String = when (type) {
 fun ListingCalendarScreen(
     listingId: String,
     onBack: () -> Unit,
+    onOpenLiveTour: (sessionId: String) -> Unit = {},
     viewModel: ListingCalendarViewModel = koinViewModel(key = "cal-$listingId") {
         parametersOf(listingId)
     }
@@ -124,9 +126,12 @@ fun ListingCalendarScreen(
                     isLandlordOwner = state.isLandlordOwner,
                     actionMessage = state.actionMessage,
                     myUserId = userId,
+                    joinableLiveTourId = state.joinableLiveTourId,
                     onSelectDate = viewModel::selectDate,
                     onPrevMonth = viewModel::previousMonth,
                     onNextMonth = viewModel::nextMonth,
+                    onRequestLiveTour = viewModel::openLiveTourDialog,
+                    onJoinLiveTour = onOpenLiveTour,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -146,11 +151,82 @@ fun ListingCalendarScreen(
                         "${calendar.currency} ${it.toInt()}/mo"
                     } ?: "Price on request",
                     notes = state.notes,
+                    seekingRoommate = state.seekingRoommate,
+                    budgetMaxText = state.budgetMaxText,
                     isActing = state.isActing,
                     error = state.dialogError,
                     onNotesChange = viewModel::onNotesChange,
+                    onSeekingRoommateChange = viewModel::onSeekingRoommateChange,
+                    onBudgetMaxChange = viewModel::onBudgetMaxChange,
                     onDismiss = viewModel::dismissBookDialog,
                     onConfirm = viewModel::requestBooking
+                )
+            }
+
+            if (state.showLiveTourDialog && !state.isLandlordOwner) {
+                AlertDialog(
+                    onDismissRequest = {
+                        if (!state.isActing) viewModel.dismissLiveTourDialog()
+                    },
+                    title = {
+                        Text(
+                            text = "Request live tour",
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = "Schedule a LiveKit house walkthrough with the landlord. Tours are watermarked — recording/redistribution is prohibited.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Video tour")
+                                Switch(
+                                    checked = state.liveTourVideo,
+                                    onCheckedChange = viewModel::onLiveTourVideoChange,
+                                    enabled = !state.isActing
+                                )
+                            }
+                            OutlinedTextField(
+                                value = state.liveTourNote,
+                                onValueChange = viewModel::onLiveTourNoteChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text("Preferred time (e.g. Sat 4pm)") },
+                                enabled = !state.isActing,
+                                maxLines = 3,
+                                shape = MaterialTheme.shapes.medium
+                            )
+                            if (!state.dialogError.isNullOrBlank()) {
+                                Text(
+                                    text = state.dialogError.orEmpty(),
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = viewModel::requestLiveTour,
+                            enabled = !state.isActing
+                        ) {
+                            Text(if (state.isActing) "Sending…" else "Send request")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = viewModel::dismissLiveTourDialog,
+                            enabled = !state.isActing
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
                 )
             }
         }
@@ -163,9 +239,13 @@ private fun BookHouseDialog(
     title: String,
     priceLabel: String,
     notes: String,
+    seekingRoommate: Boolean,
+    budgetMaxText: String,
     isActing: Boolean,
     error: String?,
     onNotesChange: (String) -> Unit,
+    onSeekingRoommateChange: (Boolean) -> Unit,
+    onBudgetMaxChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
@@ -195,6 +275,41 @@ private fun BookHouseDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            text = "Find a roommate",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Match with another seeker on this listing",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = seekingRoommate,
+                        onCheckedChange = onSeekingRoommateChange,
+                        enabled = !isActing
+                    )
+                }
+                if (seekingRoommate) {
+                    OutlinedTextField(
+                        value = budgetMaxText,
+                        onValueChange = onBudgetMaxChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Max budget / month (optional)") },
+                        placeholder = { Text("e.g. 15000") },
+                        enabled = !isActing,
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.medium
+                    )
+                }
                 OutlinedTextField(
                     value = notes,
                     onValueChange = onNotesChange,
@@ -233,9 +348,12 @@ private fun CalendarBody(
     isLandlordOwner: Boolean,
     actionMessage: String?,
     myUserId: String?,
+    joinableLiveTourId: String?,
     onSelectDate: (String) -> Unit,
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
+    onRequestLiveTour: () -> Unit,
+    onJoinLiveTour: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Tenants only see their own requests — not other guests' names.
@@ -284,6 +402,23 @@ private fun CalendarBody(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                if (!isLandlordOwner) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (!joinableLiveTourId.isNullOrBlank()) {
+                        KejaSafePrimaryButton(
+                            text = "Join live tour",
+                            onClick = { onJoinLiveTour(joinableLiveTourId) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        TextButton(
+                            onClick = onRequestLiveTour,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Request live tour")
+                        }
+                    }
                 }
             }
         }

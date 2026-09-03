@@ -6,6 +6,7 @@ import com.rotd.kejasafe.BookListingRequest
 import com.rotd.kejasafe.CampusProximity
 import com.rotd.kejasafe.CreateListingDraft
 import com.rotd.kejasafe.CreateListingRequest
+import com.rotd.kejasafe.CreateLiveTourRequest
 import com.rotd.kejasafe.DraftExtraCharge
 import com.rotd.kejasafe.ElectricityBilling
 import com.rotd.kejasafe.ExtraCharge
@@ -17,16 +18,19 @@ import com.rotd.kejasafe.ListingCalendar
 import com.rotd.kejasafe.ListingCharges
 import com.rotd.kejasafe.ListingPerformance
 import com.rotd.kejasafe.ListingPhotoResponse
+import com.rotd.kejasafe.LiveTourMediaType
 import com.rotd.kejasafe.PendingListingPhoto
 import com.rotd.kejasafe.PickedImage
 import com.rotd.kejasafe.PropertyListing
 import com.rotd.kejasafe.PropertyType
+import com.rotd.kejasafe.RoommateMatch
 import com.rotd.kejasafe.UserRole
 import com.rotd.kejasafe.data.ListingRepository
 import com.rotd.kejasafe.error.userMessage
 import com.rotd.kejasafe.network.ConnectivityMonitor
 import com.rotd.kejasafe.network.ListingClient
 import com.rotd.kejasafe.network.ListingDataBus
+import com.rotd.kejasafe.network.LiveTourClient
 import com.rotd.kejasafe.network.SessionManager
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -108,7 +112,17 @@ data class LandlordHomeState(
     val requests: List<IncomingRequest> = emptyList(),
     /** Confirmed stays where landlord can issue a bill. */
     val confirmedBookings: List<ListingBooking> = emptyList(),
-    val billingMessage: String? = null
+    val billingMessage: String? = null,
+    val selectedMatch: RoommateMatch? = null,
+    val matchLoading: Boolean = false,
+    val matchError: String? = null,
+    val matchActing: Boolean = false,
+    val rescheduleTourId: String? = null,
+    val rescheduleNote: String = "",
+    val tourActing: Boolean = false,
+    val tourMessage: String? = null,
+    /** When set, UI should navigate to the live tour call screen. */
+    val navigateToLiveTourId: String? = null
 )
 
 data class TenantHomeState(
@@ -217,6 +231,161 @@ class LandlordHomeViewModel(
                     refresh(showLoading = false)
                 }
         }
+    }
+
+    fun openRoommateMatch(matchId: String) {
+        viewModelScope.launch {
+            _state.update {
+                it.copy(matchLoading = true, matchError = null, selectedMatch = null)
+            }
+            ListingClient.getRoommateMatch(matchId)
+                .onSuccess { match ->
+                    _state.update {
+                        it.copy(
+                            selectedMatch = match,
+                            matchLoading = false,
+                            matchError = null
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(
+                            matchLoading = false,
+                            matchError = e.userMessage(),
+                            selectedMatch = null
+                        )
+                    }
+                }
+        }
+    }
+
+    fun dismissRoommateMatch() {
+        _state.update {
+            it.copy(
+                selectedMatch = null,
+                matchLoading = false,
+                matchError = null,
+                matchActing = false
+            )
+        }
+    }
+
+    fun approveRoommateMatch(matchId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(matchActing = true, matchError = null) }
+            ListingClient.approveRoommateMatch(matchId)
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            matchActing = false,
+                            selectedMatch = null,
+                            matchLoading = false
+                        )
+                    }
+                    ListingDataBus.notifyListingsChanged()
+                    refresh(showLoading = false)
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(matchActing = false, matchError = e.userMessage())
+                    }
+                }
+        }
+    }
+
+    fun declineRoommateMatch(matchId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(matchActing = true, matchError = null) }
+            ListingClient.declineRoommateMatch(matchId)
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            matchActing = false,
+                            selectedMatch = null,
+                            matchLoading = false
+                        )
+                    }
+                    ListingDataBus.notifyListingsChanged()
+                    refresh(showLoading = false)
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(matchActing = false, matchError = e.userMessage())
+                    }
+                }
+        }
+    }
+
+    fun confirmLiveTour(sessionId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(tourActing = true, tourMessage = null) }
+            LiveTourClient.confirmTour(sessionId)
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            tourActing = false,
+                            navigateToLiveTourId = sessionId,
+                            tourMessage = "Tour confirmed — joining…"
+                        )
+                    }
+                    ListingDataBus.notifyListingsChanged()
+                    refresh(showLoading = false)
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(tourActing = false, tourMessage = e.userMessage())
+                    }
+                }
+        }
+    }
+
+    fun openRescheduleLiveTour(sessionId: String) {
+        _state.update {
+            it.copy(rescheduleTourId = sessionId, rescheduleNote = "", tourMessage = null)
+        }
+    }
+
+    fun onRescheduleNoteChange(note: String) {
+        _state.update { it.copy(rescheduleNote = note) }
+    }
+
+    fun dismissRescheduleLiveTour() {
+        _state.update { it.copy(rescheduleTourId = null, rescheduleNote = "") }
+    }
+
+    fun submitRescheduleLiveTour() {
+        val id = _state.value.rescheduleTourId ?: return
+        val note = _state.value.rescheduleNote.trim()
+        if (note.isBlank()) {
+            _state.update { it.copy(tourMessage = "Enter a new preferred time") }
+            return
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(tourActing = true, tourMessage = null) }
+            LiveTourClient.rescheduleTour(id, note)
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            tourActing = false,
+                            rescheduleTourId = null,
+                            rescheduleNote = "",
+                            tourMessage = "Reschedule sent to tenant"
+                        )
+                    }
+                    ListingDataBus.notifyListingsChanged()
+                    refresh(showLoading = false)
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(tourActing = false, tourMessage = e.userMessage())
+                    }
+                }
+        }
+    }
+
+    fun consumeLiveTourNavigation() {
+        _state.update { it.copy(navigateToLiveTourId = null) }
     }
 
     fun generateBill(bookingId: String) {
@@ -533,9 +702,16 @@ data class ListingCalendarUiState(
     val isActing: Boolean = false,
     val isLandlordOwner: Boolean = false,
     val notes: String = "",
+    val seekingRoommate: Boolean = false,
+    val budgetMaxText: String = "",
     /** Tenant: show book dialog when a date is picked. */
     val showBookDialog: Boolean = false,
-    val dialogError: String? = null
+    val dialogError: String? = null,
+    val showLiveTourDialog: Boolean = false,
+    val liveTourNote: String = "",
+    val liveTourVideo: Boolean = true,
+    /** When landlord confirmed, tenant can join this session. */
+    val joinableLiveTourId: String? = null,
 )
 
 class ListingCalendarViewModel(
@@ -598,6 +774,8 @@ class ListingCalendarViewModel(
                 showBookDialog = true,
                 dialogError = null,
                 notes = "",
+                seekingRoommate = false,
+                budgetMaxText = "",
                 actionMessage = null
             )
         }
@@ -605,12 +783,80 @@ class ListingCalendarViewModel(
 
     fun dismissBookDialog() {
         _state.update {
-            it.copy(showBookDialog = false, dialogError = null, notes = "")
+            it.copy(
+                showBookDialog = false,
+                dialogError = null,
+                notes = "",
+                seekingRoommate = false,
+                budgetMaxText = ""
+            )
         }
     }
 
     fun onNotesChange(notes: String) {
         _state.update { it.copy(notes = notes) }
+    }
+
+    fun onSeekingRoommateChange(seeking: Boolean) {
+        _state.update { it.copy(seekingRoommate = seeking) }
+    }
+
+    fun onBudgetMaxChange(text: String) {
+        _state.update { it.copy(budgetMaxText = text.filter { ch -> ch.isDigit() || ch == '.' }) }
+    }
+
+    fun openLiveTourDialog() {
+        _state.update {
+            it.copy(
+                showLiveTourDialog = true,
+                liveTourNote = "",
+                liveTourVideo = true,
+                dialogError = null
+            )
+        }
+    }
+
+    fun dismissLiveTourDialog() {
+        _state.update {
+            it.copy(showLiveTourDialog = false, dialogError = null, liveTourNote = "")
+        }
+    }
+
+    fun onLiveTourNoteChange(note: String) {
+        _state.update { it.copy(liveTourNote = note) }
+    }
+
+    fun onLiveTourVideoChange(video: Boolean) {
+        _state.update { it.copy(liveTourVideo = video) }
+    }
+
+    fun requestLiveTour() {
+        val note = _state.value.liveTourNote
+        val video = _state.value.liveTourVideo
+        viewModelScope.launch {
+            _state.update { it.copy(isActing = true, dialogError = null) }
+            LiveTourClient.createTour(
+                listingId,
+                CreateLiveTourRequest(
+                    preferredTimeNote = note,
+                    mediaType = if (video) LiveTourMediaType.VIDEO else LiveTourMediaType.AUDIO
+                )
+            ).onSuccess {
+                _state.update {
+                    it.copy(
+                        isActing = false,
+                        showLiveTourDialog = false,
+                        liveTourNote = "",
+                        actionMessage = "Live tour requested — landlord will Confirm a time"
+                    )
+                }
+                ListingDataBus.notifyListingsChanged()
+            }.onFailure { e ->
+                _state.update {
+                    it.copy(isActing = false, dialogError = e.userMessage())
+                }
+            }
+        }
     }
 
     fun clearActionMessage() {
@@ -621,18 +867,31 @@ class ListingCalendarViewModel(
         val start = _state.value.selectedDate
             ?: return markDialogError("Select a start date first")
         val notes = _state.value.notes
+        val seeking = _state.value.seekingRoommate
+        val budgetMax = _state.value.budgetMaxText.toDoubleOrNull()?.takeIf { it > 0 }
         viewModelScope.launch {
             _state.update { it.copy(isActing = true, dialogError = null) }
             ListingClient.bookListing(
                 listingId,
-                BookListingRequest(startDate = start, notes = notes)
+                BookListingRequest(
+                    startDate = start,
+                    notes = notes,
+                    seekingRoommate = seeking,
+                    budgetMax = budgetMax
+                )
             ).onSuccess {
                 _state.update {
                     it.copy(
                         isActing = false,
                         showBookDialog = false,
                         notes = "",
-                        actionMessage = "Request sent — wait for landlord approval"
+                        seekingRoommate = false,
+                        budgetMaxText = "",
+                        actionMessage = if (seeking) {
+                            "Looking for a compatible roommate — we'll notify the landlord when matched"
+                        } else {
+                            "Request sent — wait for landlord approval"
+                        }
                     )
                 }
                 ListingDataBus.notifyListingsChanged()
@@ -647,6 +906,20 @@ class ListingCalendarViewModel(
 
     private fun markDialogError(message: String) {
         _state.update { it.copy(dialogError = message) }
+    }
+
+    private fun refreshJoinableLiveTour() {
+        viewModelScope.launch {
+            LiveTourClient.myOpenTours()
+                .onSuccess { tours ->
+                    val joinable = tours.firstOrNull {
+                        it.listingId == listingId &&
+                            (it.status == com.rotd.kejasafe.LiveTourStatus.READY ||
+                                it.status == com.rotd.kejasafe.LiveTourStatus.ACTIVE)
+                    }
+                    _state.update { it.copy(joinableLiveTourId = joinable?.id) }
+                }
+        }
     }
 
     private fun load(year: Int? = null, month: Int? = null) {
@@ -675,6 +948,7 @@ class ListingCalendarViewModel(
                     if (user?.role == UserRole.LANDLORD || user?.role == UserRole.ADMIN) {
                         refineOwnership(calendar.listingId)
                     }
+                    refreshJoinableLiveTour()
                 }
                 .onFailure { e ->
                     _state.update {

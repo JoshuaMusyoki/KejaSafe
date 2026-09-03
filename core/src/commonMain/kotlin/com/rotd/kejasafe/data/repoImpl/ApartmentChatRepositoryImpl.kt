@@ -8,9 +8,16 @@ import com.rotd.kejasafe.domain.chat.ApartmentChatMessage
 import com.rotd.kejasafe.domain.chat.ApartmentChatPeer
 import com.rotd.kejasafe.domain.chat.Connection
 import com.rotd.kejasafe.domain.chat.ConnectionStatus
+import com.rotd.kejasafe.domain.chat.MessageStatus
 import com.rotd.kejasafe.domain.chat.apartmentConversationKey
+import com.rotd.kejasafe.domain.chat.canUpgradeTo
 import com.rotd.kejasafe.domain.chat.connectionIdFor
+import com.rotd.kejasafe.domain.chat.looksLikeUserFacingFileName
 import com.rotd.kejasafe.domain.repository.ApartmentChatRepository
+import com.rotd.kejasafe.media.ChatAttachmentStore
+import com.rotd.kejasafe.media.MAX_CHAT_ATTACHMENT_BYTES
+import com.rotd.kejasafe.media.MAX_CHAT_ATTACHMENT_MB
+import com.rotd.kejasafe.media.looksLikePdf
 import com.rotd.kejasafe.network.SessionManager
 import com.rotd.kejasafe.storage.LocalSettings
 import kotlinx.coroutines.flow.Flow
@@ -28,6 +35,7 @@ import kotlin.random.Random
  */
 class ApartmentChatRepositoryImpl(
     private val listingRepository: ListingRepository,
+    private val attachments: ChatAttachmentStore,
 ) : ApartmentChatRepository {
 
     private val json = Json {
@@ -54,6 +62,7 @@ class ApartmentChatRepositoryImpl(
         val me = SessionManager.currentUser.value?.id.orEmpty()
         val key = apartmentConversationKey(listingId, me, peerUserId)
         ensureMessagesLoaded(key)
+        upgradeIncomingStatus(key, me, MessageStatus.DELIVERED)
         return messagesByKey.map { map -> map[key].orEmpty().sortedBy { it.timestamp } }
     }
 
@@ -207,12 +216,38 @@ class ApartmentChatRepositoryImpl(
         bookingId: String,
         peerUserId: String,
         content: String,
+        type: String,
+        fileName: String?,
+        mimeType: String?,
+        attachmentBytes: ByteArray?,
     ): Result<ApartmentChatMessage> {
         val me = SessionManager.currentUser.value?.id
             ?: return Result.failure(IllegalStateException("Not signed in"))
         val trimmed = content.trim()
-        if (trimmed.isEmpty()) {
+        val typeNorm = type.uppercase()
+        val isAttachment = typeNorm == ApartmentChatMessage.TYPE_IMAGE ||
+            typeNorm == ApartmentChatMessage.TYPE_PDF
+        if (!isAttachment && trimmed.isEmpty()) {
             return Result.failure(IllegalArgumentException("Message cannot be empty"))
+        }
+        if (isAttachment) {
+            val bytes = attachmentBytes
+                ?: return Result.failure(IllegalArgumentException("Attachment is missing"))
+            if (bytes.isEmpty()) {
+                return Result.failure(IllegalArgumentException("Attachment is empty"))
+            }
+            if (bytes.size > MAX_CHAT_ATTACHMENT_BYTES) {
+                return Result.failure(
+                    IllegalArgumentException(
+                        "File is too large. Choose a file under $MAX_CHAT_ATTACHMENT_MB MB.",
+                    )
+                )
+            }
+            if (typeNorm == ApartmentChatMessage.TYPE_PDF && !bytes.looksLikePdf()) {
+                return Result.failure(
+                    IllegalArgumentException("That file is not a readable PDF. Try another file.")
+                )
+            }
         }
         if (!canMessage(listingId, peerUserId)) {
             return Result.failure(
@@ -221,14 +256,37 @@ class ApartmentChatRepositoryImpl(
                 )
             )
         }
+        val attachmentId = if (isAttachment && attachmentBytes != null) {
+            val id = "att_${System.currentTimeMillis()}_${Random.nextLong().toULong().toString(16)}"
+            attachments.save(id, attachmentBytes)
+            id
+        } else {
+            null
+        }
+        val displayContent = when {
+            trimmed.isNotEmpty() -> trimmed
+            typeNorm == ApartmentChatMessage.TYPE_IMAGE -> "Image"
+            typeNorm == ApartmentChatMessage.TYPE_PDF -> fileName?.ifBlank { null } ?: "PDF"
+            else -> trimmed
+        }
+        val storedFileName = when {
+            typeNorm == ApartmentChatMessage.TYPE_IMAGE ->
+                fileName?.takeIf { looksLikeUserFacingFileName(it) }
+            else -> fileName
+        }
         val message = ApartmentChatMessage(
             id = "${System.currentTimeMillis()}_${Random.nextLong()}",
             listingId = listingId,
             bookingId = bookingId,
             senderId = me,
             receiverId = peerUserId,
-            content = trimmed,
+            content = displayContent,
             timestamp = System.currentTimeMillis(),
+            type = if (isAttachment) typeNorm else ApartmentChatMessage.TYPE_TEXT,
+            fileName = storedFileName,
+            mimeType = mimeType,
+            attachmentId = attachmentId,
+            status = MessageStatus.SENT,
         )
         val key = apartmentConversationKey(listingId, me, peerUserId)
         ensureMessagesLoaded(key)
@@ -259,6 +317,7 @@ class ApartmentChatRepositoryImpl(
         if (target.senderId != me) {
             return Result.failure(IllegalStateException("You can only delete your own messages"))
         }
+        target.attachmentId?.let { attachments.delete(it) }
         val next = existing.filterNot { it.id == messageId }
         persistMessages(key, next)
         messagesByKey.update { it + (key to next) }
@@ -270,7 +329,47 @@ class ApartmentChatRepositoryImpl(
         val me = SessionManager.currentUser.value?.id ?: return null
         val key = apartmentConversationKey(listingId, me, peerUserId)
         ensureMessagesLoaded(key)
+        upgradeIncomingStatus(key, me, MessageStatus.DELIVERED)
         return messagesByKey.value[key].orEmpty().maxByOrNull { it.timestamp }
+    }
+
+    override fun loadAttachment(attachmentId: String): ByteArray? =
+        attachments.load(attachmentId)
+
+    override suspend fun markMessagesDelivered(listingId: String, peerUserId: String) {
+        val me = SessionManager.currentUser.value?.id ?: return
+        val key = apartmentConversationKey(listingId, me, peerUserId)
+        ensureMessagesLoaded(key)
+        upgradeIncomingStatus(key, me, MessageStatus.DELIVERED)
+    }
+
+    override suspend fun markMessagesRead(listingId: String, peerUserId: String) {
+        val me = SessionManager.currentUser.value?.id ?: return
+        val key = apartmentConversationKey(listingId, me, peerUserId)
+        ensureMessagesLoaded(key)
+        upgradeIncomingStatus(key, me, MessageStatus.READ)
+    }
+
+    private fun upgradeIncomingStatus(key: String, myUserId: String, target: MessageStatus) {
+        if (myUserId.isBlank()) return
+        val existing = messagesByKey.value[key].orEmpty()
+        if (existing.isEmpty()) return
+        var changed = false
+        val next = existing.map { message ->
+            if (message.receiverId == myUserId &&
+                message.senderId != myUserId &&
+                message.status.canUpgradeTo(target)
+            ) {
+                changed = true
+                message.copy(status = target)
+            } else {
+                message
+            }
+        }
+        if (!changed) return
+        persistMessages(key, next)
+        messagesByKey.update { it + (key to next) }
+        bumpMessageEpoch()
     }
 
     private fun bumpMessageEpoch() {

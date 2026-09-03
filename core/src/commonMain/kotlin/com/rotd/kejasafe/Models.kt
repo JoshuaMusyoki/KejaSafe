@@ -285,6 +285,37 @@ data class IncomingRequest(
 )
 
 @Serializable
+enum class RoommateMatchStatus {
+    SUGGESTED, ACCEPTED, DECLINED
+}
+
+@Serializable
+data class RoommateMatchGuest(
+    val bookingId: String,
+    val userId: String?,
+    val name: String,
+    val preferences: List<String> = emptyList(),
+    val startDateMillis: Long,
+    val endDateMillis: Long,
+    val budgetMax: Double? = null,
+    val major: String? = null,
+    val yearOfStudy: Int? = null
+)
+
+@Serializable
+data class RoommateMatch(
+    val id: String,
+    val listingId: String,
+    val listingTitle: String = "",
+    val landlordId: String = "",
+    val guests: List<RoommateMatchGuest> = emptyList(),
+    val score: Int = 0,
+    val status: RoommateMatchStatus = RoommateMatchStatus.SUGGESTED,
+    val pricePerMonth: Double? = null,
+    val currency: String = "KES"
+)
+
+@Serializable
 data class ListingPerformance(
     val totalViews: Int,
     val viewsDeltaPercent: Int,
@@ -343,7 +374,10 @@ data class ListingBooking(
     val notes: String = "",
     val slotCount: Int = 1,
     val pricePerMonth: Double? = null,
-    val currency: String = "KES"
+    val currency: String = "KES",
+    val seekingRoommate: Boolean = false,
+    val budgetMax: Double? = null,
+    val roommateMatchId: String? = null
 )
 
 @Serializable
@@ -353,7 +387,70 @@ data class BookListingRequest(
     /** ISO date yyyy-MM-dd — defaults to start + 30 days if blank on server */
     val endDate: String? = null,
     val notes: String = "",
-    val slotCount: Int = 1
+    val slotCount: Int = 1,
+    /** When true, booking waits for an auto-matched roommate before landlord review. */
+    val seekingRoommate: Boolean = false,
+    /** Optional monthly budget ceiling (KES) used for match scoring. */
+    val budgetMax: Double? = null
+)
+
+@Serializable
+enum class LiveTourStatus {
+    SCHEDULED, READY, ACTIVE, ENDED
+}
+
+@Serializable
+enum class LiveTourMediaType {
+    VIDEO, AUDIO
+}
+
+@Serializable
+data class CreateLiveTourRequest(
+    /** Preferred time / note for the landlord (free text). */
+    val preferredTimeNote: String = "",
+    val mediaType: LiveTourMediaType = LiveTourMediaType.VIDEO
+)
+
+/** Start or resume an immediate LiveKit call with a chat peer on a listing. */
+@Serializable
+data class DirectLiveTourRequest(
+    val peerUserId: String,
+    val mediaType: LiveTourMediaType = LiveTourMediaType.VIDEO
+)
+
+@Serializable
+data class RescheduleLiveTourRequest(
+    val preferredTimeNote: String
+)
+
+@Serializable
+data class LiveTourSession(
+    val id: String,
+    val listingId: String,
+    val listingTitle: String = "",
+    val landlordId: String,
+    val landlordName: String = "",
+    val tenantId: String,
+    val tenantName: String = "",
+    val requestId: String = "",
+    val roomName: String = "",
+    val mediaType: LiveTourMediaType = LiveTourMediaType.VIDEO,
+    val status: LiveTourStatus = LiveTourStatus.SCHEDULED,
+    val preferredTimeNote: String = "",
+    val createdAt: Long = 0L,
+    val startedAt: Long? = null,
+    val endedAt: Long? = null
+)
+
+@Serializable
+data class LiveKitConnectionDetails(
+    val serverUrl: String,
+    val roomName: String,
+    val participantName: String,
+    val participantToken: String,
+    val sessionId: String = "",
+    val listingTitle: String = "",
+    val mediaType: LiveTourMediaType = LiveTourMediaType.VIDEO
 )
 
 @Serializable

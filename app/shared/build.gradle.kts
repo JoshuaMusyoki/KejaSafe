@@ -28,6 +28,7 @@ kotlin {
             api(project(":feature:profile"))
             api(project(":feature:listing"))
             api(project(":feature:chat"))
+            api(project(":feature:call"))
         }
     }
 }

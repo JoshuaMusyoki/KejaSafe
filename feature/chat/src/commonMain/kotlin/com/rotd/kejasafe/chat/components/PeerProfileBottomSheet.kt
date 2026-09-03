@@ -3,12 +3,15 @@ package com.rotd.kejasafe.chat.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -27,6 +30,7 @@ import com.rotd.kejasafe.chat.PeerConnectAction
 import com.rotd.kejasafe.components.KejaSafeBottomSheet
 import com.rotd.kejasafe.components.KejaSafeOutlinedButton
 import com.rotd.kejasafe.components.KejaSafePrimaryButton
+import com.rotd.kejasafe.domain.chat.formatUtcCalendarDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +42,9 @@ fun PeerProfileBottomSheet(
     onAccept: () -> Unit,
     onReject: () -> Unit,
     onMessage: () -> Unit,
+    onCall: () -> Unit = {},
+    callBusy: Boolean = false,
+    callError: String? = null,
 ) {
     val peer = row.peer
     val action = row.actionFor(myUserId)
@@ -94,6 +101,14 @@ fun PeerProfileBottomSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            if (!callError.isNullOrBlank()) {
+                Text(
+                    text = callError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             when (action) {
@@ -125,11 +140,31 @@ fun PeerProfileBottomSheet(
                     )
                 }
                 PeerConnectAction.MESSAGE -> {
-                    KejaSafePrimaryButton(
-                        text = "Message",
-                        onClick = onMessage,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        KejaSafeOutlinedButton(
+                            text = if (callBusy) "Calling…" else "Call",
+                            onClick = onCall,
+                            modifier = Modifier.weight(1f),
+                            enabled = !callBusy,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Call,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (callBusy) "Calling…" else "Call")
+                        }
+                        KejaSafePrimaryButton(
+                            text = "Message",
+                            onClick = onMessage,
+                            modifier = Modifier.weight(1f),
+                            enabled = !callBusy,
+                        )
+                    }
                 }
                 PeerConnectAction.NONE -> Unit
             }
@@ -166,28 +201,9 @@ private fun connectionStatusLabel(action: PeerConnectAction): String = when (act
     PeerConnectAction.CONNECT -> "Not connected — send a request to chat"
     PeerConnectAction.PENDING_OUTGOING -> "Waiting for them to accept"
     PeerConnectAction.ACCEPT -> "They want to connect with you"
-    PeerConnectAction.MESSAGE -> "Connected — you can message"
+    PeerConnectAction.MESSAGE -> "Connected — message or start a live call"
     PeerConnectAction.NONE -> ""
 }
 
 /** Formats booking start as e.g. 13 Aug 2026 (UTC calendar day). */
-internal fun formatJoinedDate(millis: Long): String {
-    if (millis <= 0L) return ""
-    val days = millis / 86_400_000L
-    var z = days + 719_468L
-    val era = if (z >= 0) z / 146_097L else (z - 146_096L) / 146_097L
-    val doe = z - era * 146_097L
-    val yoe = (doe - doe / 1460L + doe / 36524L - doe / 146_096L) / 365L
-    var year = (yoe + era * 400L).toInt()
-    val doy = (doe - (365L * yoe + yoe / 4L - yoe / 100L)).toInt()
-    val mp = (5 * doy + 2) / 153
-    val day = doy - (153 * mp + 2) / 5 + 1
-    val month = if (mp < 10) mp + 3 else mp - 9
-    if (month <= 2) year += 1
-    val monthName = when (month) {
-        1 -> "Jan"; 2 -> "Feb"; 3 -> "Mar"; 4 -> "Apr"
-        5 -> "May"; 6 -> "Jun"; 7 -> "Jul"; 8 -> "Aug"
-        9 -> "Sep"; 10 -> "Oct"; 11 -> "Nov"; else -> "Dec"
-    }
-    return "$day $monthName $year"
-}
+internal fun formatJoinedDate(millis: Long): String = formatUtcCalendarDate(millis)

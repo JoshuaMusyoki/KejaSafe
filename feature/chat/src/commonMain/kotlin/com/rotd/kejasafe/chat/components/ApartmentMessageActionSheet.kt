@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +33,7 @@ fun ApartmentMessageActionSheet(
     onDismiss: () -> Unit,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
+    onOpen: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -53,12 +55,22 @@ fun ApartmentMessageActionSheet(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             Text(
-                text = message.content,
+                text = message.previewText(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 3,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
+            if (onOpen != null) {
+                ActionRow(
+                    icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                    label = if (message.isPdf()) "Open PDF" else "Open",
+                    onClick = {
+                        onOpen()
+                        onDismiss()
+                    }
+                )
+            }
             ActionRow(
                 icon = Icons.Rounded.ContentCopy,
                 label = "Copy",

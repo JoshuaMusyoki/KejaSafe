@@ -1,0 +1,14 @@
+# CocoaPods for KejaSafe iOS (LiveKit live tours)
+platform :ios, '15.0'
+use_frameworks!
+
+target 'iosApp' do
+  pod 'LiveKit', '~> 2.6'
+end
+
+# After editing:
+#   cd app/iosApp && pod install
+# Then open iosApp.xcworkspace and build.
+#
+# Kotlin side still uses StubLiveTourMediaSession until a Swift bridge
+# (Room.connect / VideoView) is wired into LiveTourMediaSession.ios.kt.

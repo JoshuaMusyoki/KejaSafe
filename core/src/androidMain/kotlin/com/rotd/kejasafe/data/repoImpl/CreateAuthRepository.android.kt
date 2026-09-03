@@ -1,7 +1,9 @@
 package com.rotd.kejasafe.data.repoImpl
 
 import com.rotd.kejasafe.data.UserProfileDataSource
+import com.rotd.kejasafe.domain.biometric.BiometricAuthenticator
 import com.rotd.kejasafe.domain.repository.AuthRepository
+import com.rotd.kejasafe.domain.storage.SecureStorage
 
 /**
  * Ktor HS256 JWTs while listings/rent hit `:server`.
@@ -12,6 +14,10 @@ import com.rotd.kejasafe.domain.repository.AuthRepository
  * ```
  * Do not mix: Firebase ID tokens are RS256; Ktor verifies HMAC256 → AlgorithmMismatchException.
  */
-actual fun createAuthRepository(profiles: UserProfileDataSource): AuthRepository {
-    return KtorBridgeAuthRepository()
+actual fun createAuthRepository(
+    profiles: UserProfileDataSource,
+    biometricAuthenticator: BiometricAuthenticator,
+    secureStorage: SecureStorage,
+): AuthRepository {
+    return KtorBridgeAuthRepository(biometricAuthenticator, secureStorage)
 }

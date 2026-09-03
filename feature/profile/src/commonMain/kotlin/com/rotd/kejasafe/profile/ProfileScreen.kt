@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.HomeWork
 import androidx.compose.material.icons.filled.Lock
@@ -38,22 +39,29 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -91,6 +99,37 @@ fun ProfileScreen(
 
     val isLandlord =
         state.user?.role == UserRole.LANDLORD || state.user?.role == UserRole.ADMIN
+
+    if (state.showBiometricPasswordPrompt) {
+        var password by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissBiometricPasswordPrompt() },
+            title = { Text("Enable biometric login") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Confirm your password to save login on this device.")
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.confirmEnableBiometric(password) },
+                    enabled = password.isNotBlank(),
+                ) { Text("Enable") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissBiometricPasswordPrompt() }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -130,7 +169,11 @@ fun ProfileScreen(
                     ProfileContent(
                         user = state.user!!,
                         onEditProfile = onEditProfile,
-                        onLogout = onLogout
+                        onLogout = onLogout,
+                        biometricAvailable = state.biometricAvailable,
+                        biometricEnabled = state.biometricEnabled,
+                        biometricMessage = state.biometricMessage,
+                        onBiometricToggle = { viewModel.onBiometricToggle(it) },
                     )
                 }
             }
@@ -143,7 +186,11 @@ fun ProfileScreen(
 private fun ProfileContent(
     user: User,
     onEditProfile: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    biometricAvailable: Boolean,
+    biometricEnabled: Boolean,
+    biometricMessage: String?,
+    onBiometricToggle: (Boolean) -> Unit,
 ) {
     val isStudent = user.role == UserRole.STUDENT
     val isLandlord = user.role == UserRole.LANDLORD || user.role == UserRole.ADMIN
@@ -313,6 +360,20 @@ private fun ProfileContent(
         Column(modifier = Modifier.fillMaxWidth()) {
             SectionHeader(title = "Security & Account", icon = Icons.Default.Lock)
             Spacer(modifier = Modifier.height(12.dp))
+            if (biometricAvailable) {
+                BiometricLoginRow(
+                    enabled = biometricEnabled,
+                    onToggle = onBiometricToggle,
+                )
+            }
+            if (!biometricMessage.isNullOrBlank()) {
+                Text(
+                    text = biometricMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                )
+            }
             AccountOptionItem(title = "Password & Security", icon = Icons.Default.VpnKey)
             AccountOptionItem(title = "Payment Methods", icon = Icons.Default.Payment)
             AccountOptionItem(title = "Notification Preferences", icon = Icons.Default.Notifications)
@@ -515,6 +576,33 @@ private fun VerificationItem(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun BiometricLoginRow(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Icon(
+            Icons.Default.Fingerprint,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Biometric login", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "Use fingerprint or Face ID on this device",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = enabled, onCheckedChange = onToggle)
     }
 }
 

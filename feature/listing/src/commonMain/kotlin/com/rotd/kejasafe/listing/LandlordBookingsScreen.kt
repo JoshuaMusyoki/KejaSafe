@@ -16,9 +16,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rotd.kejasafe.RequestType
+import com.rotd.kejasafe.RoommateMatch
 import com.rotd.kejasafe.components.IncomingRequestCard
 import com.rotd.kejasafe.components.KejaSafeCard
 import com.rotd.kejasafe.components.KejaSafeErrorState
@@ -55,6 +59,7 @@ private enum class BookingsTab {
 @Composable
 fun LandlordBookingsScreen(
     onBack: () -> Unit,
+    onOpenLiveTour: (sessionId: String) -> Unit = {},
     viewModel: LandlordHomeViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -63,6 +68,12 @@ fun LandlordBookingsScreen(
 
     LaunchedEffect(Unit) {
         viewModel.refresh(showLoading = state.requests.isEmpty() && state.confirmedBookings.isEmpty())
+    }
+
+    LaunchedEffect(state.navigateToLiveTourId) {
+        val id = state.navigateToLiveTourId ?: return@LaunchedEffect
+        viewModel.consumeLiveTourNavigation()
+        onOpenLiveTour(id)
     }
 
     Scaffold(
@@ -79,7 +90,7 @@ fun LandlordBookingsScreen(
                 contentPadding = PaddingValues(
                     start = KejaSafeTheme.spacing.containerMarginMobile,
                     end = KejaSafeTheme.spacing.containerMarginMobile,
-                    top = KejaSafeHeaderContentInset + 12.dp,
+                    top = KejaSafeHeaderContentInset + 8.dp,
                     bottom = 32.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -139,13 +150,19 @@ fun LandlordBookingsScreen(
                                     primaryActionLabel = primary,
                                     secondaryActionLabel = secondary,
                                     onPrimaryAction = {
-                                        if (request.type == RequestType.BOOKING) {
-                                            viewModel.approveRequest(request.id)
+                                        when (request.type) {
+                                            RequestType.BOOKING -> viewModel.approveRequest(request.id)
+                                            RequestType.ROOMMATE_SPLIT -> viewModel.openRoommateMatch(request.id)
+                                            RequestType.LIVE_INSPECTION -> viewModel.confirmLiveTour(request.id)
+                                            else -> Unit
                                         }
                                     },
                                     onSecondaryAction = {
-                                        if (request.type == RequestType.BOOKING) {
-                                            viewModel.declineRequest(request.id)
+                                        when (request.type) {
+                                            RequestType.BOOKING -> viewModel.declineRequest(request.id)
+                                            RequestType.ROOMMATE_SPLIT -> viewModel.declineRoommateMatch(request.id)
+                                            RequestType.LIVE_INSPECTION -> viewModel.openRescheduleLiveTour(request.id)
+                                            else -> Unit
                                         }
                                     }
                                 )
@@ -197,11 +214,225 @@ fun LandlordBookingsScreen(
             KejaSafeHeader(
                 title = "Bookings",
                 onBackClick = onBack,
-                frosted = true,
+                frosted = false,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
+
+            when {
+                state.matchLoading -> {
+                    AlertDialog(
+                        onDismissRequest = viewModel::dismissRoommateMatch,
+                        title = { Text("Roommate pair") },
+                        text = {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = viewModel::dismissRoommateMatch) {
+                                Text("Close")
+                            }
+                        }
+                    )
+                }
+                state.selectedMatch != null || !state.matchError.isNullOrBlank() -> {
+                    RoommateMatchDialog(
+                        match = state.selectedMatch,
+                        error = state.matchError,
+                        isActing = state.matchActing,
+                        onDismiss = viewModel::dismissRoommateMatch,
+                        onApprove = { id -> viewModel.approveRoommateMatch(id) },
+                        onDecline = { id -> viewModel.declineRoommateMatch(id) }
+                    )
+                }
+            }
+
+            if (state.rescheduleTourId != null) {
+                AlertDialog(
+                    onDismissRequest = {
+                        if (!state.tourActing) viewModel.dismissRescheduleLiveTour()
+                    },
+                    title = { Text("Reschedule live tour") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "Suggest a new time for the tenant.",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            androidx.compose.material3.OutlinedTextField(
+                                value = state.rescheduleNote,
+                                onValueChange = viewModel::onRescheduleNoteChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text("e.g. Saturday 3pm") },
+                                enabled = !state.tourActing,
+                                maxLines = 3
+                            )
+                            if (!state.tourMessage.isNullOrBlank()) {
+                                Text(
+                                    text = state.tourMessage.orEmpty(),
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = viewModel::submitRescheduleLiveTour,
+                            enabled = !state.tourActing
+                        ) {
+                            Text(if (state.tourActing) "Sending…" else "Send")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = viewModel::dismissRescheduleLiveTour,
+                            enabled = !state.tourActing
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun RoommateMatchDialog(
+    match: RoommateMatch?,
+    error: String?,
+    isActing: Boolean,
+    onDismiss: () -> Unit,
+    onApprove: (String) -> Unit,
+    onDecline: (String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { if (!isActing) onDismiss() },
+        title = {
+            Text(
+                text = if (match != null) "${match.score}% match" else "Roommate pair",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (!error.isNullOrBlank()) {
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                if (match != null) {
+                    Text(
+                        text = match.listingTitle.ifBlank { "Property" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    match.pricePerMonth?.let { price ->
+                        Text(
+                            text = "${match.currency} ${price.toInt()}/mo shared unit",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    match.guests.forEach { guest ->
+                        KejaSafeCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = guest.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                val meta = listOfNotNull(
+                                    guest.major?.takeIf { it.isNotBlank() },
+                                    guest.yearOfStudy?.let { "Year $it" }
+                                ).joinToString(" · ")
+                                if (meta.isNotBlank()) {
+                                    Text(
+                                        text = meta,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Text(
+                                    text = "${formatMatchDay(guest.startDateMillis)} → ${formatMatchDay(guest.endDateMillis)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                guest.budgetMax?.let { budget ->
+                                    Text(
+                                        text = "Budget up to ${match.currency} ${budget.toInt()}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (guest.preferences.isNotEmpty()) {
+                                    Text(
+                                        text = guest.preferences.joinToString(" · "),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (match != null) {
+                TextButton(
+                    onClick = { onApprove(match.id) },
+                    enabled = !isActing
+                ) {
+                    Text(if (isActing) "Working…" else "Approve pair")
+                }
+            }
+        },
+        dismissButton = {
+            Row {
+                if (match != null) {
+                    TextButton(
+                        onClick = { onDecline(match.id) },
+                        enabled = !isActing
+                    ) {
+                        Text("Decline")
+                    }
+                }
+                TextButton(onClick = onDismiss, enabled = !isActing) {
+                    Text("Close")
+                }
+            }
+        }
+    )
+}
+
+private fun formatMatchDay(millis: Long): String {
+    val day = millis / 86_400_000L
+    var days = day.toInt()
+    var year = 1970
+    while (true) {
+        val diy = if ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0) 366 else 365
+        if (days < diy) break
+        days -= diy
+        year++
+    }
+    val leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+    val monthDays = intArrayOf(31, if (leap) 29 else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+    var month = 1
+    for (len in monthDays) {
+        if (days < len) break
+        days -= len
+        month++
+    }
+    val d = days + 1
+    return "${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}"
 }
 
 @Composable

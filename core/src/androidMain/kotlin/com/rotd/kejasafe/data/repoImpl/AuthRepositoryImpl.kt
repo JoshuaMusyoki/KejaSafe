@@ -10,7 +10,12 @@ import com.rotd.kejasafe.UpdateProfileRequest
 import com.rotd.kejasafe.User
 import com.rotd.kejasafe.UserRole
 import com.rotd.kejasafe.data.UserProfileDataSource
+import com.rotd.kejasafe.domain.biometric.BiometricAuthSupport
+import com.rotd.kejasafe.domain.biometric.BiometricAuthenticator
+import com.rotd.kejasafe.domain.biometric.createBiometricAuthenticator
 import com.rotd.kejasafe.domain.repository.AuthRepository
+import com.rotd.kejasafe.domain.storage.SecureStorage
+import com.rotd.kejasafe.domain.storage.createSecureStorage
 import com.rotd.kejasafe.network.SessionManager
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -23,7 +28,10 @@ import kotlinx.coroutines.tasks.await
 class AuthRepositoryImpl(
     private val auth: FirebaseAuth,
     private val profiles: UserProfileDataSource,
+    biometricAuthenticator: BiometricAuthenticator = createBiometricAuthenticator(),
+    secureStorage: SecureStorage = createSecureStorage(),
 ) : AuthRepository {
+    private val biometricSupport = BiometricAuthSupport(biometricAuthenticator, secureStorage)
 
     override val currentUser: Flow<User?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
@@ -227,6 +235,22 @@ class AuthRepositoryImpl(
     }
 
     override fun isSignedIn(): Boolean = auth.currentUser != null
+
+    override fun isBiometricAvailable(): Boolean = biometricSupport.isAvailable()
+
+    override fun isBiometricEnabled(): Boolean = biometricSupport.isEnabled()
+
+    override suspend fun enableBiometricLogin(identifier: String, password: String): Result<Unit> =
+        biometricSupport.enable(identifier, password)
+
+    override suspend fun disableBiometricLogin() {
+        biometricSupport.disable()
+    }
+
+    override suspend fun signInWithBiometrics(): Result<User> {
+        val credentials = biometricSupport.unlockCredentials().getOrElse { return Result.failure(it) }
+        return signInWithIdentifier(credentials.first, credentials.second)
+    }
 
     private suspend fun loadOrBootstrapProfile(
         email: String,

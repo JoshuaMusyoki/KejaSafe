@@ -25,6 +25,19 @@ class LoginViewModel(
     var identifier = MutableStateFlow("") // email or username
     var password = MutableStateFlow("")
 
+    val biometricAvailable = MutableStateFlow(false)
+    val biometricEnabled = MutableStateFlow(false)
+    val offerEnableBiometric = MutableStateFlow(false)
+
+    init {
+        refreshBiometricState()
+    }
+
+    fun refreshBiometricState() {
+        biometricAvailable.value = authRepository.isBiometricAvailable()
+        biometricEnabled.value = authRepository.isBiometricEnabled()
+    }
+
     fun login() {
         if (identifier.value.isBlank() || password.value.isBlank()) {
             _state.value = LoginState.Error("Please enter both identifier and password")
@@ -37,9 +50,7 @@ class LoginViewModel(
                 identifier = identifier.value,
                 password = password.value,
             ).fold(
-                onSuccess = {
-                    _state.value = LoginState.Success("Login successful!")
-                },
+                onSuccess = { onPasswordLoginSuccess() },
                 onFailure = {
                     _state.value = LoginState.Error(it.authUserMessage())
                 }
@@ -56,6 +67,7 @@ class LoginViewModel(
             _state.value = LoginState.Loading
             authRepository.signInWithGoogle(idToken, role).fold(
                 onSuccess = {
+                    offerEnableBiometric.value = false
                     _state.value = LoginState.Success("Login successful!")
                 },
                 onFailure = {
@@ -66,7 +78,41 @@ class LoginViewModel(
     }
 
     fun loginWithFingerprint() {
-        _state.value = LoginState.Error("Biometric authentication in progress")
+        if (!authRepository.isBiometricEnabled()) {
+            _state.value = LoginState.Error(
+                "Biometric login is not set up. Sign in with your password first.",
+            )
+            return
+        }
+        viewModelScope.launch {
+            _state.value = LoginState.Loading
+            authRepository.signInWithBiometrics().fold(
+                onSuccess = {
+                    offerEnableBiometric.value = false
+                    refreshBiometricState()
+                    _state.value = LoginState.Success("Login successful!")
+                },
+                onFailure = {
+                    _state.value = LoginState.Error(it.authUserMessage())
+                }
+            )
+        }
+    }
+
+    fun confirmEnableBiometric() {
+        viewModelScope.launch {
+            authRepository.enableBiometricLogin(identifier.value, password.value)
+            offerEnableBiometric.value = false
+            refreshBiometricState()
+            _state.value = LoginState.Success("Login successful!")
+        }
+    }
+
+    fun skipEnableBiometric() {
+        offerEnableBiometric.value = false
+        if (_state.value !is LoginState.Success) {
+            _state.value = LoginState.Success("Login successful!")
+        }
     }
 
     /** Call after handling [LoginState.Success] so re-opening Login after logout does not auto-navigate home. */
@@ -74,11 +120,21 @@ class LoginViewModel(
         if (_state.value is LoginState.Success) {
             _state.value = LoginState.Idle
         }
+        offerEnableBiometric.value = false
     }
 
     fun reset() {
         _state.value = LoginState.Idle
         identifier.value = ""
         password.value = ""
+        offerEnableBiometric.value = false
+        refreshBiometricState()
+    }
+
+    private fun onPasswordLoginSuccess() {
+        refreshBiometricState()
+        val shouldOffer = biometricAvailable.value && !biometricEnabled.value
+        offerEnableBiometric.value = shouldOffer
+        _state.value = LoginState.Success("Login successful!")
     }
 }

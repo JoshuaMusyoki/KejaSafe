@@ -10,6 +10,7 @@ dependencies {
     // Used in KejaSafeApplication to clear Firebase Auth on cold start.
     // (core holds auth as implementation, so it is not leaked to this module.)
     implementation(libs.firebaseAuth)
+    implementation(libs.androidxFragmentKtx)
 }
 
 configurations.configureEach {

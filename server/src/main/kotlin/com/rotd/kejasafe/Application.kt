@@ -6,6 +6,7 @@ import com.rotd.kejasafe.auth.AuthService
 import com.rotd.kejasafe.db.initDatabase
 import com.rotd.kejasafe.kyc.KycService
 import com.rotd.kejasafe.listing.ListingService
+import com.rotd.kejasafe.listing.LiveTourService
 import com.rotd.kejasafe.rent.RentService
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -40,7 +41,6 @@ import io.ktor.server.routing.routing
 import io.ktor.utils.io.readRemaining
 import kotlinx.io.readByteArray
 import kotlinx.serialization.json.Json
-import com.rotd.kejasafe.UpdateProfileRequest
 
 fun main() {
     initDatabase()
@@ -350,6 +350,69 @@ fun Application.module() {
                     }
                 }
 
+                get("/roommate-matches/{matchId}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val matchId = call.parameters["matchId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val match = ListingService.getRoommateMatch(matchId, userId)
+                    if (match != null) call.respond(match)
+                    else call.respond(HttpStatusCode.NotFound, "Match not found")
+                }
+
+                post("/roommate-matches/{matchId}/approve") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val matchId = call.parameters["matchId"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(ListingService.approveRoommateMatch(matchId, userId))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not approve match")
+                    }
+                }
+
+                post("/roommate-matches/{matchId}/decline") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val matchId = call.parameters["matchId"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(ListingService.declineRoommateMatch(matchId, userId))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not decline match")
+                    }
+                }
+
+                post("/{id}/live-tours") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<CreateLiveTourRequest>()
+                    try {
+                        call.respond(HttpStatusCode.Created, LiveTourService.createTour(listingId, userId, body))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not request live tour")
+                    }
+                }
+
+                post("/{id}/live-tours/direct") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<DirectLiveTourRequest>()
+                    try {
+                        call.respond(
+                            HttpStatusCode.Created,
+                            LiveTourService.startDirectTour(
+                                listingId = listingId,
+                                callerId = userId,
+                                peerUserId = body.peerUserId,
+                                mediaType = body.mediaType,
+                            )
+                        )
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not start live call")
+                    }
+                }
+
                 get("/mine/bookings") {
                     val principal = call.principal<JWTPrincipal>()
                     val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
@@ -428,6 +491,73 @@ fun Application.module() {
                         call.respond(HttpStatusCode.OK, mapOf("message" to "Photo removed"))
                     } else {
                         call.respond(HttpStatusCode.NotFound, "Photo not found or not your listing")
+                    }
+                }
+            }
+
+            route("/live-tours") {
+                get("/mine") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(LiveTourService.openToursForTenant(userId))
+                }
+
+                get("/{sessionId}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val tour = LiveTourService.getTour(sessionId, userId)
+                    if (tour != null) call.respond(tour)
+                    else call.respond(HttpStatusCode.NotFound, "Live tour not found")
+                }
+
+                post("/{sessionId}/confirm") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.confirmTour(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not confirm tour")
+                    }
+                }
+
+                post("/{sessionId}/reschedule") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<RescheduleLiveTourRequest>()
+                    try {
+                        call.respond(LiveTourService.rescheduleTour(sessionId, userId, body))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not reschedule tour")
+                    }
+                }
+
+                post("/{sessionId}/token") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.issueToken(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not issue LiveKit token")
+                    }
+                }
+
+                post("/{sessionId}/end") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.endTour(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not end tour")
                     }
                 }
             }

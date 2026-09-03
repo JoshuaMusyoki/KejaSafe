@@ -18,6 +18,7 @@ import com.rotd.kejasafe.ListingStatus
 import com.rotd.kejasafe.PropertyListing
 import com.rotd.kejasafe.PropertyType
 import com.rotd.kejasafe.RequestType
+import com.rotd.kejasafe.RoommateMatch
 import com.rotd.kejasafe.db.ListingBookingsTable
 import com.rotd.kejasafe.db.ListingEventsTable
 import com.rotd.kejasafe.db.ListingPhotosTable
@@ -315,48 +316,70 @@ object ListingService {
         )
     }
 
-    fun getIncomingRequests(landlordId: String): List<IncomingRequest> = transaction {
-        val fromInbox = ListingRequestsTable.selectAll()
-            .where { ListingRequestsTable.landlordId eq landlordId }
-            .map { row ->
+    fun getIncomingRequests(landlordId: String): List<IncomingRequest> {
+        val roommateSplits = RoommateMatchingService.suggestedMatchesForLandlord(landlordId)
+            .map { match ->
+                val names = match.guests.joinToString(" & ") { it.name }
                 IncomingRequest(
-                    id = row[ListingRequestsTable.id],
-                    requesterName = row[ListingRequestsTable.requesterName],
-                    type = row[ListingRequestsTable.type],
-                    propertyTitle = row[ListingRequestsTable.propertyTitle],
-                    detail = row[ListingRequestsTable.detail],
-                    timeLabel = row[ListingRequestsTable.timeLabel]
+                    id = match.id,
+                    requesterName = names.ifBlank { "Roommate pair" },
+                    type = RequestType.ROOMMATE_SPLIT,
+                    propertyTitle = match.listingTitle,
+                    detail = "${match.score}% match · overlapping stay",
+                    timeLabel = "Suggested pair"
                 )
             }
 
-        // Surface pending booking requests on the landlord home feed.
-        val pendingBookings = ListingBookingsTable.selectAll()
-            .where {
-                (ListingBookingsTable.landlordId eq landlordId) and
-                    (ListingBookingsTable.status eq BookingStatus.PENDING)
-            }
-            .map { row ->
-                val title = ListingsTable.selectAll()
-                    .where { ListingsTable.id eq row[ListingBookingsTable.listingId] }
-                    .singleOrNull()
-                    ?.get(ListingsTable.title)
-                    .orEmpty()
-                val start = Instant.ofEpochMilli(row[ListingBookingsTable.startDateMillis])
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDate()
-                IncomingRequest(
-                    id = row[ListingBookingsTable.id],
-                    requesterName = row[ListingBookingsTable.guestName],
-                    type = RequestType.BOOKING,
-                    propertyTitle = title,
-                    detail = row[ListingBookingsTable.notes].ifBlank {
-                        "Wants to book from $start (${row[ListingBookingsTable.slotCount]} slot)"
-                    },
-                    timeLabel = "Pending approval"
-                )
-            }
+        val liveTours = LiveTourService.incomingForLandlord(landlordId)
 
-        (pendingBookings + fromInbox).sortedByDescending { it.id }
+        val pendingAndInbox = transaction {
+            val fromInbox = ListingRequestsTable.selectAll()
+                .where { ListingRequestsTable.landlordId eq landlordId }
+                .mapNotNull { row ->
+                    // Live tours are surfaced from LiveTourSessions (session id), not raw inbox rows.
+                    if (row[ListingRequestsTable.type] == RequestType.LIVE_INSPECTION) return@mapNotNull null
+                    IncomingRequest(
+                        id = row[ListingRequestsTable.id],
+                        requesterName = row[ListingRequestsTable.requesterName],
+                        type = row[ListingRequestsTable.type],
+                        propertyTitle = row[ListingRequestsTable.propertyTitle],
+                        detail = row[ListingRequestsTable.detail],
+                        timeLabel = row[ListingRequestsTable.timeLabel]
+                    )
+                }
+
+            // Solo pending bookings only (hide roommate seekers until matched).
+            val pendingBookings = ListingBookingsTable.selectAll()
+                .where {
+                    (ListingBookingsTable.landlordId eq landlordId) and
+                        (ListingBookingsTable.status eq BookingStatus.PENDING) and
+                        (ListingBookingsTable.seekingRoommate eq false)
+                }
+                .map { row ->
+                    val title = ListingsTable.selectAll()
+                        .where { ListingsTable.id eq row[ListingBookingsTable.listingId] }
+                        .singleOrNull()
+                        ?.get(ListingsTable.title)
+                        .orEmpty()
+                    val start = Instant.ofEpochMilli(row[ListingBookingsTable.startDateMillis])
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate()
+                    IncomingRequest(
+                        id = row[ListingBookingsTable.id],
+                        requesterName = row[ListingBookingsTable.guestName],
+                        type = RequestType.BOOKING,
+                        propertyTitle = title,
+                        detail = row[ListingBookingsTable.notes].ifBlank {
+                            "Wants to book from $start (${row[ListingBookingsTable.slotCount]} slot)"
+                        },
+                        timeLabel = "Pending approval"
+                    )
+                }
+
+            pendingBookings + fromInbox
+        }
+
+        return (pendingAndInbox + roommateSplits + liveTours).sortedByDescending { it.id }
     }
 
     fun isOwnedBy(listingId: String, landlordId: String): Boolean = transaction {
@@ -505,6 +528,7 @@ object ListingService {
             ?: "Tenant"
 
         val id = UUID.randomUUID().toString()
+        val seeking = request.seekingRoommate
         ListingBookingsTable.insert {
             it[ListingBookingsTable.id] = id
             it[ListingBookingsTable.listingId] = listingId
@@ -516,6 +540,9 @@ object ListingService {
             it[ListingBookingsTable.status] = BookingStatus.PENDING
             it[ListingBookingsTable.notes] = request.notes.trim()
             it[ListingBookingsTable.slotCount] = slots
+            it[ListingBookingsTable.seekingRoommate] = seeking
+            it[ListingBookingsTable.budgetMax] = request.budgetMax?.takeIf { it > 0 }
+            it[ListingBookingsTable.roommateMatchId] = null
             it[ListingBookingsTable.createdAt] = System.currentTimeMillis()
         }
         // First booking request from this guest counts as one inquiry (unique person).
@@ -534,7 +561,7 @@ object ListingService {
             it[inquiries] = uniqueInquiries
         }
         // Pending does not bump activeBookings until approve.
-        ListingBookingsTable.selectAll()
+        val booking = ListingBookingsTable.selectAll()
             .where { ListingBookingsTable.id eq id }
             .single()
             .toBooking(
@@ -542,6 +569,11 @@ object ListingService {
                 pricePerMonth = listing[ListingsTable.pricePerMonth],
                 currency = listing[ListingsTable.currency]
             )
+        booking
+    }.also { booking ->
+        if (booking.seekingRoommate) {
+            RoommateMatchingService.tryMatchListing(listingId)
+        }
     }
 
     fun approveBooking(bookingId: String, landlordId: String): ListingBooking = transaction {
@@ -612,7 +644,18 @@ object ListingService {
                 pricePerMonth = listing[ListingsTable.pricePerMonth],
                 currency = listing[ListingsTable.currency]
             )
+    }.also {
+        RoommateMatchingService.releaseBooking(bookingId)
     }
+
+    fun getRoommateMatch(matchId: String, landlordId: String): RoommateMatch? =
+        RoommateMatchingService.getMatch(matchId, landlordId)
+
+    fun approveRoommateMatch(matchId: String, landlordId: String): RoommateMatch =
+        RoommateMatchingService.approveMatch(matchId, landlordId)
+
+    fun declineRoommateMatch(matchId: String, landlordId: String): RoommateMatch =
+        RoommateMatchingService.declineMatch(matchId, landlordId)
 
     fun getBookingForLandlord(bookingId: String, landlordId: String): ListingBooking? = transaction {
         val row = ListingBookingsTable.selectAll()
@@ -969,6 +1012,9 @@ object ListingService {
         notes = this[ListingBookingsTable.notes],
         slotCount = this[ListingBookingsTable.slotCount],
         pricePerMonth = pricePerMonth,
-        currency = currency
+        currency = currency,
+        seekingRoommate = this[ListingBookingsTable.seekingRoommate],
+        budgetMax = this[ListingBookingsTable.budgetMax],
+        roommateMatchId = this[ListingBookingsTable.roommateMatchId]
     )
 }

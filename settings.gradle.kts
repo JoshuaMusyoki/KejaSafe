@@ -25,6 +25,7 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
@@ -37,3 +38,4 @@ include(":feature:rent")
 include(":feature:profile")
 include(":feature:listing")
 include(":feature:chat")
+include(":feature:call")

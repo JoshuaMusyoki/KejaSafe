@@ -2,6 +2,7 @@ package com.rotd.kejasafe.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rotd.kejasafe.RoommatePreferences
 import com.rotd.kejasafe.UpdateProfileRequest
 import com.rotd.kejasafe.User
 import com.rotd.kejasafe.UserRole
@@ -32,7 +33,11 @@ data class ProfileUiState(
     val isLoading: Boolean = true,
     val user: User? = null,
     val error: String? = null,
-    val syncWarning: String? = null
+    val syncWarning: String? = null,
+    val biometricAvailable: Boolean = false,
+    val biometricEnabled: Boolean = false,
+    val biometricMessage: String? = null,
+    val showBiometricPasswordPrompt: Boolean = false,
 )
 
 data class EditProfileUiState(
@@ -68,6 +73,7 @@ class ProfileViewModel(
             }
         }
         loadProfile()
+        refreshBiometricState()
     }
 
     fun loadProfile() {
@@ -126,6 +132,76 @@ class ProfileViewModel(
     fun logout() {
         viewModelScope.launch {
             authRepository.signOut()
+        }
+    }
+
+    fun onBiometricToggle(enabled: Boolean) {
+        if (!enabled) {
+            viewModelScope.launch {
+                authRepository.disableBiometricLogin()
+                _state.update {
+                    it.copy(
+                        biometricEnabled = false,
+                        biometricMessage = null,
+                        showBiometricPasswordPrompt = false,
+                    )
+                }
+            }
+            return
+        }
+        if (!authRepository.isBiometricAvailable()) {
+            _state.update {
+                it.copy(biometricMessage = "Biometrics are not available on this device.")
+            }
+            return
+        }
+        _state.update {
+            it.copy(
+                showBiometricPasswordPrompt = true,
+                biometricMessage = null,
+            )
+        }
+    }
+
+    fun confirmEnableBiometric(password: String) {
+        val user = _state.value.user ?: SessionManager.currentUser.value
+        val identifier = user?.email?.takeIf { it.isNotBlank() }
+            ?: user?.username.orEmpty()
+        viewModelScope.launch {
+            authRepository.enableBiometricLogin(identifier, password).fold(
+                onSuccess = {
+                    _state.update {
+                        it.copy(
+                            biometricEnabled = true,
+                            showBiometricPasswordPrompt = false,
+                            biometricMessage = "Biometric login enabled on this device.",
+                        )
+                    }
+                },
+                onFailure = { e ->
+                    _state.update {
+                        it.copy(
+                            biometricEnabled = false,
+                            showBiometricPasswordPrompt = false,
+                            biometricMessage = e.message?.trim()?.takeIf { msg -> msg.isNotEmpty() }
+                                ?: e.userMessage(),
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun dismissBiometricPasswordPrompt() {
+        _state.update { it.copy(showBiometricPasswordPrompt = false) }
+    }
+
+    private fun refreshBiometricState() {
+        _state.update {
+            it.copy(
+                biometricAvailable = authRepository.isBiometricAvailable(),
+                biometricEnabled = authRepository.isBiometricEnabled(),
+            )
         }
     }
 }
@@ -231,10 +307,7 @@ class EditProfileViewModel(
                     else -> null
                 },
                 roommatePreferences = when (user.role) {
-                    UserRole.STUDENT -> draft.roommatePreferencesText
-                        .split(",", ";", "\n")
-                        .map { it.trim() }
-                        .filter { it.isNotEmpty() }
+                    UserRole.STUDENT -> RoommatePreferences.normalize(draft.roommatePreferencesText)
                     else -> emptyList()
                 }
             )

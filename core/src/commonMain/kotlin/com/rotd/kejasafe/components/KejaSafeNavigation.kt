@@ -18,6 +18,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -55,6 +56,7 @@ fun KejaSafeHeader(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .clipToBounds()
             .then(
                 if (frosted) {
                     Modifier.background(
@@ -105,5 +107,6 @@ fun KejaSafeHeader(
     }
 }
 
-/** Approximate space to reserve so the first line of content isn’t under the frosted header. */
-val KejaSafeHeaderContentInset = 72.dp
+/** Approximate space to reserve so the first line of content isn’t under the frosted header.
+ *  Covers status bar + Material3 TopAppBar (~64.dp). */
+val KejaSafeHeaderContentInset = 104.dp

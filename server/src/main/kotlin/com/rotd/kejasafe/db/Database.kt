@@ -5,8 +5,11 @@ import com.rotd.kejasafe.CampusProximity
 import com.rotd.kejasafe.ElectricityBilling
 import com.rotd.kejasafe.KycStatus
 import com.rotd.kejasafe.ListingStatus
+import com.rotd.kejasafe.LiveTourMediaType
+import com.rotd.kejasafe.LiveTourStatus
 import com.rotd.kejasafe.PropertyType
 import com.rotd.kejasafe.RequestType
+import com.rotd.kejasafe.RoommateMatchStatus
 import com.rotd.kejasafe.UserRole
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.Database
@@ -137,6 +140,23 @@ object ListingBookingsTable : Table("listing_bookings") {
     val status = enumerationByName("status", 20, com.rotd.kejasafe.BookingStatus::class)
     val notes = varchar("notes", 500).default("")
     val slotCount = integer("slot_count").default(1)
+    val seekingRoommate = bool("seeking_roommate").default(false)
+    val budgetMax = double("budget_max").nullable()
+    val roommateMatchId = varchar("roommate_match_id", 50).nullable()
+    val createdAt = long("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object RoommateMatchesTable : Table("roommate_matches") {
+    val id = varchar("id", 50)
+    val listingId = varchar("listing_id", 50).references(ListingsTable.id)
+    val landlordId = varchar("landlord_id", 50).references(UsersTable.id)
+    val bookingAId = varchar("booking_a_id", 50)
+    val bookingBId = varchar("booking_b_id", 50)
+    val score = integer("score").default(0)
+    val status = enumerationByName("status", 20, RoommateMatchStatus::class)
+        .default(RoommateMatchStatus.SUGGESTED)
     val createdAt = long("created_at")
 
     override val primaryKey = PrimaryKey(id)
@@ -148,6 +168,25 @@ object ListingEventsTable : Table("listing_events") {
     val eventType = varchar("event_type", 20) // VIEW | INQUIRY
     val userId = varchar("user_id", 50).nullable()
     val createdAt = long("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object LiveTourSessionsTable : Table("live_tour_sessions") {
+    val id = varchar("id", 50)
+    val listingId = varchar("listing_id", 50).references(ListingsTable.id)
+    val landlordId = varchar("landlord_id", 50).references(UsersTable.id)
+    val tenantId = varchar("tenant_id", 50).references(UsersTable.id)
+    val requestId = varchar("request_id", 50)
+    val roomName = varchar("room_name", 120).default("")
+    val mediaType = enumerationByName("media_type", 20, LiveTourMediaType::class)
+        .default(LiveTourMediaType.VIDEO)
+    val status = enumerationByName("status", 20, LiveTourStatus::class)
+        .default(LiveTourStatus.SCHEDULED)
+    val preferredTimeNote = varchar("preferred_time_note", 500).default("")
+    val createdAt = long("created_at")
+    val startedAt = long("started_at").nullable()
+    val endedAt = long("ended_at").nullable()
 
     override val primaryKey = PrimaryKey(id)
 }
@@ -164,7 +203,9 @@ fun initDatabase() {
             ListingPhotosTable,
             ListingRequestsTable,
             ListingBookingsTable,
-            ListingEventsTable
+            ListingEventsTable,
+            RoommateMatchesTable,
+            LiveTourSessionsTable
         )
         SchemaUtils.createMissingTablesAndColumns(
             UsersTable,
@@ -175,7 +216,9 @@ fun initDatabase() {
             ListingPhotosTable,
             ListingRequestsTable,
             ListingBookingsTable,
-            ListingEventsTable
+            ListingEventsTable,
+            RoommateMatchesTable,
+            LiveTourSessionsTable
         )
     }
 }

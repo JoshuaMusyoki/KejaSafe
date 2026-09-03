@@ -45,8 +45,8 @@ object AuthClient {
     // Use 10.0.2.2 for Android Emulator
     // Use your machine's IP (10.8.120.210) for physical devices
     //const val BASE_URL = "http://10.8.120.210:8080"
-   // const val BASE_URL = "http://192.168.100.3:8080"
-    const val BASE_URL = "http://10.120.212.251:8080"
+    const val BASE_URL = "http://192.168.100.3:8080"
+    //const val BASE_URL = "http://10.120.212.251:8080"
 
 
     suspend fun register(request: RegistrationRequest): Result<AuthResponse> = runApi {

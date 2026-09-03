@@ -37,4 +37,14 @@ object ErrorMessages {
         "Saved on this device. Changes will sync when you’re back online."
     const val PHOTOS_NEED_CONNECTION =
         "New photos need a connection. Remove them to save the rest offline, or try again online."
+    const val BIOMETRIC_UNAVAILABLE =
+        "Biometrics are not available on this device."
+    const val BIOMETRIC_NOT_ENABLED =
+        "Biometric login is not set up. Sign in with your password first."
+    const val BIOMETRIC_FAILED =
+        "Biometric authentication failed. Try again or use your password."
+    const val BIOMETRIC_CANCELLED =
+        "Biometric authentication was cancelled."
+    const val BIOMETRIC_NEED_PASSWORD =
+        "Enter your password once to enable biometric login on this device."
 }

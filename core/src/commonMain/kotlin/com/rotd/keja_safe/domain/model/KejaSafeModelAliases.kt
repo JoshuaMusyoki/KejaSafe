@@ -32,12 +32,7 @@ typealias MeetingStatus = com.rotd.kejasafe.domain.call.MeetingStatus
 typealias ParticipantStatus = com.rotd.kejasafe.domain.call.ParticipantStatus
 typealias IncomingCall = com.rotd.kejasafe.domain.call.IncomingCall
 
-data class LiveKitConnectionDetails(
-    val serverUrl: String = "",
-    val roomName: String = "",
-    val participantName: String = "",
-    val participantToken: String = "",
-)
+typealias LiveKitConnectionDetails = com.rotd.kejasafe.LiveKitConnectionDetails
 
 data class Feedback(
     val id: String = "",

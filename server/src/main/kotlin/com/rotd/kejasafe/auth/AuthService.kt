@@ -7,6 +7,7 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.rotd.kejasafe.RegistrationRequest
+import com.rotd.kejasafe.RoommatePreferences
 import com.rotd.kejasafe.UpdateProfileRequest
 import com.rotd.kejasafe.User
 import com.rotd.kejasafe.UserRole
@@ -142,11 +143,7 @@ object AuthService {
             .singleOrNull() != null
         if (usernameTaken) return@transaction null
 
-        val prefs = request.roommatePreferences
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .joinToString(",")
-            .ifBlank { null }
+        val prefs = RoommatePreferences.encode(request.roommatePreferences)
 
         val updated = UsersTable.update({ UsersTable.id eq userId }) {
             it[UsersTable.fullName] = fullName
@@ -165,12 +162,7 @@ object AuthService {
     }
 
     private fun ResultRow.toUser(): User {
-        val prefsRaw = this[UsersTable.roommatePreferences]
-        val prefs = prefsRaw
-            ?.split(",")
-            ?.map { it.trim() }
-            ?.filter { it.isNotEmpty() }
-            ?: emptyList()
+        val prefs = RoommatePreferences.normalize(this[UsersTable.roommatePreferences])
 
         return User(
             id = this[UsersTable.id],

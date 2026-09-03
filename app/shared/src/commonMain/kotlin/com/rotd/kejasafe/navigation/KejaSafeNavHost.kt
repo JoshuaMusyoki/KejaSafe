@@ -147,20 +147,38 @@ fun KejaSafeNavHost(
         }
 
         entry<KejaSafeDestination.LandlordBookings> {
-            LandlordBookingsScreen(onBack = ::goBack)
+            LandlordBookingsScreen(
+                onBack = ::goBack,
+                onOpenLiveTour = { sessionId ->
+                    openDetail(KejaSafeDestination.LiveTourCall(sessionId))
+                }
+            )
+        }
+
+        entry<KejaSafeDestination.LiveTourCall> { destination ->
+            com.rotd.kejasafe.call.LiveTourCallScreen(
+                sessionId = destination.sessionId,
+                onBack = ::goBack
+            )
         }
 
         entry<KejaSafeDestination.PropertyDetails> { destination ->
             ListingCalendarScreen(
                 listingId = destination.id,
-                onBack = ::goBack
+                onBack = ::goBack,
+                onOpenLiveTour = { sessionId ->
+                    openDetail(KejaSafeDestination.LiveTourCall(sessionId))
+                }
             )
         }
 
         entry<KejaSafeDestination.ListingCalendar> { destination ->
             ListingCalendarScreen(
                 listingId = destination.listingId,
-                onBack = ::goBack
+                onBack = ::goBack,
+                onOpenLiveTour = { sessionId ->
+                    openDetail(KejaSafeDestination.LiveTourCall(sessionId))
+                }
             )
         }
 
@@ -226,6 +244,9 @@ fun KejaSafeNavHost(
                             peerIsLandlord = peer.peerIsLandlord,
                         )
                     )
+                },
+                onOpenLiveTour = { sessionId ->
+                    openDetail(KejaSafeDestination.LiveTourCall(sessionId))
                 },
                 onCreateListingClick = {
                     if (isLandlord) openDetail(KejaSafeDestination.CreateListing())
