@@ -1,4 +1,6 @@
 package com.rotd.kejasafe.data
 
-internal actual fun platformEpochMillis(): Long =
-    (js("Date.now()") as Double).toLong()
+actual fun platformEpochMillis(): Long = jsDateNow().toLong()
+
+@JsFun("() => Date.now()")
+private external fun jsDateNow(): Double

@@ -1,5 +1,6 @@
 package com.rotd.kejasafe.domain.chat
 
+import com.rotd.kejasafe.data.platformEpochMillis
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -15,7 +16,7 @@ data class Connection(
     val senderId: String,
     val receiverId: String,
     val status: ConnectionStatus,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = platformEpochMillis()
 )
 
 

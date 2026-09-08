@@ -27,10 +27,11 @@ fun App() {
 
     val themeMode by ThemeController.mode.collectAsState()
     val darkTheme = themeMode.resolveDarkTheme(isSystemInDarkTheme())
-    val startDestination = if (SessionManager.isLogged()) {
-        homeDestinationForRole(SessionManager.currentUser.value?.role)
-    } else {
-        KejaSafeDestination.Login
+    val startDestination = when {
+        SessionManager.isLogged() ->
+            homeDestinationForRole(SessionManager.currentUser.value?.role)
+        getPlatform().isWeb -> KejaSafeDestination.Landing
+        else -> KejaSafeDestination.Login
     }
 
     KoinContext {

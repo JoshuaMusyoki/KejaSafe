@@ -5,7 +5,7 @@ package com.rotd.keja_safe.domain.util
  * Firestore listener deliver the same chat message (common when the app is open).
  */
 class MessageNotificationTracker {
-    private val claimedIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private val claimedIds = mutableSetOf<String>()
 
     /**
      * @return true if this message id has not been claimed yet (caller should show the tray).

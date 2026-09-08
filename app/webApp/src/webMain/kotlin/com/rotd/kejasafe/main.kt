@@ -7,7 +7,7 @@ import com.rotd.kejasafe.di.initKoin
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
     initKoin()
-    ComposeViewport {
+    ComposeViewport("compose-target") {
         App()
     }
 }

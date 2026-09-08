@@ -1,5 +1,6 @@
 package com.rotd.kejasafe.domain.call
 
+import com.rotd.kejasafe.data.platformEpochMillis
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -7,7 +8,7 @@ data class ParticipantStatus(
     val isMicOn: Boolean = true,
     val isCameraOn: Boolean = true,
     val isHandRaised: Boolean = false,
-    val lastActive: Long = System.currentTimeMillis()
+    val lastActive: Long = platformEpochMillis()
 )
 
 @Serializable

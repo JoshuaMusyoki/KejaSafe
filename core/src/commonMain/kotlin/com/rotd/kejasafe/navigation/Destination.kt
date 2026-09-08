@@ -27,6 +27,16 @@ sealed interface KejaSafeDestination : NavKey {
     @Serializable
     data object EditProfile : KejaSafeDestination
 
+    /** Web marketing entry — not used as mobile start destination. */
+    @Serializable
+    data object Landing : KejaSafeDestination
+
+    @Serializable
+    data object Features : KejaSafeDestination
+
+    @Serializable
+    data object Policy : KejaSafeDestination
+
     @Serializable
     data object Login : KejaSafeDestination
 

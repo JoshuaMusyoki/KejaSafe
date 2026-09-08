@@ -1,16 +1,14 @@
 package com.rotd.kejasafe.domain.chat
 
-import androidx.annotation.Keep
+import com.rotd.kejasafe.data.platformEpochMillis
 import kotlinx.serialization.Serializable
 
-@Keep
 @Serializable
 enum class PeopleSearchScope {
     CHATS,
     DISCOVER,
 }
 
-@Keep
 @Serializable
 enum class PeopleSearchSort {
     NAME_ASC,
@@ -19,7 +17,6 @@ enum class PeopleSearchSort {
     ONLINE_FIRST,
 }
 
-@Keep
 @Serializable
 data class PeopleSearchFilters(
     val onlineOnly: Boolean = false,
@@ -33,7 +30,6 @@ data class PeopleSearchFilters(
  * Snapshot of a people search the user chose to keep.
  * Stores both criteria and the result user ids so the set can be reopened later.
  */
-@Keep
 @Serializable
 data class SavedPeopleSearch(
     val id: String,
@@ -44,7 +40,7 @@ data class SavedPeopleSearch(
     val resultUserIds: List<String> = emptyList(),
     val resultUsernames: List<String> = emptyList(),
     val resultCount: Int = 0,
-    val savedAt: Long = System.currentTimeMillis(),
+    val savedAt: Long = platformEpochMillis(),
     val label: String = "",
 ) {
     val displayLabel: String

@@ -8,20 +8,17 @@ import androidx.compose.ui.graphics.ImageBitmap
  */
 object ImageBitmapCache {
     private const val maxEntries = 72
-    private val lock = Any()
-    private val entries = LinkedHashMap<String, ImageBitmap>(maxEntries, 0.75f, true)
+    private val entries = LinkedHashMap<String, ImageBitmap>()
 
-    fun get(url: String): ImageBitmap? = synchronized(lock) {
-        entries[url]
+    fun get(url: String): ImageBitmap? {
+        return entries[url]
     }
 
     fun put(url: String, bitmap: ImageBitmap) {
-        synchronized(lock) {
-            entries[url] = bitmap
-            while (entries.size > maxEntries) {
-                val eldest = entries.entries.iterator().next()
-                entries.remove(eldest.key)
-            }
+        entries[url] = bitmap
+        if (entries.size > maxEntries) {
+            val eldestKey = entries.keys.iterator().next()
+            entries.remove(eldestKey)
         }
     }
 }

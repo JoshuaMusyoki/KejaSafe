@@ -3,5 +3,14 @@ html, body {
     height: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden;
+    overflow: auto;
+    background: #002114;
+    font-family: "Inter", system-ui, sans-serif;
+}
+
+#compose-target {
+    width: 100%;
+    min-height: 100%;
+    display: flex;
+    justify-content: center;
 }

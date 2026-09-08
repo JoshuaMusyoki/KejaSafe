@@ -1,9 +1,7 @@
 package com.rotd.kejasafe.domain.chat
 
 import kotlinx.serialization.Serializable
-import androidx.annotation.Keep
 
-@Keep
 @Serializable
 data class ChatMessage(
     val id: Long = 0,
@@ -37,19 +35,16 @@ data class ChatMessage(
             .map { (emoji, group) -> emoji to group.sortedByDescending { it.timestamp } }
 }
 
-@Keep
 @Serializable
 enum class MessageStatus {
     SENDING, SENT, DELIVERED, READ, FAILED
 }
 
-@Keep
 @Serializable
 enum class TransportType {
     INTERNET, SMS
 }
 
-@Keep
 @Serializable
 enum class AttachmentType {
     IMAGE, PDF, STICKER, VIDEO

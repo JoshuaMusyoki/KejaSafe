@@ -1,11 +1,11 @@
 package com.rotd.kejasafe.storage
 
-private val memory = mutableMapOf<String, String>()
+import kotlinx.browser.localStorage
 
 actual object LocalSettings {
-    actual fun getString(key: String): String? = memory[key]
+    actual fun getString(key: String): String? = localStorage.getItem(key)
 
     actual fun putString(key: String, value: String?) {
-        if (value == null) memory.remove(key) else memory[key] = value
+        if (value == null) localStorage.removeItem(key) else localStorage.setItem(key, value)
     }
 }

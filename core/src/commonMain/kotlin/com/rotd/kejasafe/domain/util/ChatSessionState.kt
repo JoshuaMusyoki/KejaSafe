@@ -1,5 +1,7 @@
 package com.rotd.keja_safe.domain.util
 
+import kotlin.concurrent.Volatile
+
 /**
  * Process-wide chat UI state used to decide when tray notifications should be suppressed
  * (e.g. user is already inside the conversation) and which account is active.

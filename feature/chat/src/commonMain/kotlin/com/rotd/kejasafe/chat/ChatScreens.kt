@@ -1,5 +1,7 @@
 package com.rotd.kejasafe.chat
 
+import com.rotd.kejasafe.data.platformEpochMillis
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -587,7 +589,7 @@ fun ChatThreadScreen(
         viewModel.sendAttachments(files, ApartmentChatMessage.TYPE_PDF)
     }
     val timeline = remember(state.messages) {
-        buildChatTimeline(state.messages, nowMillis = System.currentTimeMillis())
+        buildChatTimeline(state.messages, nowMillis = platformEpochMillis())
     }
     val timelineSize by rememberUpdatedState(timeline.size)
     /** index, offset, timeline size before older page was prepended */

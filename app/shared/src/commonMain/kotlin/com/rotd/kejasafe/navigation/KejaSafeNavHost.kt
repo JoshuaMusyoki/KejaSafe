@@ -15,6 +15,7 @@ import com.rotd.kejasafe.components.KejaSafeNavTab
 import com.rotd.kejasafe.components.destinationForTab
 import com.rotd.kejasafe.components.homeDestinationForRole
 import com.rotd.kejasafe.domain.chat.ApartmentChatPeer
+import com.rotd.kejasafe.getPlatform
 import com.rotd.kejasafe.listing.CreateListingScreen
 import com.rotd.kejasafe.listing.LandlordBookingsScreen
 import com.rotd.kejasafe.listing.LandlordHomeScreen
@@ -25,6 +26,9 @@ import com.rotd.kejasafe.network.SessionManager
 import com.rotd.kejasafe.profile.EditProfileScreen
 import com.rotd.kejasafe.profile.ProfileScreen
 import com.rotd.kejasafe.rent.RentScreen
+import com.rotd.kejasafe.web.FeaturesScreen
+import com.rotd.kejasafe.web.LandingScreen
+import com.rotd.kejasafe.web.PolicyScreen
 
 @Composable
 fun KejaSafeNavHost(
@@ -32,63 +36,54 @@ fun KejaSafeNavHost(
     startDestination: KejaSafeDestination = KejaSafeDestination.Login
 ) {
     val backStack = remember { mutableStateListOf(startDestination) }
+    val isWeb = getPlatform().isWeb
 
     fun currentRole(): UserRole? = SessionManager.currentUser.value?.role
 
-    fun showLogin() {
+    fun replaceRoot(destination: KejaSafeDestination) {
         if (backStack.isEmpty()) {
-            backStack.add(KejaSafeDestination.Login)
+            backStack.add(destination)
             return
         }
-        backStack[0] = KejaSafeDestination.Login
+        backStack[0] = destination
         while (backStack.size > 1) {
             backStack.removeAt(backStack.lastIndex)
         }
+    }
+
+    fun showLanding() {
+        replaceRoot(KejaSafeDestination.Landing)
+    }
+
+    fun showLogin() {
+        replaceRoot(KejaSafeDestination.Login)
     }
 
     fun showRegister() {
-        if (backStack.isEmpty()) {
-            backStack.add(KejaSafeDestination.Register)
-            return
-        }
-        backStack[0] = KejaSafeDestination.Register
-        while (backStack.size > 1) {
-            backStack.removeAt(backStack.lastIndex)
-        }
+        replaceRoot(KejaSafeDestination.Register)
     }
 
-    /** Logout + login screen (Profile Log Out). */
+    fun openAuth(destination: KejaSafeDestination) {
+        if (backStack.lastOrNull() == destination) return
+        backStack.add(destination)
+    }
+
+    /** Logout — web returns to landing; mobile to login. */
     fun navigateToLogin() {
         SessionManager.clearSession()
-        showLogin()
+        if (isWeb) showLanding() else showLogin()
     }
 
     fun navigateHomeForRole() {
         if (!SessionManager.isLogged()) {
-            showLogin()
+            navigateToLogin()
             return
         }
-        val home = homeDestinationForRole(currentRole())
-        if (backStack.isEmpty()) {
-            backStack.add(home)
-            return
-        }
-        backStack[0] = home
-        while (backStack.size > 1) {
-            backStack.removeAt(backStack.lastIndex)
-        }
+        replaceRoot(homeDestinationForRole(currentRole()))
     }
 
     fun switchMainTab(tab: KejaSafeNavTab) {
-        val dest = destinationForTab(tab, currentRole())
-        if (backStack.isEmpty()) {
-            backStack.add(dest)
-            return
-        }
-        backStack[0] = dest
-        while (backStack.size > 1) {
-            backStack.removeAt(backStack.lastIndex)
-        }
+        replaceRoot(destinationForTab(tab, currentRole()))
     }
 
     fun openDetail(destination: KejaSafeDestination) {
@@ -102,16 +97,45 @@ fun KejaSafeNavHost(
     }
 
     val entryProvider = entryProvider<KejaSafeDestination> {
+        entry<KejaSafeDestination.Landing> {
+            LandingScreen(
+                onNavigateToFeatures = { openDetail(KejaSafeDestination.Features) },
+                onNavigateToPolicy = { openDetail(KejaSafeDestination.Policy) },
+            )
+        }
+
+        entry<KejaSafeDestination.Features> {
+            FeaturesScreen(onBack = ::goBack)
+        }
+
+        entry<KejaSafeDestination.Policy> {
+            PolicyScreen(onBack = ::goBack)
+        }
+
         entry<KejaSafeDestination.Register> {
             RegisterScreen(
-                onNavigateToLogin = { showLogin() },
+                onNavigateToLogin = {
+                    if (backStack.size > 1) goBack() else showLogin()
+                },
+                onBack = if (isWeb && backStack.size > 1) {
+                    { goBack() }
+                } else null,
                 onRegistrationSuccess = { navigateHomeForRole() }
             )
         }
 
         entry<KejaSafeDestination.Login> {
             LoginScreen(
-                onNavigateToRegister = { showRegister() },
+                onNavigateToRegister = {
+                    if (backStack.any { it is KejaSafeDestination.Register }) {
+                        goBack()
+                    } else {
+                        openAuth(KejaSafeDestination.Register)
+                    }
+                },
+                onBack = if (isWeb && backStack.size > 1) {
+                    { goBack() }
+                } else null,
                 onLoginSuccess = { navigateHomeForRole() }
             )
         }

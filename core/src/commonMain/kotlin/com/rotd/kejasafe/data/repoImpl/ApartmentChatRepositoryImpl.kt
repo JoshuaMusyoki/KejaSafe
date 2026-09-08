@@ -4,6 +4,7 @@ import com.rotd.kejasafe.BookingStatus
 import com.rotd.kejasafe.ListingBooking
 import com.rotd.kejasafe.UserRole
 import com.rotd.kejasafe.data.ListingRepository
+import com.rotd.kejasafe.data.platformEpochMillis
 import com.rotd.kejasafe.domain.chat.ApartmentChatMessage
 import com.rotd.kejasafe.domain.chat.ApartmentChatPeer
 import com.rotd.kejasafe.domain.chat.Connection
@@ -119,7 +120,7 @@ class ApartmentChatRepositoryImpl(
                     senderId = myId,
                     receiverId = peer.userId,
                     status = ConnectionStatus.ACCEPTED,
-                    timestamp = System.currentTimeMillis(),
+                    timestamp = platformEpochMillis(),
                 )
             )
         }
@@ -158,7 +159,7 @@ class ApartmentChatRepositoryImpl(
             senderId = me,
             receiverId = toUserId,
             status = ConnectionStatus.PENDING,
-            timestamp = System.currentTimeMillis(),
+            timestamp = platformEpochMillis(),
         )
         upsertConnection(connection)
         return Result.success(connection)
@@ -177,7 +178,7 @@ class ApartmentChatRepositoryImpl(
         }
         val accepted = existing.copy(
             status = ConnectionStatus.ACCEPTED,
-            timestamp = System.currentTimeMillis(),
+            timestamp = platformEpochMillis(),
         )
         upsertConnection(accepted)
         return Result.success(accepted)
@@ -194,7 +195,7 @@ class ApartmentChatRepositoryImpl(
         upsertConnection(
             existing.copy(
                 status = ConnectionStatus.REJECTED,
-                timestamp = System.currentTimeMillis(),
+                timestamp = platformEpochMillis(),
             )
         )
         return Result.success(Unit)
@@ -257,7 +258,7 @@ class ApartmentChatRepositoryImpl(
             )
         }
         val attachmentId = if (isAttachment && attachmentBytes != null) {
-            val id = "att_${System.currentTimeMillis()}_${Random.nextLong().toULong().toString(16)}"
+            val id = "att_${platformEpochMillis()}_${Random.nextLong().toULong().toString(16)}"
             attachments.save(id, attachmentBytes)
             id
         } else {
@@ -275,13 +276,13 @@ class ApartmentChatRepositoryImpl(
             else -> fileName
         }
         val message = ApartmentChatMessage(
-            id = "${System.currentTimeMillis()}_${Random.nextLong()}",
+            id = "${platformEpochMillis()}_${Random.nextLong()}",
             listingId = listingId,
             bookingId = bookingId,
             senderId = me,
             receiverId = peerUserId,
             content = displayContent,
-            timestamp = System.currentTimeMillis(),
+            timestamp = platformEpochMillis(),
             type = if (isAttachment) typeNorm else ApartmentChatMessage.TYPE_TEXT,
             fileName = storedFileName,
             mimeType = mimeType,

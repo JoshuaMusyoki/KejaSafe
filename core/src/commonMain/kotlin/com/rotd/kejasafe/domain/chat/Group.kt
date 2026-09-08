@@ -1,9 +1,7 @@
 package com.rotd.kejasafe.domain.chat
 
-import androidx.annotation.Keep
 import kotlinx.serialization.Serializable
 
-@Keep
 @Serializable
 enum class CommunityKind {
     /** Named community group with discussions. */
@@ -12,7 +10,6 @@ enum class CommunityKind {
     ROOM,
 }
 
-@Keep
 @Serializable
 enum class GroupInviteStatus {
     PENDING,
@@ -20,7 +17,6 @@ enum class GroupInviteStatus {
     DECLINED,
 }
 
-@Keep
 @Serializable
 data class Group(
     val id: String = "",
@@ -36,7 +32,6 @@ data class Group(
     val closed: Boolean = false,
 )
 
-@Keep
 @Serializable
 data class GroupInvite(
     val id: String = "",
@@ -50,7 +45,6 @@ data class GroupInvite(
     val createdAt: Long = 0L,
 )
 
-@Keep
 @Serializable
 data class Discussion(
     val id: String = "",
@@ -62,7 +56,6 @@ data class Discussion(
     val lastMessageAt: Long = 0L,
 )
 
-@Keep
 @Serializable
 data class GroupMessage(
     val id: String = "",

@@ -1,29 +1,52 @@
 package com.rotd.kejasafe.auth
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import org.koin.compose.viewmodel.koinViewModel
-import com.rotd.kejasafe.components.*
+import com.rotd.kejasafe.components.KejaSafeBody
+import com.rotd.kejasafe.components.KejaSafeHeader
+import com.rotd.kejasafe.components.KejaSafeHeadline
+import com.rotd.kejasafe.components.KejaSafeLabel
+import com.rotd.kejasafe.components.KejaSafeOutlinedButton
+import com.rotd.kejasafe.components.KejaSafePrimaryButton
+import com.rotd.kejasafe.components.KejaSafeTextField
 import com.rotd.kejasafe.network.SessionManager
-import com.rotd.kejasafe.theme.KejaSafeTheme
+import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
 fun LoginScreen(
     onNavigateToRegister: () -> Unit,
     onLoginSuccess: () -> Unit,
+    onBack: (() -> Unit)? = null,
     viewModel: LoginViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -72,18 +95,14 @@ fun LoginScreen(
         topBar = {
             KejaSafeHeader(
                 title = "Log In",
-                onBackClick = onNavigateToRegister
+                onBackClick = onBack
             )
         }
     ) { padding ->
-        Column(
+        AuthFormScaffold(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = KejaSafeTheme.spacing.containerMarginMobile)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(KejaSafeTheme.spacing.elementGap)
         ) {
             Spacer(modifier = Modifier.height(32.dp))
 
