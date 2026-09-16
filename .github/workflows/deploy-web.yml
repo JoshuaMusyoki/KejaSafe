@@ -55,6 +55,9 @@ jobs:
       contents: read
       # Lets the deploy action post the preview URL on the pull request.
       pull-requests: write
+      # The action opens a "Deploy Preview" check run to report the URL and its expiry.
+      # Without this it fails with "Resource not accessible by integration".
+      checks: write
 
     steps:
       - name: Check out the repository
