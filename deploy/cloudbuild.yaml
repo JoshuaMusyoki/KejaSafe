@@ -1,0 +1,50 @@
+# Builds the API image and rolls it out to Cloud Run.
+#
+# The fat jar must exist before submitting, because building it needs the Android SDK:
+#
+#   ./gradlew :server:buildFatJar
+#   gcloud builds submit --config deploy/cloudbuild.yaml \
+#       --substitutions=_REGION=africa-south1,_SERVICE=kejasafe-api,_TAG=1.0.0
+#
+# Everything the build needs is selected by .gcloudignore at the repository root.
+
+substitutions:
+  _REGION: africa-south1
+  _REPOSITORY: kejasafe
+  _SERVICE: kejasafe-api
+  _TAG: latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/server:${_TAG}
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=server/Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/server:${_TAG}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/server:latest
+      - .
+
+  - id: push-latest
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/server:latest
+
+  # Rolls out the image without repeating the service's configuration: env vars, secrets,
+  # Cloud SQL and volume mounts stay as deploy-api.ps1 set them.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/server:${_TAG}
+      - --region=${_REGION}
+      - --quiet

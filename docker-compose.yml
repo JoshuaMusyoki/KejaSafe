@@ -1,0 +1,26 @@
+# Run the KejaSafe API locally in Docker.
+#
+#   ./gradlew :server:buildFatJar
+#   docker compose up --build
+#
+# Swagger UI: http://localhost:8080/swagger
+services:
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: kejasafe/server:1.0.0
+    container_name: kejasafe-api
+    ports:
+      - "${KEJASAFE_PORT:-8080}:8080"
+    environment:
+      # Override in a .env file next to this compose file.
+      KEJASAFE_JWT_SECRET: ${KEJASAFE_JWT_SECRET:-kejasafe-secret-key}
+      # Comma separated browser origins; empty allows any host (development only).
+      KEJASAFE_ALLOWED_ORIGINS: ${KEJASAFE_ALLOWED_ORIGINS:-}
+    volumes:
+      - kejasafe-data:/data
+    restart: unless-stopped
+
+volumes:
+  kejasafe-data:

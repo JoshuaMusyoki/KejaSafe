@@ -15,11 +15,11 @@ import com.rotd.kejasafe.network.SessionManager
 import com.rotd.kejasafe.theme.KejaSafeTheme
 import com.rotd.kejasafe.theme.ThemeController
 import com.rotd.kejasafe.theme.resolveDarkTheme
-import org.jetbrains.compose.ui.tooling.preview.Preview
+import com.rotd.kejasafe.theme.ScreenPreviews
 import org.koin.compose.KoinContext
 
 @Composable
-@Preview
+@ScreenPreviews
 fun App() {
     // Do not SessionManager.restore() — Android clears session on process start so
     // killing the app logs the user out. Theme still persists.

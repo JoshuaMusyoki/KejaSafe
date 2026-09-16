@@ -1,20 +1,29 @@
 package com.rotd.kejasafe
 
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.http.*
-import io.ktor.server.testing.*
-import kotlin.test.*
+import com.rotd.kejasafe.config.ServerConfig
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.testing.testApplication
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class ApplicationTest {
 
     @Test
-    fun testRoot() = testApplication {
-        application {
-            module()
-        }
-        val response = client.get("/")
+    fun healthReportsOk() = testApplication {
+        application { module() }
+
+        val response = client.get("/health")
+
         assertEquals(HttpStatusCode.OK, response.status)
-        assertEquals("Hello, Ktor!", response.bodyAsText())
+        assertTrue(response.bodyAsText().contains("ok"), "unexpected body: ${response.bodyAsText()}")
+    }
+
+    @Test
+    fun defaultsAreSafeForLocalDevelopment() {
+        assertEquals(8080, ServerConfig.port)
+        assertTrue(ServerConfig.databaseUrl.startsWith("jdbc:h2:"))
     }
 }

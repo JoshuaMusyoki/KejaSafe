@@ -5,7 +5,7 @@ plugins {
 }
 
 kotlin {
-    androidLibrary {
+    android {
         namespace = "com.rotd.kejasafe.core"
     }
 
@@ -18,12 +18,10 @@ kotlin {
             implementation(libs.androidxBiometric)
             implementation(libs.androidxSecurityCrypto)
             implementation(libs.androidxFragmentKtx)
-            // Keep gRPC artifacts aligned with firebase-dataconnect (avoids
-            // NoClassDefFoundError: InternalGlobalInterceptors from mixed versions).
-            implementation("io.grpc:grpc-android:1.62.2")
-            implementation("io.grpc:grpc-okhttp:1.62.2")
-            implementation("io.grpc:grpc-protobuf-lite:1.62.2")
-            implementation("io.grpc:grpc-stub:1.62.2")
+            implementation(libs.grpcAndroid)
+            implementation(libs.grpcOkhttp)
+            implementation(libs.grpcProtobufLite)
+            implementation(libs.grpcStub)
         }
         commonTest.dependencies {
             implementation(libs.kotlinxCoroutinesTest)

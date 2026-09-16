@@ -1,0 +1,3 @@
+# The image only needs the server fat jar; keep the build context tiny.
+*
+!server/build/libs/*-all.jar

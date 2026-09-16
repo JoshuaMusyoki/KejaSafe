@@ -67,6 +67,7 @@ internal fun Project.configureKotlinMultiplatform(
                 implementation(libs.findLibrary("composeUi").get())
                 implementation(libs.findLibrary("composeComponentsResources").get())
                 implementation(libs.findLibrary("composeUiToolingPreview").get())
+                implementation(libs.findLibrary("jetbrainsComposeUiToolingPreview").get())
                 implementation(libs.findLibrary("composeMaterialIconsExtended").get())
                 implementation(libs.findLibrary("jetbrainsNavigation3Ui").get())
                 implementation(libs.findLibrary("kotlinxSerializationJson").get())

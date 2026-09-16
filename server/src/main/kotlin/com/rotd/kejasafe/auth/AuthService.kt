@@ -7,6 +7,7 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.rotd.kejasafe.RegistrationRequest
+import com.rotd.kejasafe.config.ServerConfig
 import com.rotd.kejasafe.RoommatePreferences
 import com.rotd.kejasafe.UpdateProfileRequest
 import com.rotd.kejasafe.User
@@ -27,9 +28,9 @@ import java.util.Date
 import java.util.UUID
 
 object AuthService {
-    private val jwtSecret = "kejasafe-secret-key"
-    private val jwtIssuer = "com.rotd.kejasafe"
-    private val jwtAudience = "kejasafe-users"
+    private val jwtSecret = ServerConfig.jwtSecret
+    private val jwtIssuer = ServerConfig.jwtIssuer
+    private val jwtAudience = ServerConfig.jwtAudience
     private val googleClientId = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
 
     private val verifier = GoogleIdTokenVerifier.Builder(NetHttpTransport(), GsonFactory())

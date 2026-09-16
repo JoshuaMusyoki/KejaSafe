@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -37,6 +38,9 @@ fun AuthFormScaffold(
                 .fillMaxWidth()
                 .widthIn(max = 480.dp)
                 .padding(horizontal = horizontal)
+                // Applied outside the scroll so the keyboard shrinks the viewport instead of
+                // covering it; the focused field is then scrolled into view automatically.
+                .imePadding()
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(KejaSafeTheme.spacing.elementGap),

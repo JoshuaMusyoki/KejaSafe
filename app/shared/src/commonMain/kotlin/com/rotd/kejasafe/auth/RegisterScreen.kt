@@ -40,6 +40,8 @@ import com.rotd.kejasafe.components.KejaSafeOutlinedButton
 import com.rotd.kejasafe.components.KejaSafePrimaryButton
 import com.rotd.kejasafe.components.KejaSafeTextField
 import com.rotd.kejasafe.network.SessionManager
+import com.rotd.kejasafe.theme.KejaSafeTheme
+import com.rotd.kejasafe.theme.ScreenPreviews
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -57,8 +59,24 @@ fun RegisterScreen(
     val confirmPassword by viewModel.confirmPassword.collectAsStateWithLifecycle()
     val role by viewModel.role.collectAsStateWithLifecycle()
 
-    var passwordVisible by remember { mutableStateOf(false) }
-    var confirmPasswordVisible by remember { mutableStateOf(false) }
+    RegisterScreenContent(
+        state = state,
+        fullName = fullName,
+        username = username,
+        email = email,
+        password = password,
+        confirmPassword = confirmPassword,
+        role = role,
+        onNavigateToLogin = onNavigateToLogin,
+        onBack = onBack,
+        onFullNameChange = { viewModel.fullName.value = it },
+        onUsernameChange = { viewModel.username.value = it },
+        onEmailChange = { viewModel.email.value = it },
+        onPasswordChange = { viewModel.password.value = it },
+        onConfirmPasswordChange = { viewModel.confirmPassword.value = it },
+        onRoleChange = { viewModel.role.value = it },
+        onRegister = { viewModel.register() }
+    )
 
     // Activity-scoped VM can retain Success after logout; only navigate when session is live.
     LaunchedEffect(state) {
@@ -69,6 +87,29 @@ fun RegisterScreen(
             viewModel.consumeSuccess()
         }
     }
+}
+
+@Composable
+private fun RegisterScreenContent(
+    state: RegisterState,
+    fullName: String,
+    username: String,
+    email: String,
+    password: String,
+    confirmPassword: String,
+    role: UserRole,
+    onNavigateToLogin: () -> Unit,
+    onBack: (() -> Unit)?,
+    onFullNameChange: (String) -> Unit,
+    onUsernameChange: (String) -> Unit,
+    onEmailChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onConfirmPasswordChange: (String) -> Unit,
+    onRoleChange: (UserRole) -> Unit,
+    onRegister: () -> Unit
+) {
+    var passwordVisible by remember { mutableStateOf(false) }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -92,21 +133,21 @@ fun RegisterScreen(
 
             KejaSafeTextField(
                 value = fullName,
-                onValueChange = { viewModel.fullName.value = it },
+                onValueChange = onFullNameChange,
                 label = "Full Name",
                 modifier = Modifier.fillMaxWidth()
             )
 
             KejaSafeTextField(
                 value = username,
-                onValueChange = { viewModel.username.value = it },
+                onValueChange = onUsernameChange,
                 label = "Username",
                 modifier = Modifier.fillMaxWidth()
             )
 
             KejaSafeTextField(
                 value = email,
-                onValueChange = { viewModel.email.value = it },
+                onValueChange = onEmailChange,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 label = "Email Address",
                 modifier = Modifier.fillMaxWidth()
@@ -114,7 +155,7 @@ fun RegisterScreen(
 
             KejaSafeTextField(
                 value = password,
-                onValueChange = { viewModel.password.value = it },
+                onValueChange = onPasswordChange,
                 label = "Password",
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -130,7 +171,7 @@ fun RegisterScreen(
 
             KejaSafeTextField(
                 value = confirmPassword,
-                onValueChange = { viewModel.confirmPassword.value = it },
+                onValueChange = onConfirmPasswordChange,
                 label = "Confirm Password",
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -152,19 +193,19 @@ fun RegisterScreen(
                 KejaSafeLabel(text = "I am a:")
                 RadioButton(
                     selected = role == UserRole.STUDENT,
-                    onClick = { viewModel.role.value = UserRole.STUDENT }
+                    onClick = { onRoleChange(UserRole.STUDENT) }
                 )
                 KejaSafeLabel(text = "Student")
                 RadioButton(
                     selected = role == UserRole.LANDLORD,
-                    onClick = { viewModel.role.value = UserRole.LANDLORD }
+                    onClick = { onRoleChange(UserRole.LANDLORD) }
                 )
                 KejaSafeLabel(text = "Landlord")
             }
 
             if (state is RegisterState.Error) {
                 Text(
-                    text = (state as RegisterState.Error).error,
+                    text = state.error,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -174,7 +215,7 @@ fun RegisterScreen(
 
             KejaSafePrimaryButton(
                 text = if (state is RegisterState.Loading) "Registering..." else "Create Account",
-                onClick = { viewModel.register() },
+                onClick = onRegister,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = state !is RegisterState.Loading
             )
@@ -191,5 +232,30 @@ fun RegisterScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+@ScreenPreviews
+@Composable
+fun RegisterScreenPreview() {
+    KejaSafeTheme {
+        RegisterScreenContent(
+            state = RegisterState.Idle,
+            fullName = "John Doe",
+            username = "johndoe",
+            email = "john@example.com",
+            password = "",
+            confirmPassword = "",
+            role = UserRole.STUDENT,
+            onNavigateToLogin = {},
+            onBack = {},
+            onFullNameChange = {},
+            onUsernameChange = {},
+            onEmailChange = {},
+            onPasswordChange = {},
+            onConfirmPasswordChange = {},
+            onRoleChange = {},
+            onRegister = {}
+        )
     }
 }

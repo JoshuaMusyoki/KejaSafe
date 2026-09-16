@@ -2,6 +2,7 @@ package com.rotd.kejasafe.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation3.runtime.entryProvider
@@ -37,6 +38,8 @@ fun KejaSafeNavHost(
 ) {
     val backStack = remember { mutableStateListOf(startDestination) }
     val isWeb = getPlatform().isWeb
+    /** Set when a visitor signs in to post a story, so auth returns them to the landing page. */
+    val returnToLandingAfterAuth = remember { mutableStateOf(false) }
 
     fun currentRole(): UserRole? = SessionManager.currentUser.value?.role
 
@@ -79,6 +82,11 @@ fun KejaSafeNavHost(
             navigateToLogin()
             return
         }
+        if (returnToLandingAfterAuth.value) {
+            returnToLandingAfterAuth.value = false
+            showLanding()
+            return
+        }
         replaceRoot(homeDestinationForRole(currentRole()))
     }
 
@@ -96,20 +104,50 @@ fun KejaSafeNavHost(
         }
     }
 
+    /** Landing CTAs: signed-in visitors go straight to their dashboard, others to login. */
+    fun openSignIn(returnToLanding: Boolean = false) {
+        if (SessionManager.isLogged()) {
+            if (returnToLanding) showLanding() else replaceRoot(homeDestinationForRole(currentRole()))
+            return
+        }
+        returnToLandingAfterAuth.value = returnToLanding
+        openAuth(KejaSafeDestination.Login)
+    }
+
     val entryProvider = entryProvider<KejaSafeDestination> {
         entry<KejaSafeDestination.Landing> {
             LandingScreen(
                 onNavigateToFeatures = { openDetail(KejaSafeDestination.Features) },
                 onNavigateToPolicy = { openDetail(KejaSafeDestination.Policy) },
+                onSignIn = { openSignIn() },
+                onSignInToShareStory = { openSignIn(returnToLanding = true) },
             )
         }
 
         entry<KejaSafeDestination.Features> {
-            FeaturesScreen(onBack = ::goBack)
+            FeaturesScreen(
+                onNavigateToLanding = { showLanding() },
+                onNavigateToPolicy = { 
+                    if (backStack.isNotEmpty() && backStack.last() is KejaSafeDestination.Features) {
+                        backStack.removeAt(backStack.lastIndex)
+                    }
+                    openDetail(KejaSafeDestination.Policy) 
+                },
+                onSignIn = { openSignIn() }
+            )
         }
 
         entry<KejaSafeDestination.Policy> {
-            PolicyScreen(onBack = ::goBack)
+            PolicyScreen(
+                onNavigateToLanding = { showLanding() },
+                onNavigateToFeatures = { 
+                    if (backStack.isNotEmpty() && backStack.last() is KejaSafeDestination.Policy) {
+                        backStack.removeAt(backStack.lastIndex)
+                    }
+                    openDetail(KejaSafeDestination.Features) 
+                },
+                onSignIn = { openSignIn() }
+            )
         }
 
         entry<KejaSafeDestination.Register> {
