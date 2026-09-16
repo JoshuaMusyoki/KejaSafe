@@ -33,6 +33,9 @@ concurrency:
 jobs:
   deploy:
     name: Build and roll out
+    # Stays out of the way until the federation variables exist, rather than failing every
+    # push while the API has not been provisioned yet.
+    if: vars.GCP_WORKLOAD_IDENTITY_PROVIDER != ''
     runs-on: ubuntu-latest
     timeout-minutes: 60
     # Lets you require a manual approval before anything bills; configure reviewers under
