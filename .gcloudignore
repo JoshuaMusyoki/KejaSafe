@@ -1,0 +1,14 @@
+# `gcloud builds submit` uploads this directory, and without this file it would fall back
+# to .gitignore — which excludes build/ and therefore the very jar the image needs.
+#
+# Git semantics apply: a file cannot be re-included unless every parent directory is too,
+# hence the chain below.
+/*
+!/server
+/server/*
+!/server/Dockerfile
+!/server/build
+/server/build/*
+!/server/build/libs
+/server/build/libs/*
+!/server/build/libs/server-all.jar
