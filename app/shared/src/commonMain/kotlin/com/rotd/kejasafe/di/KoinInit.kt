@@ -7,6 +7,7 @@ import com.rotd.kejasafe.chat.di.chatModule
 import com.rotd.kejasafe.listing.di.listingModule
 import com.rotd.kejasafe.profile.di.profileModule
 import com.rotd.kejasafe.rent.di.rentModule
+import com.rotd.kejasafe.web.LandingViewModel
 import org.koin.core.context.startKoin
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.KoinAppDeclaration
@@ -18,9 +19,16 @@ val authModule = module {
     viewModel<RegisterViewModel> { RegisterViewModel(authRepository = get()) }
 }
 
+val webModule = module {
+    viewModel<LandingViewModel> {
+        LandingViewModel(listingRepository = get(), communityRepository = get())
+    }
+}
+
 fun appModules() = listOf(
     coreModule,
     authModule,
+    webModule,
     listingModule,
     rentModule,
     profileModule,

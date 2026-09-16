@@ -3,13 +3,17 @@ package com.rotd.kejasafe
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.rotd.kejasafe.auth.AuthService
+import com.rotd.kejasafe.community.PlatformStatsService
+import com.rotd.kejasafe.config.ServerConfig
 import com.rotd.kejasafe.db.initDatabase
 import com.rotd.kejasafe.kyc.KycService
 import com.rotd.kejasafe.listing.ListingService
 import com.rotd.kejasafe.listing.LiveTourService
+import com.rotd.kejasafe.listing.StoryService
 import com.rotd.kejasafe.rent.RentService
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
@@ -25,7 +29,10 @@ import io.ktor.server.auth.principal
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.http.content.staticFiles
 import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.plugins.swagger.swaggerUI
 import io.ktor.server.request.receive
 import io.ktor.server.request.receiveMultipart
 import io.ktor.server.response.header
@@ -45,8 +52,12 @@ import kotlinx.serialization.json.Json
 fun main() {
     initDatabase()
     ListingService.purgeSyntheticBookings()
-    embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module)
-        .start(wait = true)
+    embeddedServer(
+        Netty,
+        port = ServerConfig.port,
+        host = ServerConfig.host,
+        module = Application::module
+    ).start(wait = true)
 }
 
 fun Application.module() {
@@ -54,12 +65,36 @@ fun Application.module() {
         json(Json {
             prettyPrint = true
             isLenient = true
+            // Send every field, so clients and the OpenAPI examples see full payloads.
+            encodeDefaults = true
         })
     }
 
-    val jwtSecret = "kejasafe-secret-key"
-    val jwtIssuer = "com.rotd.kejasafe"
-    val jwtAudience = "kejasafe-users"
+    install(CallLogging)
+
+    // The Compose web client is served from a different origin than the API.
+    install(CORS) {
+        allowMethod(HttpMethod.Get)
+        allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Put)
+        allowMethod(HttpMethod.Delete)
+        allowMethod(HttpMethod.Options)
+        allowHeader(HttpHeaders.Authorization)
+        allowHeader(HttpHeaders.ContentType)
+        allowHeader(HttpHeaders.Accept)
+        exposeHeader(HttpHeaders.ContentDisposition)
+        if (ServerConfig.allowedOrigins.isEmpty()) {
+            anyHost()
+        } else {
+            ServerConfig.allowedOrigins.forEach { origin ->
+                allowHost(origin, schemes = listOf("http", "https"))
+            }
+        }
+    }
+
+    val jwtSecret = ServerConfig.jwtSecret
+    val jwtIssuer = ServerConfig.jwtIssuer
+    val jwtAudience = ServerConfig.jwtAudience
 
     install(Authentication) {
         jwt("auth-jwt") {
@@ -80,10 +115,27 @@ fun Application.module() {
 
     routing {
         get("/") {
-            call.respondText("Welcome to KejaSafe API")
+            call.respondText("Welcome to KejaSafe API — interactive docs at /swagger")
         }
 
+        get("/health") {
+            call.respond(mapOf("status" to "ok"))
+        }
+
+        // Interactive API docs; the raw contract lives in resources/openapi/documentation.yaml.
+        swaggerUI(path = "swagger", swaggerFile = "openapi/documentation.yaml")
+
         staticFiles("/uploads", ListingService.uploadRoot)
+
+        // Community stories: public to read, students/landlords write their own.
+        get("/stories") {
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 12
+            call.respond(StoryService.getStories(limit))
+        }
+
+        get("/stats") {
+            call.respond(PlatformStatsService.getStats())
+        }
 
         route("/auth") {
             post("/register") {
@@ -151,6 +203,42 @@ fun Application.module() {
                     val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
                     val status = KycService.getKycStatus(userId)
                     call.respond(mapOf("status" to status))
+                }
+            }
+
+            route("/stories") {
+                post {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val request = call.receive<PostStoryRequest>()
+                    try {
+                        call.respond(HttpStatusCode.Created, StoryService.postStory(userId, request))
+                    } catch (e: IllegalArgumentException) {
+                        // Plain text so clients can show the reason as-is.
+                        call.respondText(
+                            text = e.message ?: "Could not post story",
+                            contentType = ContentType.Text.Plain,
+                            status = HttpStatusCode.BadRequest
+                        )
+                    }
+                }
+
+                get("/mine") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(StoryService.getStoriesByAuthor(userId))
+                }
+
+                delete("/{id}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val storyId = call.parameters["id"]
+                        ?: return@delete call.respond(HttpStatusCode.BadRequest, "Missing story id")
+                    if (StoryService.deleteStory(storyId, userId)) {
+                        call.respond(HttpStatusCode.OK, mapOf("message" to "Story removed"))
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, "Story not found or not yours")
+                    }
                 }
             }
 

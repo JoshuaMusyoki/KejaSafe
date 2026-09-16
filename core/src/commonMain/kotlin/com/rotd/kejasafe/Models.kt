@@ -547,3 +547,33 @@ data class PickedImage(
         return result
     }
 }
+
+@Serializable
+data class CommunityStory(
+    val id: String,
+    val authorId: String,
+    val authorName: String,
+    val authorRole: UserRole,
+    val authorProfilePictureUrl: String? = null,
+    val content: String,
+    val rating: Int = 5,
+    val createdAt: Long = 0L
+)
+
+@Serializable
+data class PostStoryRequest(
+    val content: String,
+    val rating: Int = 5
+)
+
+/** Live counters shown on the marketing site, computed from real server data. */
+@Serializable
+data class PlatformStats(
+    val studentsHoused: Int = 0,
+    val verifiedListings: Int = 0,
+    val universitiesCovered: Int = 0,
+    val landlords: Int = 0,
+    val protectedInEscrow: Double = 0.0,
+    val stories: Int = 0,
+    val averageRating: Double = 0.0
+)

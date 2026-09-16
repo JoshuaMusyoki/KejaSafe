@@ -43,6 +43,8 @@ object JsonCache {
 
 object CacheKeys {
     const val BROWSE_LISTINGS = "cache.listings.browse"
+    const val COMMUNITY_STORIES = "cache.community.stories"
+    const val PLATFORM_STATS = "cache.community.stats"
     const val PENDING_LISTING_MUTATIONS = "cache.listings.pending_mutations"
     const val PREFIX = "cache."
 

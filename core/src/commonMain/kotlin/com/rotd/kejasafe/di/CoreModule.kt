@@ -1,5 +1,6 @@
 package com.rotd.kejasafe.di
 
+import com.rotd.kejasafe.data.CommunityRepository
 import com.rotd.kejasafe.data.ListingLocalStore
 import com.rotd.kejasafe.data.ListingRepository
 import com.rotd.kejasafe.data.ProfileRepository
@@ -22,6 +23,7 @@ import org.koin.dsl.module
 val coreModule = module {
     single<ListingLocalStore> { createListingLocalStore() }
     single { ListingRepository(localStore = get()) }
+    single { CommunityRepository() }
     single { RentRepository() }
     single { ProfileRepository(authRepository = get()) }
     single<UserProfileDataSource> { createUserProfileDataSource() }

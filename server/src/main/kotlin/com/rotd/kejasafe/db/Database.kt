@@ -2,6 +2,7 @@ package com.rotd.kejasafe.db
 
 import com.rotd.kejasafe.BillStatus
 import com.rotd.kejasafe.CampusProximity
+import com.rotd.kejasafe.config.ServerConfig
 import com.rotd.kejasafe.ElectricityBilling
 import com.rotd.kejasafe.KycStatus
 import com.rotd.kejasafe.ListingStatus
@@ -11,6 +12,8 @@ import com.rotd.kejasafe.PropertyType
 import com.rotd.kejasafe.RequestType
 import com.rotd.kejasafe.RoommateMatchStatus
 import com.rotd.kejasafe.UserRole
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.SchemaUtils
@@ -191,8 +194,18 @@ object LiveTourSessionsTable : Table("live_tour_sessions") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object CommunityStoriesTable : Table("community_stories") {
+    val id = varchar("id", 50)
+    val authorId = varchar("author_id", 50).references(UsersTable.id)
+    val content = text("content")
+    val rating = integer("rating").default(5)
+    val createdAt = long("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
 fun initDatabase() {
-    Database.connect("jdbc:h2:file:./build/db/kejasafe;DB_CLOSE_DELAY=-1;", driver = "org.h2.Driver")
+    Database.connect(createDataSource())
     transaction {
         SchemaUtils.create(
             UsersTable,
@@ -205,7 +218,8 @@ fun initDatabase() {
             ListingBookingsTable,
             ListingEventsTable,
             RoommateMatchesTable,
-            LiveTourSessionsTable
+            LiveTourSessionsTable,
+            CommunityStoriesTable
         )
         SchemaUtils.createMissingTablesAndColumns(
             UsersTable,
@@ -218,7 +232,24 @@ fun initDatabase() {
             ListingBookingsTable,
             ListingEventsTable,
             RoommateMatchesTable,
-            LiveTourSessionsTable
+            LiveTourSessionsTable,
+            CommunityStoriesTable
         )
     }
 }
+
+/**
+ * Pooled connections, so a serverless instance reuses sockets instead of dialing the
+ * database on every transaction. Works for both the local H2 file and managed Postgres.
+ */
+private fun createDataSource(): HikariDataSource = HikariDataSource(
+    HikariConfig().apply {
+        jdbcUrl = ServerConfig.databaseUrl
+        driverClassName = ServerConfig.databaseDriver
+        ServerConfig.databaseUser?.let { username = it }
+        ServerConfig.databasePassword?.let { password = it }
+        maximumPoolSize = ServerConfig.databasePoolSize
+        isAutoCommit = false
+        poolName = "kejasafe-db"
+    }
+)

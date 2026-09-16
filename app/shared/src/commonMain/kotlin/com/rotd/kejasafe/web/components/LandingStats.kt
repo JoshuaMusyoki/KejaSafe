@@ -18,16 +18,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.rotd.kejasafe.PlatformStats
+import com.rotd.kejasafe.web.formatCount
+import com.rotd.kejasafe.web.formatMoney
 import com.rotd.kejasafe.web.theme.LandingBrandGreen
 import com.rotd.kejasafe.web.theme.LandingTextSecondary
 
+/** Counters straight from `GET /stats`; dashes until the first response lands. */
 @Composable
- fun LandingStats(wide: Boolean, horizontalPadding: Dp) {
-    val stats = listOf(
-        "15,000+" to "Students Safely Housed",
-        "99.8%" to "Scam Prevention Success",
-        "45+" to "Universities Covered",
-        "$4.2M" to "Protected in Escrow"
+fun LandingStats(wide: Boolean, horizontalPadding: Dp, stats: PlatformStats?) {
+    val statValues = listOf(
+        (stats?.studentsHoused?.let(::formatCount) ?: PLACEHOLDER) to "Students Safely Housed",
+        (stats?.verifiedListings?.let(::formatCount) ?: PLACEHOLDER) to "Verified Listings",
+        (stats?.universitiesCovered?.let(::formatCount) ?: PLACEHOLDER) to "Universities Covered",
+        (stats?.protectedInEscrow?.let { formatMoney(it) } ?: PLACEHOLDER) to "Rent Settled in Escrow"
     )
 
     Row(
@@ -37,14 +41,24 @@ import com.rotd.kejasafe.web.theme.LandingTextSecondary
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        stats.forEachIndexed { index, stat ->
-            Column(horizontalAlignment = if (wide) Alignment.Start else Alignment.CenterHorizontally, modifier = if (!wide) Modifier.weight(1f) else Modifier) {
-                Text(stat.first, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = LandingBrandGreen)
+        statValues.forEachIndexed { index, stat ->
+            Column(
+                horizontalAlignment = if (wide) Alignment.Start else Alignment.CenterHorizontally,
+                modifier = if (!wide) Modifier.weight(1f) else Modifier
+            ) {
+                Text(
+                    stat.first,
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = LandingBrandGreen
+                )
                 Text(stat.second, style = MaterialTheme.typography.bodySmall, color = LandingTextSecondary)
             }
-            if (index < stats.size - 1 && wide) {
+            if (index < statValues.size - 1 && wide) {
                 Box(modifier = Modifier.height(40.dp).width(1.dp).background(Color(0xFFE5E7EB)))
             }
         }
     }
 }
+
+private const val PLACEHOLDER = "—"

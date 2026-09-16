@@ -1,0 +1,1352 @@
+openapi: 3.0.3
+info:
+  title: KejaSafe API
+  version: 1.0.0
+  description: |
+    Backend for KejaSafe — verified student housing, escrowed rent and community
+    stories. Tenants browse listings without an account; everything else needs the
+    JWT returned by `/auth/login` or `/auth/register`, sent as `Authorization: Bearer <token>`.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: http://192.168.100.3:8080
+    description: LAN address used by mobile clients
+
+tags:
+  - name: Auth
+  - name: Profile
+  - name: KYC
+  - name: Listings
+  - name: Bookings
+  - name: Live tours
+  - name: Rent
+  - name: Community
+  - name: Ops
+
+paths:
+  /health:
+    get:
+      tags: [Ops]
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Server is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Create a student or landlord account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationRequest"
+      responses:
+        "200":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Email or username already taken
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in with email or username
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Wrong credentials
+
+  /auth/google:
+    post:
+      tags: [Auth]
+      summary: Exchange a Google ID token for a KejaSafe session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoogleAuthRequest"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Google authentication failed
+
+  /user/profile:
+    get:
+      tags: [Profile]
+      summary: Current user
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: User not found
+    put:
+      tags: [Profile]
+      summary: Update the signed-in profile
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Missing fields or username taken
+
+  /kyc/submit:
+    post:
+      tags: [KYC]
+      summary: Submit identity documents
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KycSubmission"
+      responses:
+        "200":
+          description: Submitted
+
+  /kyc/status:
+    get:
+      tags: [KYC]
+      summary: Verification status of the signed-in user
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: "#/components/schemas/KycStatus"
+
+  /listings:
+    get:
+      tags: [Listings]
+      summary: Public browse feed (verified and pending listings)
+      responses:
+        "200":
+          description: Listings, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PropertyListing"
+    post:
+      tags: [Listings]
+      summary: Create a listing (landlord)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateListingRequest"
+      responses:
+        "201":
+          description: Created listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyListing"
+        "400":
+          description: Title and address are required
+
+  /listings/{id}:
+    get:
+      tags: [Listings]
+      summary: Single listing
+      parameters:
+        - $ref: "#/components/parameters/ListingId"
+      responses:
+        "200":
+          description: Listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyListing"
+        "404":
+          description: Listing not found
+    put:
+      tags: [Listings]
+      summary: Update your listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ListingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateListingRequest"
+      responses:
+        "200":
+          description: Updated listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyListing"
+        "404":
+          description: Listing not found or not owned by you
+
+  /listings/{id}/analytics:
+    get:
+      tags: [Listings]
+      summary: Views, inquiries and occupancy for your listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ListingId"
+      responses:
+        "200":
+          description: Analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListingAnalytics"
+        "404":
+          description: Listing not found or not owned by you
+
+  /listings/{id}/calendar:
+    get:
+      tags: [Listings]
+      summary: Availability calendar for a month
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ListingId"
+        - name: year
+          in: query
+          schema: { type: integer }
+        - name: month
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 12 }
+      responses:
+        "200":
+          description: Calendar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListingCalendar"
+        "404":
+          description: Listing not found
+
+  /listings/{id}/book:
+    post:
+      tags: [Bookings]
+      summary: Request a unit
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ListingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookListingRequest"
+      responses:
+        "201":
+          description: Booking created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListingBooking"
+        "400":
+          description: No open slots or invalid dates
+
+  /listings/{id}/photos:
+    post:
+      tags: [Listings]
+      summary: Upload listing photos
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ListingId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photos:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "201":
+          description: Stored photos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ListingPhotoResponse"
+        "400":
+          description: No valid photos uploaded
+        "403":
+          description: Not your listing
+
+  /listings/{id}/photos/{photoId}:
+    delete:
+      tags: [Listings]
+      summary: Remove a listing photo
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ListingId"
+        - name: photoId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Photo removed
+        "404":
+          description: Photo not found or not your listing
+
+  /listings/mine:
+    get:
+      tags: [Listings]
+      summary: Listings you own
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Your listings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PropertyListing"
+
+  /listings/mine/performance:
+    get:
+      tags: [Listings]
+      summary: Aggregated landlord performance
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Performance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListingPerformance"
+
+  /listings/mine/requests:
+    get:
+      tags: [Bookings]
+      summary: Incoming tenant requests
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IncomingRequest"
+
+  /listings/mine/bookings:
+    get:
+      tags: [Bookings]
+      summary: Bookings you made as a tenant
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Bookings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ListingBooking"
+
+  /listings/mine/apartment-mates:
+    get:
+      tags: [Bookings]
+      summary: Confirmed tenants sharing your listings
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Apartment mates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ListingBooking"
+
+  /listings/bookings/{bookingId}/approve:
+    post:
+      tags: [Bookings]
+      summary: Approve a booking request
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/BookingId"
+      responses:
+        "200":
+          description: Approved booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListingBooking"
+        "400":
+          description: Could not approve
+
+  /listings/bookings/{bookingId}/decline:
+    post:
+      tags: [Bookings]
+      summary: Decline a booking request
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/BookingId"
+      responses:
+        "200":
+          description: Declined booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListingBooking"
+        "400":
+          description: Could not decline
+
+  /listings/roommate-matches/{matchId}:
+    get:
+      tags: [Bookings]
+      summary: Suggested roommate pairing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+      responses:
+        "200":
+          description: Match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoommateMatch"
+        "404":
+          description: Match not found
+
+  /listings/roommate-matches/{matchId}/approve:
+    post:
+      tags: [Bookings]
+      summary: Approve a roommate pairing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+      responses:
+        "200":
+          description: Updated match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoommateMatch"
+
+  /listings/roommate-matches/{matchId}/decline:
+    post:
+      tags: [Bookings]
+      summary: Decline a roommate pairing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+      responses:
+        "200":
+          description: Updated match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoommateMatch"
+
+  /listings/{id}/live-tours:
+    post:
+      tags: [Live tours]
+      summary: Request a live inspection
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ListingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLiveTourRequest"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveTourSession"
+
+  /listings/{id}/live-tours/direct:
+    post:
+      tags: [Live tours]
+      summary: Start an immediate call with a chat peer
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ListingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DirectLiveTourRequest"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveTourSession"
+
+  /live-tours/mine:
+    get:
+      tags: [Live tours]
+      summary: Your open live tours
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LiveTourSession"
+
+  /live-tours/{sessionId}:
+    get:
+      tags: [Live tours]
+      summary: Single live tour
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveTourSession"
+        "404":
+          description: Live tour not found
+
+  /live-tours/{sessionId}/confirm:
+    post:
+      tags: [Live tours]
+      summary: Landlord confirms the slot
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveTourSession"
+
+  /live-tours/{sessionId}/reschedule:
+    post:
+      tags: [Live tours]
+      summary: Propose a different time
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RescheduleLiveTourRequest"
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveTourSession"
+
+  /live-tours/{sessionId}/token:
+    post:
+      tags: [Live tours]
+      summary: Issue LiveKit connection details
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Connection details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveKitConnectionDetails"
+
+  /live-tours/{sessionId}/end:
+    post:
+      tags: [Live tours]
+      summary: End the call
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveTourSession"
+
+  /rent/bills:
+    get:
+      tags: [Rent]
+      summary: Bills for the signed-in user
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Bills
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RentBill"
+
+  /rent/pay:
+    post:
+      tags: [Rent]
+      summary: Pay a bill
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentRequest"
+      responses:
+        "200":
+          description: Payment successful
+        "400":
+          description: Payment failed
+
+  /rent/generate:
+    post:
+      tags: [Rent]
+      summary: Generate a bill from a confirmed booking
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateBillRequest"
+      responses:
+        "201":
+          description: Bill created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RentBill"
+        "400":
+          description: Could not generate bill
+
+  /rent/bills/{billId}:
+    put:
+      tags: [Rent]
+      summary: Adjust an unpaid bill
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/BillId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBillRequest"
+      responses:
+        "200":
+          description: Updated bill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RentBill"
+        "400":
+          description: Could not update bill
+
+  /rent/bills/{billId}/request-payment:
+    post:
+      tags: [Rent]
+      summary: Nudge the tenant to settle a bill
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/BillId"
+      responses:
+        "200":
+          description: Updated bill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RentBill"
+
+  /rent/bills/{billId}/pdf:
+    get:
+      tags: [Rent]
+      summary: Download a bill as PDF
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/BillId"
+      responses:
+        "200":
+          description: PDF document
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Bill PDF not found
+
+  /stories:
+    get:
+      tags: [Community]
+      summary: Community stories written by verified students and landlords
+      parameters:
+        - name: limit
+          in: query
+          description: How many stories to return (1-50, default 12)
+          schema:
+            type: integer
+            default: 12
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: Stories, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunityStory"
+    post:
+      tags: [Community]
+      summary: Publish your own story
+      description: Students and landlords only; admins cannot post.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostStoryRequest"
+      responses:
+        "201":
+          description: Published story
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityStory"
+        "400":
+          description: Story too short, too long, or role not allowed to post
+
+  /stories/mine:
+    get:
+      tags: [Community]
+      summary: Stories you have published
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Your stories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunityStory"
+
+  /stories/{id}:
+    delete:
+      tags: [Community]
+      summary: Retract your story
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Story removed
+        "404":
+          description: Story not found or not yours
+
+  /stats:
+    get:
+      tags: [Community]
+      summary: Live platform counters used by the marketing site
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformStats"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ListingId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema: { type: string }
+    MatchId:
+      name: matchId
+      in: path
+      required: true
+      schema: { type: string }
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string }
+    BillId:
+      name: billId
+      in: path
+      required: true
+      schema: { type: string }
+
+  schemas:
+    UserRole:
+      type: string
+      enum: [STUDENT, LANDLORD, ADMIN]
+    KycStatus:
+      type: string
+      enum: [NOT_SUBMITTED, PENDING, VERIFIED, REJECTED]
+    ListingStatus:
+      type: string
+      enum: [VERIFIED, PENDING, DRAFT, REJECTED]
+    CampusProximity:
+      type: string
+      enum: [INSIDE_CAMPUS, WALKING_DISTANCE, SHORT_COMMUTE, FAR]
+    PropertyType:
+      type: string
+      enum: [SINGLE_ROOM, BEDSITTER, ONE_BEDROOM, TWO_BEDROOM, THREE_BEDROOM, MAISONETTE]
+    ElectricityBilling:
+      type: string
+      enum: [TOKEN, MONTHLY]
+    BillStatus:
+      type: string
+      enum: [UNPAID, PAID, OVERDUE]
+    BookingStatus:
+      type: string
+      enum: [CONFIRMED, PENDING, CANCELLED, COMPLETED]
+    RequestType:
+      type: string
+      enum: [LIVE_INSPECTION, ROOMMATE_SPLIT, BOOKING, GENERAL]
+    RoommateMatchStatus:
+      type: string
+      enum: [SUGGESTED, ACCEPTED, DECLINED]
+    LiveTourStatus:
+      type: string
+      enum: [SCHEDULED, READY, ACTIVE, ENDED]
+    LiveTourMediaType:
+      type: string
+      enum: [VIDEO, AUDIO]
+
+    User:
+      type: object
+      required: [id, email, username, fullName, role]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        username: { type: string }
+        fullName: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+        kycStatus: { $ref: "#/components/schemas/KycStatus" }
+        profilePictureUrl: { type: string, nullable: true }
+        major: { type: string, nullable: true }
+        yearOfStudy: { type: integer, nullable: true }
+        roommatePreferences:
+          type: array
+          items: { type: string }
+        phone: { type: string, nullable: true }
+        businessName: { type: string, nullable: true }
+
+    RegistrationRequest:
+      type: object
+      required: [email, username, fullName, password, role]
+      properties:
+        email: { type: string, format: email }
+        username: { type: string }
+        fullName: { type: string }
+        password: { type: string, format: password }
+        role: { $ref: "#/components/schemas/UserRole" }
+
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier:
+          type: string
+          description: Email or username
+        password: { type: string, format: password }
+
+    GoogleAuthRequest:
+      type: object
+      required: [idToken, role]
+      properties:
+        idToken: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+
+    UpdateProfileRequest:
+      type: object
+      required: [fullName, username]
+      properties:
+        fullName: { type: string }
+        username: { type: string }
+        major: { type: string, nullable: true }
+        yearOfStudy: { type: integer, nullable: true }
+        roommatePreferences:
+          type: array
+          items: { type: string }
+        phone: { type: string, nullable: true }
+        businessName: { type: string, nullable: true }
+
+    KycSubmission:
+      type: object
+      required: [userId, documentType, documentNumber, documentFrontImageUrl, selfieImageUrl]
+      properties:
+        userId:
+          type: string
+          description: Ignored — taken from the JWT
+        documentType: { type: string }
+        documentNumber: { type: string }
+        documentFrontImageUrl: { type: string }
+        documentBackImageUrl: { type: string, nullable: true }
+        selfieImageUrl: { type: string }
+
+    ExtraCharge:
+      type: object
+      required: [name, amount]
+      properties:
+        name: { type: string }
+        amount: { type: number, format: double }
+
+    ListingCharges:
+      type: object
+      properties:
+        garbageCollection: { type: number, format: double }
+        water: { type: number, format: double }
+        electricityBilling: { $ref: "#/components/schemas/ElectricityBilling" }
+        electricityMonthly: { type: number, format: double }
+        extraCharges:
+          type: array
+          items: { $ref: "#/components/schemas/ExtraCharge" }
+        deposit: { type: number, format: double }
+
+    ListingPhotoResponse:
+      type: object
+      required: [id, listingId, url]
+      properties:
+        id: { type: string }
+        listingId: { type: string }
+        url:
+          type: string
+          description: Relative path under /uploads
+        sortOrder: { type: integer }
+
+    PropertyListing:
+      type: object
+      required: [id, title, address]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        address: { type: string }
+        landlordId: { type: string }
+        pricePerMonth: { type: number, format: double, nullable: true }
+        currency: { type: string, example: KES }
+        imageUrl: { type: string, nullable: true }
+        imageUrls:
+          type: array
+          items: { type: string }
+        photos:
+          type: array
+          items: { $ref: "#/components/schemas/ListingPhotoResponse" }
+        status: { $ref: "#/components/schemas/ListingStatus" }
+        proximity: { $ref: "#/components/schemas/CampusProximity" }
+        university: { type: string, nullable: true }
+        propertyType: { $ref: "#/components/schemas/PropertyType" }
+        unitsCount: { type: integer, nullable: true }
+        charges: { $ref: "#/components/schemas/ListingCharges" }
+        activeBookings: { type: integer }
+        totalViews: { type: integer }
+        inquiries: { type: integer }
+        createdAt: { type: integer, format: int64 }
+
+    CreateListingRequest:
+      type: object
+      required: [title, address]
+      properties:
+        title: { type: string }
+        address: { type: string }
+        proximity: { $ref: "#/components/schemas/CampusProximity" }
+        university: { type: string, nullable: true }
+        pricePerMonth: { type: number, format: double, nullable: true }
+        propertyType: { $ref: "#/components/schemas/PropertyType" }
+        unitsCount: { type: integer, nullable: true }
+        charges: { $ref: "#/components/schemas/ListingCharges" }
+
+    ListingPerformance:
+      type: object
+      properties:
+        totalViews: { type: integer }
+        viewsDeltaPercent: { type: integer }
+        inquiries: { type: integer }
+        hasNewInquiries: { type: boolean }
+        activeBookings: { type: integer }
+        unitsCount: { type: integer }
+
+    ListingDayStat:
+      type: object
+      properties:
+        label: { type: string }
+        views: { type: integer }
+        inquiries: { type: integer }
+
+    ListingAnalytics:
+      type: object
+      properties:
+        listingId: { type: string }
+        title: { type: string }
+        address: { type: string }
+        status: { $ref: "#/components/schemas/ListingStatus" }
+        university: { type: string, nullable: true }
+        pricePerMonth: { type: number, format: double, nullable: true }
+        currency: { type: string }
+        propertyType: { $ref: "#/components/schemas/PropertyType" }
+        unitsCount: { type: integer }
+        totalViews: { type: integer }
+        viewsDeltaPercent: { type: integer }
+        inquiries: { type: integer }
+        hasNewInquiries: { type: boolean }
+        activeBookings: { type: integer }
+        conversionRatePercent: { type: integer }
+        occupancyPercent: { type: integer }
+        weekly:
+          type: array
+          items: { $ref: "#/components/schemas/ListingDayStat" }
+        createdAt: { type: integer, format: int64 }
+
+    CalendarDaySlot:
+      type: object
+      properties:
+        date: { type: string, example: "2026-09-16" }
+        dayOfMonth: { type: integer }
+        bookedCount: { type: integer }
+        unitsCount: { type: integer }
+        fullyBooked: { type: boolean }
+        isToday: { type: boolean }
+        inCurrentMonth: { type: boolean }
+
+    ListingCalendar:
+      type: object
+      properties:
+        listingId: { type: string }
+        title: { type: string }
+        address: { type: string }
+        propertyType: { $ref: "#/components/schemas/PropertyType" }
+        unitsCount: { type: integer }
+        activeBookings: { type: integer }
+        openSlots: { type: integer }
+        fullyBooked: { type: boolean }
+        pricePerMonth: { type: number, format: double, nullable: true }
+        currency: { type: string }
+        month: { type: integer }
+        year: { type: integer }
+        monthLabel: { type: string }
+        days:
+          type: array
+          items: { $ref: "#/components/schemas/CalendarDaySlot" }
+        bookings:
+          type: array
+          items: { $ref: "#/components/schemas/ListingBooking" }
+
+    ListingBooking:
+      type: object
+      properties:
+        id: { type: string }
+        listingId: { type: string }
+        listingTitle: { type: string }
+        landlordId: { type: string }
+        guestName: { type: string }
+        guestUserId: { type: string, nullable: true }
+        startDateMillis: { type: integer, format: int64 }
+        endDateMillis: { type: integer, format: int64 }
+        status: { $ref: "#/components/schemas/BookingStatus" }
+        notes: { type: string }
+        slotCount: { type: integer }
+        pricePerMonth: { type: number, format: double, nullable: true }
+        currency: { type: string }
+        seekingRoommate: { type: boolean }
+        budgetMax: { type: number, format: double, nullable: true }
+        roommateMatchId: { type: string, nullable: true }
+
+    BookListingRequest:
+      type: object
+      required: [startDate]
+      properties:
+        startDate: { type: string, example: "2026-10-01" }
+        endDate: { type: string, nullable: true, example: "2026-10-31" }
+        notes: { type: string }
+        slotCount: { type: integer, default: 1 }
+        seekingRoommate: { type: boolean, default: false }
+        budgetMax: { type: number, format: double, nullable: true }
+
+    IncomingRequest:
+      type: object
+      properties:
+        id: { type: string }
+        requesterName: { type: string }
+        type: { $ref: "#/components/schemas/RequestType" }
+        propertyTitle: { type: string }
+        detail: { type: string }
+        timeLabel: { type: string }
+
+    RoommateMatchGuest:
+      type: object
+      properties:
+        bookingId: { type: string }
+        userId: { type: string, nullable: true }
+        name: { type: string }
+        preferences:
+          type: array
+          items: { type: string }
+        startDateMillis: { type: integer, format: int64 }
+        endDateMillis: { type: integer, format: int64 }
+        budgetMax: { type: number, format: double, nullable: true }
+        major: { type: string, nullable: true }
+        yearOfStudy: { type: integer, nullable: true }
+
+    RoommateMatch:
+      type: object
+      properties:
+        id: { type: string }
+        listingId: { type: string }
+        listingTitle: { type: string }
+        landlordId: { type: string }
+        guests:
+          type: array
+          items: { $ref: "#/components/schemas/RoommateMatchGuest" }
+        score: { type: integer }
+        status: { $ref: "#/components/schemas/RoommateMatchStatus" }
+        pricePerMonth: { type: number, format: double, nullable: true }
+        currency: { type: string }
+
+    CreateLiveTourRequest:
+      type: object
+      properties:
+        preferredTimeNote: { type: string }
+        mediaType: { $ref: "#/components/schemas/LiveTourMediaType" }
+
+    DirectLiveTourRequest:
+      type: object
+      required: [peerUserId]
+      properties:
+        peerUserId: { type: string }
+        mediaType: { $ref: "#/components/schemas/LiveTourMediaType" }
+
+    RescheduleLiveTourRequest:
+      type: object
+      required: [preferredTimeNote]
+      properties:
+        preferredTimeNote: { type: string }
+
+    LiveTourSession:
+      type: object
+      properties:
+        id: { type: string }
+        listingId: { type: string }
+        listingTitle: { type: string }
+        landlordId: { type: string }
+        landlordName: { type: string }
+        tenantId: { type: string }
+        tenantName: { type: string }
+        requestId: { type: string }
+        roomName: { type: string }
+        mediaType: { $ref: "#/components/schemas/LiveTourMediaType" }
+        status: { $ref: "#/components/schemas/LiveTourStatus" }
+        preferredTimeNote: { type: string }
+        createdAt: { type: integer, format: int64 }
+        startedAt: { type: integer, format: int64, nullable: true }
+        endedAt: { type: integer, format: int64, nullable: true }
+
+    LiveKitConnectionDetails:
+      type: object
+      properties:
+        serverUrl: { type: string }
+        roomName: { type: string }
+        participantName: { type: string }
+        participantToken: { type: string }
+        sessionId: { type: string }
+        listingTitle: { type: string }
+        mediaType: { $ref: "#/components/schemas/LiveTourMediaType" }
+
+    BillItem:
+      type: object
+      required: [name, amount]
+      properties:
+        name: { type: string }
+        amount: { type: number, format: double }
+
+    RentBill:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        propertyId: { type: string }
+        propertyTitle: { type: string }
+        tenantName: { type: string }
+        bookingId: { type: string, nullable: true }
+        month: { type: integer }
+        year: { type: integer }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/BillItem" }
+        totalAmount: { type: number, format: double }
+        dueDate: { type: integer, format: int64 }
+        status: { $ref: "#/components/schemas/BillStatus" }
+        eTimsInvoiceUrl: { type: string, nullable: true }
+        kraTaxAmount: { type: number, format: double, nullable: true }
+        depositIncluded: { type: boolean }
+        electricityNote: { type: string, nullable: true }
+        paymentRequested: { type: boolean }
+
+    PaymentRequest:
+      type: object
+      required: [billId]
+      properties:
+        billId: { type: string }
+        amount: { type: number, format: double }
+        paymentMethod: { type: string, default: M-PESA }
+
+    GenerateBillRequest:
+      type: object
+      required: [bookingId]
+      properties:
+        bookingId: { type: string }
+        month: { type: integer, nullable: true }
+        year: { type: integer, nullable: true }
+        utilities:
+          type: array
+          items: { $ref: "#/components/schemas/BillItem" }
+        includeDeposit: { type: boolean, nullable: true }
+
+    UpdateBillRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/BillItem" }
+        electricityNote: { type: string, nullable: true }
+
+    CommunityStory:
+      type: object
+      required: [id, authorId, authorName, authorRole, content]
+      properties:
+        id: { type: string }
+        authorId: { type: string }
+        authorName: { type: string }
+        authorRole: { $ref: "#/components/schemas/UserRole" }
+        authorProfilePictureUrl: { type: string, nullable: true }
+        content: { type: string }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        createdAt: { type: integer, format: int64 }
+
+    PostStoryRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 40
+          maxLength: 600
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 5
+
+    PlatformStats:
+      type: object
+      properties:
+        studentsHoused: { type: integer }
+        verifiedListings: { type: integer }
+        universitiesCovered: { type: integer }
+        landlords: { type: integer }
+        protectedInEscrow: { type: number, format: double }
+        stories: { type: integer }
+        averageRating: { type: number, format: double }

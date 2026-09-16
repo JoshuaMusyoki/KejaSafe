@@ -17,3 +17,7 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+
+# Names your Google Cloud project; deploy/release.config.ps1.example is the template.
+deploy/release.config.ps1
+.firebase/

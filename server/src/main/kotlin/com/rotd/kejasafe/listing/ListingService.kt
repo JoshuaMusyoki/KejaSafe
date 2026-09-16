@@ -4,6 +4,7 @@ import com.rotd.kejasafe.BookListingRequest
 import com.rotd.kejasafe.BookingStatus
 import com.rotd.kejasafe.CalendarDaySlot
 import com.rotd.kejasafe.CreateListingRequest
+import com.rotd.kejasafe.config.ServerConfig
 import com.rotd.kejasafe.ElectricityBilling
 import com.rotd.kejasafe.ExtraCharge
 import com.rotd.kejasafe.IncomingRequest
@@ -53,7 +54,7 @@ import java.util.UUID
 import kotlin.math.roundToInt
 
 object ListingService {
-    val uploadRoot: File = File("build/uploads").apply { mkdirs() }
+    val uploadRoot: File = File(ServerConfig.uploadDir).apply { mkdirs() }
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 

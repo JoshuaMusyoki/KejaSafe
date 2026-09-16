@@ -1,10 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Plain HTTP is only for reaching a dev machine's Ktor server. Hosts must be listed
+  literally: "localhost" does not cover "127.0.0.1".
+
+  Prefer `adb reverse tcp:8080 tcp:8080` (127.0.0.1) so a changing Wi-Fi address never
+  needs a new entry here.
+-->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
+        <!-- adb reverse over USB -->
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <!-- Android emulator's route to its host -->
         <domain includeSubdomains="true">10.0.2.2</domain>
+        <!-- Dev machines on Wi-Fi -->
+        <domain includeSubdomains="true">10.8.121.71</domain>
         <domain includeSubdomains="true">10.8.120.210</domain>
         <domain includeSubdomains="true">192.168.100.3</domain>
         <domain includeSubdomains="true">10.120.212.251</domain>
-        <domain includeSubdomains="true">localhost</domain>
     </domain-config>
 </network-security-config>

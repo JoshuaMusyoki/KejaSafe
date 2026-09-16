@@ -40,6 +40,8 @@ import com.rotd.kejasafe.components.KejaSafeOutlinedButton
 import com.rotd.kejasafe.components.KejaSafePrimaryButton
 import com.rotd.kejasafe.components.KejaSafeTextField
 import com.rotd.kejasafe.network.SessionManager
+import com.rotd.kejasafe.theme.KejaSafeTheme
+import com.rotd.kejasafe.theme.ScreenPreviews
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -55,7 +57,22 @@ fun LoginScreen(
     val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
     val offerEnableBiometric by viewModel.offerEnableBiometric.collectAsStateWithLifecycle()
 
-    var passwordVisible by remember { mutableStateOf(false) }
+    LoginScreenContent(
+        state = state,
+        identifier = identifier,
+        password = password,
+        biometricEnabled = biometricEnabled,
+        offerEnableBiometric = offerEnableBiometric,
+        onNavigateToRegister = onNavigateToRegister,
+        onBack = onBack,
+        onIdentifierChange = { viewModel.identifier.value = it },
+        onPasswordChange = { viewModel.password.value = it },
+        onLogin = { viewModel.login() },
+        onLoginWithGoogle = { viewModel.loginWithGoogle() },
+        onLoginWithFingerprint = { viewModel.loginWithFingerprint() },
+        onConfirmBiometric = { viewModel.confirmEnableBiometric() },
+        onSkipBiometric = { viewModel.skipEnableBiometric() }
+    )
 
     LaunchedEffect(Unit) {
         viewModel.refreshBiometricState()
@@ -70,21 +87,41 @@ fun LoginScreen(
             viewModel.consumeSuccess()
         }
     }
+}
+
+@Composable
+private fun LoginScreenContent(
+    state: LoginState,
+    identifier: String,
+    password: String,
+    biometricEnabled: Boolean,
+    offerEnableBiometric: Boolean,
+    onNavigateToRegister: () -> Unit,
+    onBack: (() -> Unit)?,
+    onIdentifierChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onLogin: () -> Unit,
+    onLoginWithGoogle: () -> Unit,
+    onLoginWithFingerprint: () -> Unit,
+    onConfirmBiometric: () -> Unit,
+    onSkipBiometric: () -> Unit
+) {
+    var passwordVisible by remember { mutableStateOf(false) }
 
     if (offerEnableBiometric) {
         AlertDialog(
-            onDismissRequest = { viewModel.skipEnableBiometric() },
+            onDismissRequest = onSkipBiometric,
             title = { Text("Enable biometric login?") },
             text = {
                 Text("Use fingerprint or Face ID next time instead of typing your password on this device.")
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.confirmEnableBiometric() }) {
+                TextButton(onClick = onConfirmBiometric) {
                     Text("Enable")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.skipEnableBiometric() }) {
+                TextButton(onClick = onSkipBiometric) {
                     Text("Not now")
                 }
             },
@@ -113,14 +150,14 @@ fun LoginScreen(
 
             KejaSafeTextField(
                 value = identifier,
-                onValueChange = { viewModel.identifier.value = it },
+                onValueChange = onIdentifierChange,
                 label = "Username or Email",
                 modifier = Modifier.fillMaxWidth()
             )
 
             KejaSafeTextField(
                 value = password,
-                onValueChange = { viewModel.password.value = it },
+                onValueChange = onPasswordChange,
                 label = "Password",
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -136,7 +173,7 @@ fun LoginScreen(
 
             if (state is LoginState.Error) {
                 Text(
-                    text = (state as LoginState.Error).error,
+                    text = state.error,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 8.dp)
@@ -147,7 +184,7 @@ fun LoginScreen(
 
             KejaSafePrimaryButton(
                 text = if (state is LoginState.Loading) "Logging in..." else "Log In",
-                onClick = { viewModel.login() },
+                onClick = onLogin,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = state !is LoginState.Loading
             )
@@ -169,13 +206,13 @@ fun LoginScreen(
 
             KejaSafeOutlinedButton(
                 text = "Sign in with Google",
-                onClick = { viewModel.loginWithGoogle() },
+                onClick = onLoginWithGoogle,
                 modifier = Modifier.fillMaxWidth()
             )
 
             if (biometricEnabled) {
                 IconButton(
-                    onClick = { viewModel.loginWithFingerprint() },
+                    onClick = onLoginWithFingerprint,
                     modifier = Modifier.size(64.dp),
                     enabled = state !is LoginState.Loading
                 ) {
@@ -194,5 +231,28 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+}
+
+@ScreenPreviews
+@Composable
+fun LoginScreenPreview() {
+    KejaSafeTheme {
+        LoginScreenContent(
+            state = LoginState.Idle,
+            identifier = "",
+            password = "",
+            biometricEnabled = true,
+            offerEnableBiometric = false,
+            onNavigateToRegister = {},
+            onBack = {},
+            onIdentifierChange = {},
+            onPasswordChange = {},
+            onLogin = {},
+            onLoginWithGoogle = {},
+            onLoginWithFingerprint = {},
+            onConfirmBiometric = {},
+            onSkipBiometric = {}
+        )
     }
 }

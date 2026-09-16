@@ -36,11 +36,19 @@ import androidx.compose.ui.unit.dp
 import com.rotd.kejasafe.web.theme.LandingBrandGreen
 import com.rotd.kejasafe.web.theme.LandingTextSecondary
 
+enum class LandingTab {
+    HOME, FEATURES, POLICY
+}
+
 @Composable
 fun LandingNavbar(
     onLogin: () -> Unit,
     onNavigateToFeatures: () -> Unit,
     onNavigateToPolicy: () -> Unit,
+    onLogoClick: () -> Unit = {},
+    onExploreListings: () -> Unit = onLogin,
+    signedIn: Boolean = false,
+    selectedTab: LandingTab? = null,
     wide: Boolean
 ) {
     Surface(
@@ -55,7 +63,13 @@ fun LandingNavbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onLogoClick() }
+                    .padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 // Logo Placeholder
                 Box(
                     modifier = Modifier
@@ -71,7 +85,7 @@ fun LandingNavbar(
                     "KejaSafe",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = LandingBrandGreen
+                    color = if (selectedTab == LandingTab.HOME) LandingBrandGreen else LandingBrandGreen // Logo is always green but maybe slightly different weight or treatment? User said highliht with green color.
                 )
 
                 if (wide) {
@@ -80,15 +94,15 @@ fun LandingNavbar(
                         Text(
                             "Features",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = LandingTextSecondary,
-                            fontWeight = FontWeight.Medium,
+                            color = if (selectedTab == LandingTab.FEATURES) LandingBrandGreen else LandingTextSecondary,
+                            fontWeight = if (selectedTab == LandingTab.FEATURES) FontWeight.Bold else FontWeight.Medium,
                             modifier = Modifier.clickable { onNavigateToFeatures() }
                         )
                         Text(
                             "Policies & Privacy",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = LandingTextSecondary,
-                            fontWeight = FontWeight.Medium,
+                            color = if (selectedTab == LandingTab.POLICY) LandingBrandGreen else LandingTextSecondary,
+                            fontWeight = if (selectedTab == LandingTab.POLICY) FontWeight.Bold else FontWeight.Medium,
                             modifier = Modifier.clickable { onNavigateToPolicy() }
                         )
                     }
@@ -98,7 +112,7 @@ fun LandingNavbar(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (wide) {
                     OutlinedButton(
-                        onClick = { },
+                        onClick = onExploreListings,
                         border = BorderStroke(1.dp, Color(0xFFE5E7EB)),
                         shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
@@ -115,11 +129,11 @@ fun LandingNavbar(
                     colors = ButtonDefaults.buttonColors(containerColor = LandingBrandGreen),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("Get the App")
+                    Text(if (signedIn) "Open dashboard" else "Sign in")
                 }
 
                 if (!wide) {
-                    IconButton(onClick = { }) {
+                    IconButton(onClick = onExploreListings) {
                         Icon(Icons.Default.Menu, null)
                     }
                 }
