@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rotd.kejasafe.theme.KejaSafeTheme
+import com.rotd.kejasafe.theme.ScreenPreviews
 import com.rotd.kejasafe.web.models.StepData
 import com.rotd.kejasafe.web.theme.LandingBrandGreen
 import com.rotd.kejasafe.web.theme.LandingTextSecondary
@@ -36,12 +38,17 @@ fun StepCard(data: StepData, modifier: Modifier) {
     Card(
         modifier = modifier.heightIn(min = 280.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, Color(0xFFF3F4F6)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primaryContainer),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                Text(data.num, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = Color(0xFFE5E7EB))
+                Text(
+                    text = data.num,
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
                 Icon(data.icon, null, tint = LandingBrandGreen, modifier = Modifier.size(24.dp))
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -49,7 +56,10 @@ fun StepCard(data: StepData, modifier: Modifier) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(data.desc, style = MaterialTheme.typography.bodySmall, color = LandingTextSecondary, lineHeight = 20.sp)
             Spacer(modifier = Modifier.weight(1f))
-            Surface(color = Color(0xFFF9FAFB), shape = RoundedCornerShape(4.dp)) {
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = RoundedCornerShape(4.dp)
+            ) {
                 Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.AutoMirrored.Filled.DirectionsRun, null, modifier = Modifier.size(12.dp), tint = LandingTextSecondary)
                     Spacer(modifier = Modifier.width(4.dp))
@@ -57,5 +67,22 @@ fun StepCard(data: StepData, modifier: Modifier) {
                 }
             }
         }
+    }
+}
+
+@ScreenPreviews
+@Composable
+fun StepCardPreview() {
+    KejaSafeTheme {
+        StepCard(
+            data = StepData(
+                num = "01",
+                icon = Icons.AutoMirrored.Filled.DirectionsRun,
+                title = "Get Started",
+                desc = "Follow these simple steps to set up your account and begin using the platform.",
+                badge = "2 mins"
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
