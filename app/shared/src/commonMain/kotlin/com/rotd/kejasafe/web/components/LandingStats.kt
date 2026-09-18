@@ -34,28 +34,51 @@ fun LandingStats(wide: Boolean, horizontalPadding: Dp, stats: PlatformStats?) {
         (stats?.protectedInEscrow?.let { formatMoney(it) } ?: PLACEHOLDER) to "Rent Settled in Escrow"
     )
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = horizontalPadding, vertical = 60.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        statValues.forEachIndexed { index, stat ->
-            Column(
-                horizontalAlignment = if (wide) Alignment.Start else Alignment.CenterHorizontally,
-                modifier = if (!wide) Modifier.weight(1f) else Modifier
-            ) {
-                Text(
-                    stat.first,
-                    style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = LandingBrandGreen
-                )
-                Text(stat.second, style = MaterialTheme.typography.bodySmall, color = LandingTextSecondary)
+    if (wide) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = horizontalPadding, vertical = 60.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            statValues.forEachIndexed { index, stat ->
+                Column(
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    Text(
+                        stat.first,
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = LandingBrandGreen
+                    )
+                    Text(stat.second, style = MaterialTheme.typography.bodySmall, color = LandingTextSecondary)
+                }
+                if (index < statValues.size - 1) {
+                    Box(modifier = Modifier.height(40.dp).width(1.dp).background(Color(0xFFE5E7EB)))
+                }
             }
-            if (index < statValues.size - 1 && wide) {
-                Box(modifier = Modifier.height(40.dp).width(1.dp).background(Color(0xFFE5E7EB)))
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = horizontalPadding, vertical = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            statValues.forEach { stat ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        stat.first,
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = LandingBrandGreen
+                    )
+                    Text(stat.second, style = MaterialTheme.typography.bodySmall, color = LandingTextSecondary)
+                }
             }
         }
     }

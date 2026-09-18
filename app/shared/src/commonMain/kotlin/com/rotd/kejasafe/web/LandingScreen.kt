@@ -3,6 +3,7 @@ package com.rotd.kejasafe.web
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +28,7 @@ import com.rotd.kejasafe.web.components.LandingStats
 import com.rotd.kejasafe.web.components.LandingTab
 import com.rotd.kejasafe.web.components.LandingTailored
 import com.rotd.kejasafe.web.components.LandingTestimonials
+import com.rotd.kejasafe.User
 import com.rotd.kejasafe.theme.KejaSafeTheme
 import com.rotd.kejasafe.theme.ScreenPreviews
 import org.koin.compose.viewmodel.koinViewModel
@@ -41,17 +43,47 @@ fun LandingScreen(
     wideOverride: Boolean? = null,
     viewModel: LandingViewModel = koinViewModel(),
 ) {
-    val scrollState = rememberScrollState()
-
     val state by viewModel.state.collectAsStateWithLifecycle()
     val postState by viewModel.postState.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
 
+    LandingScreenContent(
+        state = state,
+        postState = postState,
+        currentUser = currentUser,
+        onNavigateToFeatures = onNavigateToFeatures,
+        onNavigateToPolicy = onNavigateToPolicy,
+        onSignIn = onSignIn,
+        onSignInToShareStory = onSignInToShareStory,
+        wideOverride = wideOverride,
+        onPostStory = viewModel::postStory,
+        onDeleteStory = viewModel::deleteStory,
+        onPostStateConsumed = viewModel::consumePostState
+    )
+}
+
+@Composable
+private fun LandingScreenContent(
+    state: LandingUiState,
+    postState: StoryPostState,
+    currentUser: User?,
+    onNavigateToFeatures: () -> Unit,
+    onNavigateToPolicy: () -> Unit,
+    onSignIn: () -> Unit,
+    onSignInToShareStory: () -> Unit,
+    wideOverride: Boolean?,
+    onPostStory: (String, Int) -> Unit,
+    onDeleteStory: (String) -> Unit,
+    onPostStateConsumed: () -> Unit
+) {
+    val scrollState = rememberScrollState()
+
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val wide = wideOverride ?: (maxWidth >= 1024.dp)
+        val wide = wideOverride ?: (maxWidth >= 800.dp)
         val horizontalPadding = if (wide) 80.dp else 20.dp
 
         Scaffold(
+            contentWindowInsets = WindowInsets(0),
             topBar = {
                 LandingNavbar(
                     onLogin = onSignIn,
@@ -85,7 +117,7 @@ fun LandingScreen(
                     loading = state.loadingListings,
                     error = state.listingsError,
                     onExploreAll = onSignIn,
-                    onInspect = { onSignIn() }
+                    onInspect = { _ -> onSignIn() }
                 )
                 LandingTestimonials(
                     wide = wide,
@@ -99,10 +131,10 @@ fun LandingScreen(
                     canPost = currentUser.canPostStory(),
                     authorName = currentUser?.fullName,
                     postState = postState,
-                    onPostStory = viewModel::postStory,
-                    onDeleteStory = viewModel::deleteStory,
+                    onPostStory = onPostStory,
+                    onDeleteStory = onDeleteStory,
                     onSignIn = onSignInToShareStory,
-                    onPostStateConsumed = viewModel::consumePostState
+                    onPostStateConsumed = onPostStateConsumed
                 )
                 LandingBottomCTA(wide, horizontalPadding)
                 LandingFooter(wide, horizontalPadding)
@@ -115,18 +147,23 @@ fun LandingScreen(
 @Composable
 fun LandingScreenPreview() {
     KejaSafeTheme {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val wide = maxWidth >= 1024.dp
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
-            ) {
-                LandingScreen(
-                    onNavigateToFeatures = {},
-                    onNavigateToPolicy = {},
-                    wideOverride = wide
-                )
-            }
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            LandingScreenContent(
+                state = LandingUiState(),
+                postState = StoryPostState.Idle,
+                currentUser = null,
+                onNavigateToFeatures = {},
+                onNavigateToPolicy = {},
+                onSignIn = {},
+                onSignInToShareStory = {},
+                wideOverride = null,
+                onPostStory = { _, _ -> },
+                onDeleteStory = { _ -> },
+                onPostStateConsumed = {}
+            )
         }
     }
 }

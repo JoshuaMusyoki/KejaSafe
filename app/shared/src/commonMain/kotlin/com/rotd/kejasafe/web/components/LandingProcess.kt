@@ -37,10 +37,38 @@ fun LandingProcess(wide: Boolean, horizontalPadding: Dp) {
     ) {
         Text("STEP-BY-STEP PROCESS", style = MaterialTheme.typography.labelLarge, color = LandingBrandGreen, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-            Text("From Campus Acceptance to Moving In", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            if (wide) {
-                Text("Simple, foolproof, and completely mobile-friendly. You will never pay money to an unverified stranger again.", style = MaterialTheme.typography.bodyMedium, color = LandingTextSecondary, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+        if (wide) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Text(
+                    "From Campus Acceptance to Moving In",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    "Simple, foolproof, and completely mobile-friendly. You will never pay money to an unverified stranger again.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LandingTextSecondary,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.End
+                )
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    "From Campus Acceptance to Moving In",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Simple, foolproof, and completely mobile-friendly. You will never pay money to an unverified stranger again.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LandingTextSecondary
+                )
             }
         }
 
@@ -60,7 +88,9 @@ fun LandingProcess(wide: Boolean, horizontalPadding: Dp) {
         )
 
         if (wide) {
-            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+            ) {
                 steps.forEach { step ->
                     StepCard(step, Modifier.weight(1f))
                 }

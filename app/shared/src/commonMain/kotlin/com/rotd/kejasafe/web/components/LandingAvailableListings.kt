@@ -23,8 +23,8 @@ import androidx.compose.ui.unit.dp
 import com.rotd.kejasafe.PropertyListing
 import com.rotd.kejasafe.components.TenantPropertyCardShimmer
 import com.rotd.kejasafe.web.formatCount
+import com.rotd.kejasafe.web.theme.LandingBrandGreen
 import com.rotd.kejasafe.web.theme.LandingTextSecondary
-import com.rotd.kejasafe.web.theme.WebBrandGreen
 
 /** Listings landlords actually published, newest first. */
 @Composable
@@ -53,7 +53,7 @@ fun LandingAvailableListings(
                 Text(
                     "FRESHLY VERIFIED",
                     style = MaterialTheme.typography.labelLarge,
-                    color = WebBrandGreen,
+                    color = LandingBrandGreen,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -67,7 +67,7 @@ fun LandingAvailableListings(
                 Text(
                     "View all ${formatCount(listings.size)} campus listings →",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = WebBrandGreen,
+                    color = LandingBrandGreen,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable { onExploreAll() }
                 )

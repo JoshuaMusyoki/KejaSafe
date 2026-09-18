@@ -22,8 +22,8 @@ import com.rotd.kejasafe.PlatformStats
 import com.rotd.kejasafe.web.StoryPostState
 import com.rotd.kejasafe.web.formatCount
 import com.rotd.kejasafe.web.formatRating
+import com.rotd.kejasafe.web.theme.LandingBrandGreen
 import com.rotd.kejasafe.web.theme.LandingTextSecondary
-import com.rotd.kejasafe.web.theme.WebBrandGreen
 
 /** Real stories from `GET /stories`, with the composer that feeds them. */
 @Composable
@@ -53,7 +53,7 @@ fun LandingTestimonials(
         Text(
             "TESTIMONIALS",
             style = MaterialTheme.typography.labelLarge,
-            color = WebBrandGreen,
+            color = LandingBrandGreen,
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(16.dp))

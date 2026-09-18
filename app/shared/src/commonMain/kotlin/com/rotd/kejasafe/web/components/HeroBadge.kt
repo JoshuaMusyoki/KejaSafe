@@ -26,8 +26,8 @@ fun HeroBadge(text: String, icon: ImageVector) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
-            .border(1.dp, Color(0xFFE5E7EB), RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+            .padding(12.dp)
     ) {
         Icon(icon, null, tint = LandingBrandGreen, modifier = Modifier.size(14.dp))
         Spacer(modifier = Modifier.width(4.dp))

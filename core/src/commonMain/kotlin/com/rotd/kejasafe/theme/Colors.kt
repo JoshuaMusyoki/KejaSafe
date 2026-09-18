@@ -73,6 +73,10 @@ internal val DarkColorScheme = darkColorScheme(
     
     surface = Color(0xFF191C1E),
     onSurface = Color(0xFFE0E3E5),
+    surfaceVariant = Slate700,
+    onSurfaceVariant = Slate300,
+    outline = Slate400,
+    outlineVariant = Slate700,
     
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005)
