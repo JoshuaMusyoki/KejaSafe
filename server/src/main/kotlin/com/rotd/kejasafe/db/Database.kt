@@ -204,6 +204,33 @@ object CommunityStoriesTable : Table("community_stories") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object ChatConnectionsTable : Table("chat_connections") {
+    val id = varchar("id", 80)
+    val senderId = varchar("sender_id", 50).references(UsersTable.id)
+    val receiverId = varchar("receiver_id", 50).references(UsersTable.id)
+    val status = varchar("status", 20)
+    val updatedAt = long("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object ChatMessagesTable : Table("chat_messages") {
+    val id = varchar("id", 80)
+    val listingId = varchar("listing_id", 50).references(ListingsTable.id)
+    val bookingId = varchar("booking_id", 50).default("")
+    val senderId = varchar("sender_id", 50).references(UsersTable.id)
+    val receiverId = varchar("receiver_id", 50).references(UsersTable.id)
+    val content = text("content")
+    val timestamp = long("timestamp")
+    val type = varchar("type", 20).default("TEXT")
+    val fileName = varchar("file_name", 255).nullable()
+    val mimeType = varchar("mime_type", 120).nullable()
+    val attachmentId = varchar("attachment_id", 80).nullable()
+    val status = varchar("status", 20).default("SENT")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
 fun initDatabase() {
     Database.connect(createDataSource())
     transaction {
@@ -219,7 +246,9 @@ fun initDatabase() {
             ListingEventsTable,
             RoommateMatchesTable,
             LiveTourSessionsTable,
-            CommunityStoriesTable
+            CommunityStoriesTable,
+            ChatConnectionsTable,
+            ChatMessagesTable
         )
         SchemaUtils.createMissingTablesAndColumns(
             UsersTable,
@@ -233,7 +262,9 @@ fun initDatabase() {
             ListingEventsTable,
             RoommateMatchesTable,
             LiveTourSessionsTable,
-            CommunityStoriesTable
+            CommunityStoriesTable,
+            ChatConnectionsTable,
+            ChatMessagesTable
         )
     }
 }

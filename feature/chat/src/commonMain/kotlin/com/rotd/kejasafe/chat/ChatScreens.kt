@@ -57,6 +57,8 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -109,6 +111,7 @@ import kotlinx.coroutines.withContext
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatInboxScreen(
     selectedTab: KejaSafeNavTab = KejaSafeNavTab.CHAT,
@@ -123,6 +126,7 @@ fun ChatInboxScreen(
     val isLandlord = role == com.rotd.kejasafe.UserRole.LANDLORD ||
         role == com.rotd.kejasafe.UserRole.ADMIN
     val peopleTabLabel = if (isLandlord) "Tenants" else "People"
+    val pullRefreshState = rememberPullToRefreshState()
 
     LaunchedEffect(SessionManager.currentUser.value?.id) {
         viewModel.refresh()
@@ -182,26 +186,12 @@ fun ChatInboxScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Chat",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "Refresh",
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clickable(onClick = viewModel::refresh)
-                )
-            }
+            Text(
+                text = "Chat",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+            )
 
             TabRow(
                 selectedTabIndex = if (state.selectedTab == ChatInboxTab.MESSAGES) 0 else 1,
@@ -221,44 +211,60 @@ fun ChatInboxScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            when (state.selectedTab) {
-                ChatInboxTab.MESSAGES -> {
-                    Text(
-                        text = "Connected apartment chats",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                    MessagesTabContent(
-                        state = state,
-                        onOpenThread = onOpenThread,
-                        onOpenProfile = viewModel::openProfile,
-                        onRetry = viewModel::refresh,
-                        loadAttachment = viewModel::loadAttachment,
-                    )
-                }
-                ChatInboxTab.PEOPLE -> {
-                    ChatPeopleSearchField(
-                        query = state.searchQuery,
-                        onQueryChange = viewModel::updateSearch,
-                        placeholder = if (isLandlord) "Search tenants…" else "Search people…",
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                    Text(
-                        text = "Your landlord is connected by default. Other tenants need a request.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                    PeopleTabContent(
-                        state = state,
-                        onOpenThread = onOpenThread,
-                        onOpenProfile = viewModel::openProfile,
-                        onConnect = viewModel::connect,
-                        onAccept = viewModel::accept,
-                        onRetry = viewModel::refresh,
-                        loadAttachment = viewModel::loadAttachment,
-                    )
+            val showInitialLoader = state.isLoading && when (state.selectedTab) {
+                ChatInboxTab.MESSAGES -> state.messageRows.isEmpty()
+                ChatInboxTab.PEOPLE -> state.peopleRows.isEmpty()
+            }
+
+            PullToRefreshBox(
+                isRefreshing = state.isLoading && !showInitialLoader,
+                onRefresh = viewModel::refresh,
+                state = pullRefreshState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) {
+                when (state.selectedTab) {
+                    ChatInboxTab.MESSAGES -> {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Text(
+                                text = "Connected apartment chats",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                            MessagesTabContent(
+                                state = state,
+                                onOpenThread = onOpenThread,
+                                onOpenProfile = viewModel::openProfile,
+                                loadAttachment = viewModel::loadAttachment,
+                            )
+                        }
+                    }
+                    ChatInboxTab.PEOPLE -> {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            ChatPeopleSearchField(
+                                query = state.searchQuery,
+                                onQueryChange = viewModel::updateSearch,
+                                placeholder = if (isLandlord) "Search tenants…" else "Search people…",
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                            Text(
+                                text = "Your landlord is connected by default. Other tenants need a request.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                            PeopleTabContent(
+                                state = state,
+                                onOpenThread = onOpenThread,
+                                onOpenProfile = viewModel::openProfile,
+                                onConnect = viewModel::connect,
+                                onAccept = viewModel::accept,
+                                loadAttachment = viewModel::loadAttachment,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -270,18 +276,17 @@ private fun MessagesTabContent(
     state: ChatInboxUiState,
     onOpenThread: (ApartmentChatPeer) -> Unit,
     onOpenProfile: (ApartmentChatPeer) -> Unit,
-    onRetry: () -> Unit,
     loadAttachment: (String) -> ByteArray?,
 ) {
     when {
         state.isLoading && state.messageRows.isEmpty() -> LoadingBlock()
         state.messageRows.isEmpty() -> EmptyApartmentChat(
             hint = state.error ?: state.emptyMessagesHint,
-            onRetry = onRetry
         )
         else -> {
             state.error?.let { ErrorLine(it) }
             LazyColumn(
+                modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
@@ -310,18 +315,17 @@ private fun PeopleTabContent(
     onOpenProfile: (ApartmentChatPeer) -> Unit,
     onConnect: (String) -> Unit,
     onAccept: (String) -> Unit,
-    onRetry: () -> Unit,
     loadAttachment: (String) -> ByteArray?,
 ) {
     when {
         state.isLoading && state.peopleRows.isEmpty() -> LoadingBlock()
         state.peopleRows.isEmpty() -> EmptyApartmentChat(
             hint = state.error ?: state.emptyPeopleHint,
-            onRetry = onRetry
         )
         else -> {
             state.error?.let { ErrorLine(it) }
             LazyColumn(
+                modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
@@ -535,7 +539,7 @@ private fun InboxImageThumb(
 }
 
 @Composable
-private fun EmptyApartmentChat(hint: String, onRetry: () -> Unit) {
+private fun EmptyApartmentChat(hint: String) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -555,12 +559,11 @@ private fun EmptyApartmentChat(hint: String, onRetry: () -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Refresh",
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.clickable(onClick = onRetry)
+            text = "Pull down to refresh",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
         )
     }
 }

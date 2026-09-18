@@ -2,6 +2,7 @@ package com.rotd.kejasafe.data.repoImpl
 
 import com.rotd.kejasafe.BookingStatus
 import com.rotd.kejasafe.ListingBooking
+import com.rotd.kejasafe.SendApartmentChatMessageRequest
 import com.rotd.kejasafe.UserRole
 import com.rotd.kejasafe.data.ListingRepository
 import com.rotd.kejasafe.data.platformEpochMillis
@@ -11,7 +12,6 @@ import com.rotd.kejasafe.domain.chat.Connection
 import com.rotd.kejasafe.domain.chat.ConnectionStatus
 import com.rotd.kejasafe.domain.chat.MessageStatus
 import com.rotd.kejasafe.domain.chat.apartmentConversationKey
-import com.rotd.kejasafe.domain.chat.canUpgradeTo
 import com.rotd.kejasafe.domain.chat.connectionIdFor
 import com.rotd.kejasafe.domain.chat.looksLikeUserFacingFileName
 import com.rotd.kejasafe.domain.repository.ApartmentChatRepository
@@ -19,8 +19,11 @@ import com.rotd.kejasafe.media.ChatAttachmentStore
 import com.rotd.kejasafe.media.MAX_CHAT_ATTACHMENT_BYTES
 import com.rotd.kejasafe.media.MAX_CHAT_ATTACHMENT_MB
 import com.rotd.kejasafe.media.looksLikePdf
+import com.rotd.kejasafe.network.ChatClient
 import com.rotd.kejasafe.network.SessionManager
 import com.rotd.kejasafe.storage.LocalSettings
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,11 +31,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import kotlin.random.Random
 
 /**
- * Apartment-scoped chat + local connect requests.
- * Eligibility: confirmed booking. Messaging: ACCEPTED connection.
+ * Apartment-scoped chat synced through the Ktor API so messages reach the other device.
+ * Local cache keeps the UI snappy; server is the source of truth.
  */
 class ApartmentChatRepositoryImpl(
     private val listingRepository: ListingRepository,
@@ -63,7 +65,6 @@ class ApartmentChatRepositoryImpl(
         val me = SessionManager.currentUser.value?.id.orEmpty()
         val key = apartmentConversationKey(listingId, me, peerUserId)
         ensureMessagesLoaded(key)
-        upgradeIncomingStatus(key, me, MessageStatus.DELIVERED)
         return messagesByKey.map { map -> map[key].orEmpty().sortedBy { it.timestamp } }
     }
 
@@ -77,33 +78,34 @@ class ApartmentChatRepositoryImpl(
                 clearPeers()
                 return Result.failure(IllegalStateException("Not signed in"))
             }
-        clearPeers()
+        syncConnectionsFromServer()
+
         val bookings = listingRepository.getMyBookings().getOrElse { return Result.failure(it) }
         val confirmed = bookings.value.filter { it.status == BookingStatus.CONFIRMED }
         val bookingPeers = confirmed
             .mapNotNull { booking -> booking.toPeer(me.id, me.role) }
             .distinctBy { "${it.listingId}_${it.userId}" }
 
-        val matePeers = listingRepository.getApartmentMates()
-            .getOrElse { emptyList() }
-            .mapNotNull { booking -> booking.toCoTenantPeer(me.id) }
-            .distinctBy { "${it.listingId}_${it.userId}" }
+        ensureLandlordTenantConnections(me.id, me.role, bookingPeers)
+        peers.value = bookingPeers
+
+        val matePeers = if (me.role == UserRole.STUDENT) {
+            listingRepository.getApartmentMates()
+                .getOrElse { emptyList() }
+                .mapNotNull { booking -> booking.toCoTenantPeer(me.id) }
+                .distinctBy { "${it.listingId}_${it.userId}" }
+        } else {
+            emptyList()
+        }
 
         val eligible = (bookingPeers + matePeers)
             .distinctBy { "${it.listingId}_${it.userId}" }
-
-        // Landlord ↔ tenant from a confirmed stay: connected by default.
-        // Co-tenants keep requiring an explicit Connect request.
-        ensureLandlordTenantConnections(me.id, me.role, bookingPeers)
 
         peers.value = eligible
         return Result.success(eligible)
     }
 
-    /**
-     * Upsert ACCEPTED local connections for landlord–tenant booking pairs.
-     */
-    private fun ensureLandlordTenantConnections(
+    private suspend fun ensureLandlordTenantConnections(
         myId: String,
         myRole: UserRole,
         bookingPeers: List<ApartmentChatPeer>,
@@ -114,15 +116,19 @@ class ApartmentChatRepositoryImpl(
             if (!isLandlordTenantPair) return@forEach
             val existing = connectionBetween(myId, peer.userId)
             if (existing?.status == ConnectionStatus.ACCEPTED) return@forEach
-            upsertConnection(
-                Connection(
-                    id = connectionIdFor(myId, peer.userId),
-                    senderId = myId,
-                    receiverId = peer.userId,
-                    status = ConnectionStatus.ACCEPTED,
-                    timestamp = platformEpochMillis(),
-                )
-            )
+            ChatClient.upsertConnection(peer.userId, ConnectionStatus.ACCEPTED)
+                .onSuccess { applyRemoteConnection(it) }
+                .onFailure {
+                    applyRemoteConnection(
+                        Connection(
+                            id = connectionIdFor(myId, peer.userId),
+                            senderId = myId,
+                            receiverId = peer.userId,
+                            status = ConnectionStatus.ACCEPTED,
+                            timestamp = platformEpochMillis(),
+                        )
+                    )
+                }
         }
     }
 
@@ -146,7 +152,6 @@ class ApartmentChatRepositoryImpl(
         when (existing?.status) {
             ConnectionStatus.ACCEPTED -> return Result.success(existing)
             ConnectionStatus.PENDING -> {
-                // They already requested us — accept instead.
                 if (existing.receiverId == me) {
                     return acceptConnectionRequest(existing.senderId)
                 }
@@ -154,51 +159,22 @@ class ApartmentChatRepositoryImpl(
             }
             ConnectionStatus.REJECTED, null -> Unit
         }
-        val connection = Connection(
-            id = connectionIdFor(me, toUserId),
-            senderId = me,
-            receiverId = toUserId,
-            status = ConnectionStatus.PENDING,
-            timestamp = platformEpochMillis(),
-        )
-        upsertConnection(connection)
-        return Result.success(connection)
+        return ChatClient.upsertConnection(toUserId, ConnectionStatus.PENDING)
+            .onSuccess { applyRemoteConnection(it) }
     }
 
     override suspend fun acceptConnectionRequest(fromUserId: String): Result<Connection> {
-        val me = SessionManager.currentUser.value?.id
+        SessionManager.currentUser.value?.id
             ?: return Result.failure(IllegalStateException("Not signed in"))
-        val existing = connectionBetween(me, fromUserId)
-            ?: return Result.failure(IllegalStateException("No connection request found"))
-        if (existing.receiverId != me) {
-            return Result.failure(IllegalStateException("Only the recipient can accept"))
-        }
-        if (existing.status == ConnectionStatus.ACCEPTED) {
-            return Result.success(existing)
-        }
-        val accepted = existing.copy(
-            status = ConnectionStatus.ACCEPTED,
-            timestamp = platformEpochMillis(),
-        )
-        upsertConnection(accepted)
-        return Result.success(accepted)
+        return ChatClient.upsertConnection(fromUserId, ConnectionStatus.ACCEPTED)
+            .onSuccess { applyRemoteConnection(it) }
     }
 
     override suspend fun rejectConnectionRequest(fromUserId: String): Result<Unit> {
-        val me = SessionManager.currentUser.value?.id
+        SessionManager.currentUser.value?.id
             ?: return Result.failure(IllegalStateException("Not signed in"))
-        val existing = connectionBetween(me, fromUserId)
-            ?: return Result.failure(IllegalStateException("No connection request found"))
-        if (existing.receiverId != me) {
-            return Result.failure(IllegalStateException("Only the recipient can decline"))
-        }
-        upsertConnection(
-            existing.copy(
-                status = ConnectionStatus.REJECTED,
-                timestamp = platformEpochMillis(),
-            )
-        )
-        return Result.success(Unit)
+        return ChatClient.upsertConnection(fromUserId, ConnectionStatus.REJECTED)
+            .map { applyRemoteConnection(it); Unit }
     }
 
     override suspend fun canMessage(listingId: String, peerUserId: String): Boolean {
@@ -212,6 +188,7 @@ class ApartmentChatRepositoryImpl(
         return connectionBetween(me, peerUserId)?.status == ConnectionStatus.ACCEPTED
     }
 
+    @OptIn(ExperimentalEncodingApi::class)
     override suspend fun sendMessage(
         listingId: String,
         bookingId: String,
@@ -257,47 +234,28 @@ class ApartmentChatRepositoryImpl(
                 )
             )
         }
-        val attachmentId = if (isAttachment && attachmentBytes != null) {
-            val id = "att_${platformEpochMillis()}_${Random.nextLong().toULong().toString(16)}"
-            attachments.save(id, attachmentBytes)
-            id
-        } else {
-            null
-        }
-        val displayContent = when {
-            trimmed.isNotEmpty() -> trimmed
-            typeNorm == ApartmentChatMessage.TYPE_IMAGE -> "Image"
-            typeNorm == ApartmentChatMessage.TYPE_PDF -> fileName?.ifBlank { null } ?: "PDF"
-            else -> trimmed
-        }
+
         val storedFileName = when {
             typeNorm == ApartmentChatMessage.TYPE_IMAGE ->
                 fileName?.takeIf { looksLikeUserFacingFileName(it) }
             else -> fileName
         }
-        val message = ApartmentChatMessage(
-            id = "${platformEpochMillis()}_${Random.nextLong()}",
+        val request = SendApartmentChatMessageRequest(
             listingId = listingId,
             bookingId = bookingId,
-            senderId = me,
-            receiverId = peerUserId,
-            content = displayContent,
-            timestamp = platformEpochMillis(),
+            peerUserId = peerUserId,
+            content = trimmed,
             type = if (isAttachment) typeNorm else ApartmentChatMessage.TYPE_TEXT,
             fileName = storedFileName,
             mimeType = mimeType,
-            attachmentId = attachmentId,
-            status = MessageStatus.SENT,
+            attachmentBase64 = attachmentBytes?.let { Base64.encode(it) },
         )
-        val key = apartmentConversationKey(listingId, me, peerUserId)
-        ensureMessagesLoaded(key)
-        messagesByKey.update { current ->
-            val next = (current[key].orEmpty() + message).sortedBy { it.timestamp }
-            persistMessages(key, next)
-            current + (key to next)
+        return ChatClient.sendMessage(request).onSuccess { message ->
+            message.attachmentId?.let { id ->
+                attachmentBytes?.let { attachments.save(id, it) }
+            }
+            mergeRemoteMessages(listingId, peerUserId, listOf(message))
         }
-        bumpMessageEpoch()
-        return Result.success(message)
     }
 
     override suspend fun deleteMessage(
@@ -310,15 +268,14 @@ class ApartmentChatRepositoryImpl(
         if (!canMessage(listingId, peerUserId)) {
             return Result.failure(IllegalStateException("Not allowed for this apartment chat"))
         }
+        val remote = ChatClient.deleteMessage(messageId)
+        if (remote.isFailure) return remote
+
         val key = apartmentConversationKey(listingId, me, peerUserId)
         ensureMessagesLoaded(key)
         val existing = messagesByKey.value[key].orEmpty()
         val target = existing.firstOrNull { it.id == messageId }
-            ?: return Result.failure(IllegalStateException("Message not found"))
-        if (target.senderId != me) {
-            return Result.failure(IllegalStateException("You can only delete your own messages"))
-        }
-        target.attachmentId?.let { attachments.delete(it) }
+        target?.attachmentId?.let { attachments.delete(it) }
         val next = existing.filterNot { it.id == messageId }
         persistMessages(key, next)
         messagesByKey.update { it + (key to next) }
@@ -327,10 +284,9 @@ class ApartmentChatRepositoryImpl(
     }
 
     override suspend fun latestMessage(listingId: String, peerUserId: String): ApartmentChatMessage? {
+        syncConversation(listingId, peerUserId)
         val me = SessionManager.currentUser.value?.id ?: return null
         val key = apartmentConversationKey(listingId, me, peerUserId)
-        ensureMessagesLoaded(key)
-        upgradeIncomingStatus(key, me, MessageStatus.DELIVERED)
         return messagesByKey.value[key].orEmpty().maxByOrNull { it.timestamp }
     }
 
@@ -338,51 +294,79 @@ class ApartmentChatRepositoryImpl(
         attachments.load(attachmentId)
 
     override suspend fun markMessagesDelivered(listingId: String, peerUserId: String) {
-        val me = SessionManager.currentUser.value?.id ?: return
-        val key = apartmentConversationKey(listingId, me, peerUserId)
-        ensureMessagesLoaded(key)
-        upgradeIncomingStatus(key, me, MessageStatus.DELIVERED)
+        ChatClient.markDelivered(listingId, peerUserId)
+        syncConversation(listingId, peerUserId)
     }
 
     override suspend fun markMessagesRead(listingId: String, peerUserId: String) {
+        ChatClient.markRead(listingId, peerUserId)
+        syncConversation(listingId, peerUserId)
+    }
+
+    /**
+     * Pull remote messages into the local cache (and download any missing attachments).
+     * Called when opening a thread / refreshing inbox previews.
+     */
+    override suspend fun syncConversation(listingId: String, peerUserId: String) {
         val me = SessionManager.currentUser.value?.id ?: return
         val key = apartmentConversationKey(listingId, me, peerUserId)
         ensureMessagesLoaded(key)
-        upgradeIncomingStatus(key, me, MessageStatus.READ)
+        val localMax = messagesByKey.value[key].orEmpty().maxOfOrNull { it.timestamp } ?: 0L
+        // Re-fetch a small overlap so status upgrades (delivered/read) land.
+        val after = (localMax - 60_000L).coerceAtLeast(0L)
+        val remote = ChatClient.listMessages(listingId, peerUserId, after).getOrNull() ?: return
+        mergeRemoteMessages(listingId, peerUserId, remote)
+        ChatClient.markDelivered(listingId, peerUserId)
+        hydrateMissingAttachments(remote)
     }
 
-    private fun upgradeIncomingStatus(key: String, myUserId: String, target: MessageStatus) {
-        if (myUserId.isBlank()) return
-        val existing = messagesByKey.value[key].orEmpty()
-        if (existing.isEmpty()) return
-        var changed = false
-        val next = existing.map { message ->
-            if (message.receiverId == myUserId &&
-                message.senderId != myUserId &&
-                message.status.canUpgradeTo(target)
-            ) {
-                changed = true
-                message.copy(status = target)
-            } else {
-                message
+    private suspend fun hydrateMissingAttachments(messages: List<ApartmentChatMessage>) {
+        messages.forEach { message ->
+            val id = message.attachmentId ?: return@forEach
+            if (attachments.load(id) != null) return@forEach
+            ChatClient.downloadAttachment(id).onSuccess { bytes ->
+                attachments.save(id, bytes)
             }
         }
-        if (!changed) return
-        persistMessages(key, next)
-        messagesByKey.update { it + (key to next) }
+    }
+
+    private fun mergeRemoteMessages(
+        listingId: String,
+        peerUserId: String,
+        remote: List<ApartmentChatMessage>,
+    ) {
+        if (remote.isEmpty()) return
+        val me = SessionManager.currentUser.value?.id ?: return
+        val key = apartmentConversationKey(listingId, me, peerUserId)
+        ensureMessagesLoaded(key)
+        messagesByKey.update { current ->
+            val merged = (current[key].orEmpty() + remote)
+                .associateBy { it.id }
+                .values
+                .sortedBy { it.timestamp }
+            persistMessages(key, merged)
+            current + (key to merged)
+        }
         bumpMessageEpoch()
     }
 
-    private fun bumpMessageEpoch() {
-        messageEpoch.update { it + 1L }
+    private suspend fun syncConnectionsFromServer() {
+        ChatClient.listConnections().onSuccess { remote ->
+            connections.value = remote
+            persistConnections(remote)
+        }
     }
 
-    private fun upsertConnection(connection: Connection) {
+    private fun applyRemoteConnection(connection: Connection) {
         connections.update { current ->
             val next = current.filterNot { it.id == connection.id } + connection
             persistConnections(next)
             next
         }
+    }
+
+    private fun bumpMessageEpoch() {
+        messageEpoch.update { it + 1L }
     }
 
     private fun loadConnections() {
@@ -438,7 +422,6 @@ class ApartmentChatRepositoryImpl(
         }
     }
 
-    /** Another confirmed guest on a shared listing (tenant↔tenant; connect required). */
     private fun ListingBooking.toCoTenantPeer(myId: String): ApartmentChatPeer? {
         val guestId = guestUserId?.takeIf { it.isNotBlank() } ?: return null
         if (guestId == myId) return null

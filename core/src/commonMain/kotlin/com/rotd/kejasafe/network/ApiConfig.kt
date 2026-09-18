@@ -15,7 +15,7 @@ object ApiConfig {
      * own port 8080 to the dev machine over USB, which keeps working on guest Wi-Fi,
      * behind a VPN, or when the laptop's IP changes. See [USB_API_BASE_URL].
      */
-    const val DEV_API_BASE_URL = "http://192.168.100.3:8080"
+    const val DEV_API_BASE_URL = "http://10.8.121.71:8080"
 
     /** Reaches the dev machine through `adb reverse` on Android. */
     const val USB_API_BASE_URL = "http://127.0.0.1:8080"

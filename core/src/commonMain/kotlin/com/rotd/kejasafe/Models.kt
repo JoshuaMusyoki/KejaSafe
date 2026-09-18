@@ -577,3 +577,24 @@ data class PlatformStats(
     val stories: Int = 0,
     val averageRating: Double = 0.0
 )
+
+/** Client → server apartment chat message (text or attachment metadata + optional bytes). */
+@Serializable
+data class SendApartmentChatMessageRequest(
+    val listingId: String,
+    val bookingId: String,
+    val peerUserId: String,
+    val content: String = "",
+    val type: String = "TEXT",
+    val fileName: String? = null,
+    val mimeType: String? = null,
+    /** Base64 payload for IMAGE/PDF; omitted for text. */
+    val attachmentBase64: String? = null,
+)
+
+/** Sync a Connect / Accept / Reject between two users. */
+@Serializable
+data class UpsertChatConnectionRequest(
+    val peerUserId: String,
+    val status: com.rotd.kejasafe.domain.chat.ConnectionStatus,
+)

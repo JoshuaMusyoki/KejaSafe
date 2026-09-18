@@ -208,6 +208,10 @@ class ChatInboxViewModel(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             chatRepository.refreshEligiblePeers()
+                .onSuccess {
+                    // Always clear loading here. If the peers Flow emits the same empty
+                    _state.update { it.copy(isLoading = false) }
+                }
                 .onFailure { e ->
                     _state.update {
                         it.copy(isLoading = false, error = e.userMessage())
@@ -275,6 +279,7 @@ class ChatThreadViewModel(
 
     init {
         observeJob = viewModelScope.launch {
+            chatRepository.syncConversation(peer.listingId, peer.userId)
             chatRepository.observeMessages(peer.listingId, peer.userId).collect { messages ->
                 allMessages = messages.sortedBy { it.timestamp }
                 if (!initialRevealDone) {
@@ -286,6 +291,13 @@ class ChatThreadViewModel(
                     if (visibleCount > allMessages.size) visibleCount = allMessages.size
                     publishVisible(isInitialLoading = false)
                 }
+            }
+        }
+        // Poll so messages from the other party appear without leaving the thread.
+        viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(4_000)
+                chatRepository.syncConversation(peer.listingId, peer.userId)
             }
         }
     }

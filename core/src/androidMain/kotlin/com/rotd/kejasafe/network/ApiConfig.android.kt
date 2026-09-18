@@ -5,12 +5,12 @@ import android.os.Build
 /**
  * Emulators reach the host machine on a dedicated address, never on localhost.
  *
- * A physical device goes through `adb reverse tcp:8080 tcp:8080`, which tunnels the
- * device's port 8080 to the dev machine over USB. Swap the else branch to
- * [ApiConfig.DEV_API_BASE_URL] to talk to the dev machine over Wi-Fi instead.
+ * Physical devices use [ApiConfig.DEV_API_BASE_URL] over the same Wi-Fi as the
+ * laptop. Prefer `adb reverse tcp:8080 tcp:8080` + [ApiConfig.USB_API_BASE_URL]
+ * when USB debugging works and the laptop IP keeps changing.
  */
 internal actual fun platformApiBaseUrl(): String =
-    if (isEmulator) ApiConfig.EMULATOR_API_BASE_URL else ApiConfig.USB_API_BASE_URL
+    if (isEmulator) ApiConfig.EMULATOR_API_BASE_URL else ApiConfig.DEV_API_BASE_URL
 
 private val isEmulator: Boolean
     get() = Build.FINGERPRINT.startsWith("generic") ||

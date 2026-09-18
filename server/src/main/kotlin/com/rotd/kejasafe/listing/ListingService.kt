@@ -349,12 +349,13 @@ object ListingService {
                     )
                 }
 
-            // Solo pending bookings only (hide roommate seekers until matched).
+            // Pending bookings awaiting landlord review.
+            // Unmatched roommate-seekers are visible; matched ones surface as ROOMMATE_SPLIT instead.
             val pendingBookings = ListingBookingsTable.selectAll()
                 .where {
                     (ListingBookingsTable.landlordId eq landlordId) and
                         (ListingBookingsTable.status eq BookingStatus.PENDING) and
-                        (ListingBookingsTable.seekingRoommate eq false)
+                        ListingBookingsTable.roommateMatchId.isNull()
                 }
                 .map { row ->
                     val title = ListingsTable.selectAll()
@@ -365,15 +366,21 @@ object ListingService {
                     val start = Instant.ofEpochMilli(row[ListingBookingsTable.startDateMillis])
                         .atZone(ZoneId.systemDefault())
                         .toLocalDate()
+                    val seeking = row[ListingBookingsTable.seekingRoommate]
+                    val baseDetail = row[ListingBookingsTable.notes].ifBlank {
+                        "Wants to book from $start (${row[ListingBookingsTable.slotCount]} slot)"
+                    }
                     IncomingRequest(
                         id = row[ListingBookingsTable.id],
                         requesterName = row[ListingBookingsTable.guestName],
                         type = RequestType.BOOKING,
                         propertyTitle = title,
-                        detail = row[ListingBookingsTable.notes].ifBlank {
-                            "Wants to book from $start (${row[ListingBookingsTable.slotCount]} slot)"
+                        detail = if (seeking) {
+                            "Looking for a roommate · $baseDetail"
+                        } else {
+                            baseDetail
                         },
-                        timeLabel = "Pending approval"
+                        timeLabel = if (seeking) "Awaiting roommate match" else "Pending approval"
                     )
                 }
 
@@ -418,7 +425,7 @@ object ListingService {
         val rangeStartMs = monthStart.atStartOfDay(zone).toInstant().toEpochMilli()
         val rangeEndMs = monthEnd.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
 
-        val bookings = ListingBookingsTable.selectAll()
+        val bookingsInMonth = ListingBookingsTable.selectAll()
             .where {
                 (ListingBookingsTable.listingId eq listingId) and
                     (ListingBookingsTable.startDateMillis lessEq rangeEndMs) and
@@ -428,8 +435,18 @@ object ListingService {
             .map { it.toBooking(row[ListingsTable.title], price, currency) }
             .sortedBy { it.startDateMillis }
 
+        // All active requests for this listing (not only the visible month) so tenants
+        // always see their pending booking under "Your requests".
+        val allActiveBookings = ListingBookingsTable.selectAll()
+            .where {
+                (ListingBookingsTable.listingId eq listingId) and
+                    (ListingBookingsTable.status inList listOf(BookingStatus.CONFIRMED, BookingStatus.PENDING))
+            }
+            .map { it.toBooking(row[ListingsTable.title], price, currency) }
+            .sortedByDescending { it.startDateMillis }
+
         val dayCounts = mutableMapOf<LocalDate, Int>()
-        bookings.forEach { booking ->
+        bookingsInMonth.forEach { booking ->
             // Only confirmed bookings occupy units
             if (booking.status != BookingStatus.CONFIRMED) return@forEach
             var d = Instant.ofEpochMilli(booking.startDateMillis).atZone(zone).toLocalDate()
@@ -476,7 +493,7 @@ object ListingService {
             year = ym.year,
             monthLabel = "${ym.month.getDisplayName(TextStyle.FULL, Locale.ENGLISH)} ${ym.year}",
             days = days,
-            bookings = bookings
+            bookings = allActiveBookings
         )
     }
 

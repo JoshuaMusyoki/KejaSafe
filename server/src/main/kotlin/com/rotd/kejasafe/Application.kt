@@ -3,6 +3,7 @@ package com.rotd.kejasafe
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.rotd.kejasafe.auth.AuthService
+import com.rotd.kejasafe.chat.ApartmentChatService
 import com.rotd.kejasafe.community.PlatformStatsService
 import com.rotd.kejasafe.config.ServerConfig
 import com.rotd.kejasafe.db.initDatabase
@@ -646,6 +647,113 @@ fun Application.module() {
                         call.respond(LiveTourService.endTour(sessionId, userId))
                     } catch (e: Exception) {
                         call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not end tour")
+                    }
+                }
+            }
+
+            route("/chat") {
+                get("/connections") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(ApartmentChatService.listConnections(userId))
+                }
+
+                post("/connections") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val body = call.receive<UpsertChatConnectionRequest>()
+                    try {
+                        call.respond(ApartmentChatService.upsertConnection(userId, body))
+                    } catch (e: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid connection")
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid connection")
+                    }
+                }
+
+                get("/messages") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.request.queryParameters["listingId"].orEmpty()
+                    val peerUserId = call.request.queryParameters["peerUserId"].orEmpty()
+                    val after = call.request.queryParameters["after"]?.toLongOrNull() ?: 0L
+                    if (listingId.isBlank() || peerUserId.isBlank()) {
+                        return@get call.respond(
+                            HttpStatusCode.BadRequest,
+                            "listingId and peerUserId required"
+                        )
+                    }
+                    try {
+                        call.respond(
+                            ApartmentChatService.listMessages(userId, listingId, peerUserId, after)
+                        )
+                    } catch (e: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.Forbidden, e.message ?: "Forbidden")
+                    }
+                }
+
+                post("/messages") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val body = call.receive<SendApartmentChatMessageRequest>()
+                    try {
+                        call.respond(
+                            HttpStatusCode.Created,
+                            ApartmentChatService.sendMessage(userId, body)
+                        )
+                    } catch (e: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not send")
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not send")
+                    }
+                }
+
+                post("/messages/delivered") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.request.queryParameters["listingId"].orEmpty()
+                    val peerUserId = call.request.queryParameters["peerUserId"].orEmpty()
+                    if (listingId.isBlank() || peerUserId.isBlank()) {
+                        return@post call.respond(HttpStatusCode.BadRequest)
+                    }
+                    ApartmentChatService.markDelivered(userId, listingId, peerUserId)
+                    call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                }
+
+                post("/messages/read") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.request.queryParameters["listingId"].orEmpty()
+                    val peerUserId = call.request.queryParameters["peerUserId"].orEmpty()
+                    if (listingId.isBlank() || peerUserId.isBlank()) {
+                        return@post call.respond(HttpStatusCode.BadRequest)
+                    }
+                    ApartmentChatService.markRead(userId, listingId, peerUserId)
+                    call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                }
+
+                delete("/messages/{messageId}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val messageId = call.parameters["messageId"]
+                        ?: return@delete call.respond(HttpStatusCode.BadRequest)
+                    if (ApartmentChatService.deleteMessage(userId, messageId)) {
+                        call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, "Message not found")
+                    }
+                }
+
+                get("/attachments/{attachmentId}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val attachmentId = call.parameters["attachmentId"]
+                        ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val bytes = ApartmentChatService.loadAttachment(userId, attachmentId)
+                    if (bytes != null) {
+                        call.respondBytes(bytes, ContentType.Application.OctetStream)
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, "Attachment not found")
                     }
                 }
             }

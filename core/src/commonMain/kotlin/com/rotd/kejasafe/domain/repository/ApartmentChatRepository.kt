@@ -62,6 +62,9 @@ interface ApartmentChatRepository {
      */
     suspend fun markMessagesRead(listingId: String, peerUserId: String)
 
+    /** Pull the conversation from the server into the local cache. */
+    suspend fun syncConversation(listingId: String, peerUserId: String)
+
     /** Booking-eligible and ACCEPTED connection. */
     suspend fun canMessage(listingId: String, peerUserId: String): Boolean
 }
