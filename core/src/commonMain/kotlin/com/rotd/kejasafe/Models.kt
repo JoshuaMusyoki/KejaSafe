@@ -78,7 +78,11 @@ data class LoginRequest(
 
 @Serializable
 enum class BillStatus {
-    UNPAID, PAID, OVERDUE
+    UNPAID,
+    /** STK Push sent; waiting for M-Pesa PIN / callback. */
+    PENDING_PAYMENT,
+    PAID,
+    OVERDUE
 }
 
 @Serializable
@@ -167,14 +171,25 @@ data class RentBill(
     val depositIncluded: Boolean = false,
     val electricityNote: String? = null,
     /** Landlord asked the tenant to settle this bill. */
-    val paymentRequested: Boolean = false
+    val paymentRequested: Boolean = false,
+    /** Safaricom M-Pesa receipt / confirmation code after a real payment. */
+    val mpesaReceiptCode: String? = null
 )
 
 @Serializable
 data class PaymentRequest(
     val billId: String,
     val amount: Double = 0.0,
-    val paymentMethod: String = "M-PESA"
+    val paymentMethod: String = "M-PESA",
+    /** M-Pesa MSISDN, e.g. 07xxxxxxxx or 2547xxxxxxxx */
+    val phoneNumber: String = ""
+)
+
+@Serializable
+data class BillPaymentResponse(
+    val billId: String,
+    val checkoutRequestId: String = "",
+    val message: String
 )
 
 @Serializable
@@ -377,7 +392,11 @@ data class ListingBooking(
     val currency: String = "KES",
     val seekingRoommate: Boolean = false,
     val budgetMax: Double? = null,
-    val roommateMatchId: String? = null
+    val roommateMatchId: String? = null,
+    val escrowState: EscrowState? = null,
+    val escrowTransactionId: String? = null,
+    /** Only visible to the landlord when HELD_IN_ESCROW to give to student. */
+    val escrowVerificationOtp: String? = null
 )
 
 @Serializable

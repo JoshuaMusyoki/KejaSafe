@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,7 +29,6 @@ import com.rotd.kejasafe.chat.PeerConnectAction
 import com.rotd.kejasafe.components.KejaSafeBottomSheet
 import com.rotd.kejasafe.components.KejaSafeOutlinedButton
 import com.rotd.kejasafe.components.KejaSafePrimaryButton
-import com.rotd.kejasafe.domain.chat.formatUtcCalendarDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,10 +62,7 @@ fun PeerProfileBottomSheet(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Icon(
-                    imageVector = when {
-                        peer.peerIsLandlord -> Icons.Default.Home
-                        else -> Icons.Default.Person
-                    },
+                    imageVector = Icons.Default.Person,
                     contentDescription = null,
                     modifier = Modifier.size(36.dp),
                     tint = MaterialTheme.colorScheme.primary
@@ -83,23 +78,20 @@ fun PeerProfileBottomSheet(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary
             )
-            Text(
-                text = peer.listingTitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (peer.joinedAtMillis > 0L) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
-                    text = "Joined ${formatJoinedDate(peer.joinedAtMillis)}",
+                    text = connectionStatusLabel(action),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                val last = row.lastMessage
+                if (last != null && last.senderId == myUserId) {
+                    MessageReceiptTicks(status = last.status)
+                }
             }
-            Text(
-                text = connectionStatusLabel(action),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
 
             if (!callError.isNullOrBlank()) {
                 Text(
@@ -204,6 +196,3 @@ private fun connectionStatusLabel(action: PeerConnectAction): String = when (act
     PeerConnectAction.MESSAGE -> "Connected — message or start a live call"
     PeerConnectAction.NONE -> ""
 }
-
-/** Formats booking start as e.g. 13 Aug 2026 (UTC calendar day). */
-internal fun formatJoinedDate(millis: Long): String = formatUtcCalendarDate(millis)

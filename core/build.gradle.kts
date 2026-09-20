@@ -10,6 +10,9 @@ kotlin {
     }
 
     sourceSets {
+        commonMain.dependencies {
+            implementation(libs.kotlinxDatetime)
+        }
         androidMain.dependencies {
             implementation(project.dependencies.platform(libs.firebaseBom))
             implementation(libs.firebaseAuth)

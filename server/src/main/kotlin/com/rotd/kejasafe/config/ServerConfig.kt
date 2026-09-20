@@ -38,5 +38,13 @@ object ServerConfig {
         ?.mapNotNull { it.trim().ifBlank { null } }
         .orEmpty()
 
+    val mpesaConsumerKey: String = env("MPESA_CONSUMER_KEY") ?: "REPLACE_WITH_YOUR_CONSUMER_KEY"
+    val mpesaConsumerSecret: String = env("MPESA_CONSUMER_SECRET") ?: "REPLACE_WITH_YOUR_CONSUMER_SECRET"
+    val mpesaBusinessShortCode: String = env("MPESA_BUSINESS_SHORT_CODE") ?: "174379"
+    val mpesaPasskey: String = env("MPESA_PASSKEY") ?: "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
+    /** Must be a public HTTPS URL that Safaricom can reach (e.g. ngrok → /mpesa/callback). */
+    val mpesaCallbackUrl: String = env("MPESA_CALLBACK_URL")
+        ?: "https://your-api-domain.com/mpesa/callback"
+
     private fun env(name: String): String? = System.getenv(name)?.trim()?.ifBlank { null }
 }

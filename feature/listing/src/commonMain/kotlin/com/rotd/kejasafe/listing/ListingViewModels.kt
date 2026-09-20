@@ -25,13 +25,24 @@ import com.rotd.kejasafe.PropertyListing
 import com.rotd.kejasafe.PropertyType
 import com.rotd.kejasafe.RoommateMatch
 import com.rotd.kejasafe.UserRole
+import com.rotd.kejasafe.EscrowState
+import com.rotd.kejasafe.EscrowSummary
+import com.rotd.kejasafe.InitiatePaymentRequest
+import com.rotd.kejasafe.data.EscrowRepository
 import com.rotd.kejasafe.data.ListingRepository
+import com.rotd.kejasafe.data.PropertyRequestRepository
+import com.rotd.kejasafe.domain.listing.DistancePreference
+import com.rotd.kejasafe.domain.listing.HouseSize
+import com.rotd.kejasafe.domain.listing.HouseType
+import com.rotd.kejasafe.domain.listing.ListingType
+import com.rotd.kejasafe.domain.listing.PropertyRequest
 import com.rotd.kejasafe.error.userMessage
 import com.rotd.kejasafe.network.ConnectivityMonitor
 import com.rotd.kejasafe.network.ListingClient
 import com.rotd.kejasafe.network.ListingDataBus
 import com.rotd.kejasafe.network.LiveTourClient
 import com.rotd.kejasafe.network.SessionManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +51,90 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.random.Random
+
+data class RequestPropertyUiState(
+    val size: HouseSize = HouseSize.ONE_BEDROOM,
+    val houseType: HouseType? = HouseType.APARTMENT,
+    val listingType: ListingType = ListingType.RENT,
+    val area: String = "Rungiri, Kabete",
+    val distance: DistancePreference = DistancePreference.SHORT_MATATU_RIDE,
+    val budgetFrom: String = "10000",
+    val budgetTo: String = "15000",
+    val additionalInfo: String = "",
+    val agentsCanCall: Boolean = true,
+    val phoneNumber: String = "",
+    val isSubmitting: Boolean = false,
+    val error: String? = null,
+    val successMessage: String? = null,
+    val completed: Boolean = false
+)
+
+class RequestPropertyViewModel(
+    private val repository: PropertyRequestRepository
+) : ViewModel() {
+    private val _state = MutableStateFlow(RequestPropertyUiState())
+    val state: StateFlow<RequestPropertyUiState> = _state.asStateFlow()
+
+    init {
+        // Pre-fill phone if available in session
+        SessionManager.currentUser.value?.phone?.let { phone ->
+            _state.update { it.copy(phoneNumber = phone) }
+        }
+    }
+
+    fun updateSize(size: HouseSize) = _state.update { it.copy(size = size) }
+    fun updateHouseType(type: HouseType?) = _state.update { it.copy(houseType = type) }
+    fun updateListingType(type: ListingType) = _state.update { it.copy(listingType = type) }
+    fun updateArea(area: String) = _state.update { it.copy(area = area) }
+    fun updateDistance(dist: DistancePreference) = _state.update { it.copy(distance = dist) }
+    fun updateBudgetFrom(from: String) = _state.update { it.copy(budgetFrom = from.filter { it.isDigit() }) }
+    fun updateBudgetTo(to: String) = _state.update { it.copy(budgetTo = to.filter { it.isDigit() }) }
+    fun updateAdditionalInfo(info: String) = _state.update { it.copy(additionalInfo = info) }
+    fun updateAgentsCanCall(canCall: Boolean) = _state.update { it.copy(agentsCanCall = canCall) }
+    fun updatePhoneNumber(phone: String) = _state.update { it.copy(phoneNumber = phone) }
+
+    fun submit() {
+        val s = _state.value
+        if (s.area.isBlank()) {
+            _state.update { it.copy(error = "Please specify the area") }
+            return
+        }
+        if (s.phoneNumber.isBlank()) {
+            _state.update { it.copy(error = "M-Pesa phone number is required") }
+            return
+        }
+        
+        viewModelScope.launch {
+            _state.update { it.copy(isSubmitting = true, error = null) }
+            val request = PropertyRequest(
+                userId = SessionManager.currentUser.value?.id ?: "",
+                size = s.size,
+                houseType = s.houseType,
+                listingType = s.listingType,
+                area = s.area,
+                distance = s.distance,
+                budgetFrom = s.budgetFrom.toLongOrNull() ?: 0,
+                budgetTo = s.budgetTo.toLongOrNull() ?: 0,
+                additionalInfo = s.additionalInfo.takeIf { it.isNotBlank() },
+                agentsCanCall = s.agentsCanCall
+            )
+            
+            repository.submitRequest(s.phoneNumber, request)
+                .onSuccess { requestId ->
+                    _state.update { 
+                        it.copy(
+                            isSubmitting = false, 
+                            completed = true,
+                            successMessage = "Request placed! Check your phone for M-Pesa STK push."
+                        ) 
+                    }
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(isSubmitting = false, error = e.userMessage()) }
+                }
+        }
+    }
+}
 
 private fun CreateListingDraft.toCharges(): ListingCharges {
     return ListingCharges(
@@ -122,7 +217,11 @@ data class LandlordHomeState(
     val tourActing: Boolean = false,
     val tourMessage: String? = null,
     /** When set, UI should navigate to the live tour call screen. */
-    val navigateToLiveTourId: String? = null
+    val navigateToLiveTourId: String? = null,
+    val showEscrowDetails: Boolean = false,
+    val selectedEscrowSummary: EscrowSummary? = null,
+    val isActingEscrow: Boolean = false,
+    val escrowError: String? = null
 )
 
 data class TenantHomeState(
@@ -147,7 +246,8 @@ data class CreateListingUiState(
 )
 
 class LandlordHomeViewModel(
-    private val listingRepository: ListingRepository
+    private val listingRepository: ListingRepository,
+    private val escrowRepository: EscrowRepository
 ) : ViewModel() {
     private val _state = MutableStateFlow(LandlordHomeState())
     val state: StateFlow<LandlordHomeState> = _state.asStateFlow()
@@ -386,6 +486,29 @@ class LandlordHomeViewModel(
 
     fun consumeLiveTourNavigation() {
         _state.update { it.copy(navigateToLiveTourId = null) }
+    }
+
+    fun viewEscrowStatus(transactionId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(isActingEscrow = true, escrowError = null) }
+            escrowRepository.getEscrowStatus(transactionId)
+                .onSuccess { response ->
+                    _state.update {
+                        it.copy(
+                            isActingEscrow = false,
+                            selectedEscrowSummary = response.summary,
+                            showEscrowDetails = true
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(isActingEscrow = false, escrowError = e.userMessage()) }
+                }
+        }
+    }
+
+    fun dismissEscrowDetails() {
+        _state.update { it.copy(showEscrowDetails = false, selectedEscrowSummary = null) }
     }
 
     fun generateBill(bookingId: String) {
@@ -712,10 +835,22 @@ data class ListingCalendarUiState(
     val liveTourVideo: Boolean = true,
     /** When landlord confirmed, tenant can join this session. */
     val joinableLiveTourId: String? = null,
+    val isPayingEscrow: Boolean = false,
+    val escrowMessage: String? = null,
+    val showPayDepositDialog: Boolean = false,
+    val payDepositBookingId: String? = null,
+    val payDepositAmount: Double = 0.0,
+    val payDepositPhone: String = "",
+    val showReleaseDialog: Boolean = false,
+    val releaseTransactionId: String? = null,
+    val releaseOtp: String = "",
+    val showEscrowDetails: Boolean = false,
+    val selectedEscrowSummary: EscrowSummary? = null
 )
 
 class ListingCalendarViewModel(
-    private val listingId: String
+    private val listingId: String,
+    private val escrowRepository: EscrowRepository
 ) : ViewModel() {
     private val _state = MutableStateFlow(ListingCalendarUiState())
     val state: StateFlow<ListingCalendarUiState> = _state.asStateFlow()
@@ -914,8 +1049,8 @@ class ListingCalendarViewModel(
                 .onSuccess { tours ->
                     val joinable = tours.firstOrNull {
                         it.listingId == listingId &&
-                            (it.status == com.rotd.kejasafe.LiveTourStatus.READY ||
-                                it.status == com.rotd.kejasafe.LiveTourStatus.ACTIVE)
+                                (it.status == com.rotd.kejasafe.LiveTourStatus.READY ||
+                                        it.status == com.rotd.kejasafe.LiveTourStatus.ACTIVE)
                     }
                     _state.update { it.copy(joinableLiveTourId = joinable?.id) }
                 }
@@ -958,6 +1093,208 @@ class ListingCalendarViewModel(
                         )
                     }
                 }
+        }
+    }
+    fun payDeposit(bookingId: String, amount: Double) {
+        val phone = SessionManager.currentUser.value?.phone.orEmpty()
+        _state.update {
+            it.copy(
+                showPayDepositDialog = true,
+                payDepositBookingId = bookingId,
+                payDepositAmount = amount,
+                payDepositPhone = phone,
+                dialogError = null,
+                escrowMessage = null
+            )
+        }
+    }
+
+    fun dismissPayDepositDialog() {
+        if (_state.value.isPayingEscrow) return
+        _state.update {
+            it.copy(
+                showPayDepositDialog = false,
+                payDepositBookingId = null,
+                payDepositAmount = 0.0,
+                dialogError = null
+            )
+        }
+    }
+
+    fun onPayDepositPhoneChange(phone: String) {
+        _state.update { it.copy(payDepositPhone = phone) }
+    }
+
+    fun confirmPayDeposit() {
+        val bookingId = _state.value.payDepositBookingId ?: return
+        val amount = _state.value.payDepositAmount
+        val phone = _state.value.payDepositPhone.trim()
+        if (phone.length < 9) {
+            markDialogError("Enter a valid M-Pesa phone number")
+            return
+        }
+
+        viewModelScope.launch {
+            _state.update { it.copy(isPayingEscrow = true, dialogError = null, escrowMessage = null) }
+            val amountCents = (amount * 100).toLong()
+            escrowRepository.initiatePayment(InitiatePaymentRequest(bookingId, phone, amountCents))
+                .onSuccess { response ->
+                    _state.update {
+                        it.copy(
+                            showPayDepositDialog = false,
+                            escrowMessage = response.message
+                                ?: "STK Push sent. Enter your M-Pesa PIN on your phone."
+                        )
+                    }
+                    observeEscrow(response.transactionId)
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(isPayingEscrow = false, dialogError = e.userMessage())
+                    }
+                }
+        }
+    }
+
+    fun openReleaseDialog(transactionId: String) {
+        _state.update {
+            it.copy(
+                showReleaseDialog = true,
+                releaseTransactionId = transactionId,
+                releaseOtp = "",
+                dialogError = null
+            )
+        }
+    }
+
+    fun dismissReleaseDialog() {
+        _state.update { it.copy(showReleaseDialog = false, releaseTransactionId = null) }
+    }
+
+    fun onReleaseOtpChange(otp: String) {
+        _state.update { it.copy(releaseOtp = otp.take(6).filter { ch -> ch.isDigit() }) }
+    }
+
+    fun confirmRelease() {
+        val tid = _state.value.releaseTransactionId ?: return
+        val otp = _state.value.releaseOtp
+        if (otp.length < 4) {
+            markDialogError("Enter the 4-digit move-in code")
+            return
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(isActing = true, dialogError = null) }
+            escrowRepository.releaseEscrow(tid, otp)
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            isActing = false,
+                            showReleaseDialog = false,
+                            actionMessage = "Funds released to landlord. Move-in complete!"
+                        )
+                    }
+                    reload()
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(isActing = false, dialogError = e.userMessage()) }
+                }
+        }
+    }
+
+    fun refreshEscrowStatus(transactionId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(isActing = true, dialogError = null) }
+            escrowRepository.getEscrowStatus(transactionId)
+                .onSuccess { response ->
+                    _state.update {
+                        it.copy(
+                            isActing = false,
+                            selectedEscrowSummary = response.summary,
+                            showEscrowDetails = true
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(isActing = false, dialogError = e.userMessage()) }
+                }
+        }
+    }
+
+    fun dismissEscrowDetails() {
+        _state.update { it.copy(showEscrowDetails = false, selectedEscrowSummary = null) }
+    }
+
+    fun disputePayment(transactionId: String, reason: String) {
+        if (reason.isBlank()) {
+            markDialogError("Please provide a reason for the dispute")
+            return
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(isActing = true, dialogError = null) }
+            escrowRepository.disputeEscrow(transactionId, reason)
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            isActing = false,
+                            showEscrowDetails = false,
+                            actionMessage = "Dispute filed. Payout is frozen until resolved."
+                        )
+                    }
+                    reload()
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(isActing = false, dialogError = e.userMessage()) }
+                }
+        }
+    }
+
+    private fun observeEscrow(transactionId: String) {
+        viewModelScope.launch {
+            // Prefer live WS updates; also poll in case the socket drops.
+            launch {
+                escrowRepository.observeTransaction(transactionId).collect { response ->
+                    handleEscrowProgress(response.state)
+                }
+            }
+            repeat(40) {
+                delay(3_000)
+                val result = escrowRepository.getEscrowStatus(transactionId).getOrNull() ?: return@repeat
+                if (handleEscrowProgress(result.state)) return@launch
+            }
+            if (_state.value.isPayingEscrow) {
+                _state.update {
+                    it.copy(
+                        isPayingEscrow = false,
+                        escrowMessage = "Still waiting for M-Pesa confirmation. Pull to refresh or check again shortly."
+                    )
+                }
+            }
+        }
+    }
+
+    /** @return true when payment is no longer pending */
+    private fun handleEscrowProgress(state: EscrowState): Boolean {
+        return when (state) {
+            EscrowState.HELD_IN_ESCROW -> {
+                _state.update {
+                    it.copy(
+                        isPayingEscrow = false,
+                        escrowMessage = "Payment successful! Funds held in escrow."
+                    )
+                }
+                reload()
+                true
+            }
+            EscrowState.REFUNDED -> {
+                _state.update {
+                    it.copy(
+                        isPayingEscrow = false,
+                        escrowMessage = "M-Pesa payment was cancelled or failed. Try again."
+                    )
+                }
+                true
+            }
+            else -> false
         }
     }
 
@@ -1043,8 +1380,8 @@ class TenantHomeViewModel(
         if (q.isEmpty()) return _state.value.listings
         return _state.value.listings.filter {
             it.title.contains(q, ignoreCase = true) ||
-                it.address.contains(q, ignoreCase = true) ||
-                (it.university?.contains(q, ignoreCase = true) == true)
+                    it.address.contains(q, ignoreCase = true) ||
+                    (it.university?.contains(q, ignoreCase = true) == true)
         }
     }
 }

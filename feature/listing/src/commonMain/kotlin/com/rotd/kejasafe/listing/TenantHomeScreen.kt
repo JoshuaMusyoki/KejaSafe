@@ -11,8 +11,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -46,6 +49,7 @@ fun TenantHomeScreen(
     onTabSelected: (KejaSafeNavTab) -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToProperty: (String) -> Unit,
+    onNavigateToRequestProperty: () -> Unit,
     viewModel: TenantHomeViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -202,6 +206,22 @@ fun TenantHomeScreen(
                 frosted = true,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
+
+            FloatingActionButton(
+                onClick = onNavigateToRequestProperty,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 24.dp, bottom = 16.dp)
+                    .size(56.dp),
+                shape = CircleShape
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Request a property"
+                )
+            }
         }
     }
 }

@@ -91,6 +91,7 @@ internal fun Project.configureKotlinMultiplatform(
                 implementation(libs.findLibrary("androidxActivityCompose").get())
                 implementation(libs.findLibrary("webRtc").get())
                 implementation(libs.findLibrary("koinAndroid").get())
+                implementation(libs.findLibrary("androidxComposeUiTooling").get())
             }
             iosMain.dependencies {
                 implementation(libs.findLibrary("ktorClientDarwin").get())

@@ -1,5 +1,10 @@
 package com.rotd.kejasafe.listing
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,8 +27,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.EventBusy
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -36,6 +44,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,13 +60,16 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import com.rotd.kejasafe.BookingStatus
 import com.rotd.kejasafe.CalendarDaySlot
+import com.rotd.kejasafe.EscrowState
 import com.rotd.kejasafe.ListingBooking
 import com.rotd.kejasafe.ListingCalendar
 import com.rotd.kejasafe.PropertyType
+import com.rotd.kejasafe.components.EscrowDetailsDialog
 import com.rotd.kejasafe.components.InsightCard
 import com.rotd.kejasafe.components.KejaSafeCard
 import com.rotd.kejasafe.components.KejaSafeHeader
 import com.rotd.kejasafe.components.KejaSafeHeaderContentInset
+import com.rotd.kejasafe.components.KejaSafeOutlinedButton
 import com.rotd.kejasafe.components.KejaSafePrimaryButton
 import com.rotd.kejasafe.network.SessionManager
 import com.rotd.kejasafe.theme.Emerald700
@@ -127,11 +141,16 @@ fun ListingCalendarScreen(
                     actionMessage = state.actionMessage,
                     myUserId = userId,
                     joinableLiveTourId = state.joinableLiveTourId,
+                    isPayingEscrow = state.isPayingEscrow,
+                    escrowMessage = state.escrowMessage,
                     onSelectDate = viewModel::selectDate,
                     onPrevMonth = viewModel::previousMonth,
                     onNextMonth = viewModel::nextMonth,
                     onRequestLiveTour = viewModel::openLiveTourDialog,
                     onJoinLiveTour = onOpenLiveTour,
+                    onPayDeposit = viewModel::payDeposit,
+                    onOpenRelease = viewModel::openReleaseDialog,
+                    onViewEscrow = viewModel::refreshEscrowStatus,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -160,6 +179,58 @@ fun ListingCalendarScreen(
                     onBudgetMaxChange = viewModel::onBudgetMaxChange,
                     onDismiss = viewModel::dismissBookDialog,
                     onConfirm = viewModel::requestBooking
+                )
+            }
+
+            if (state.showPayDepositDialog) {
+                AlertDialog(
+                    onDismissRequest = viewModel::dismissPayDepositDialog,
+                    title = {
+                        Text("Pay deposit via M-Pesa", fontWeight = FontWeight.Bold)
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = "KES ${state.payDepositAmount.toInt()} will be held in escrow. " +
+                                    "You'll get an STK Push on your phone — enter your M-Pesa PIN to confirm.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedTextField(
+                                value = state.payDepositPhone,
+                                onValueChange = viewModel::onPayDepositPhoneChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("M-Pesa phone") },
+                                placeholder = { Text("07xxxxxxxx") },
+                                enabled = !state.isPayingEscrow,
+                                singleLine = true,
+                                shape = MaterialTheme.shapes.medium
+                            )
+                            if (!state.dialogError.isNullOrBlank()) {
+                                Text(
+                                    text = state.dialogError.orEmpty(),
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = viewModel::confirmPayDeposit,
+                            enabled = !state.isPayingEscrow
+                        ) {
+                            Text(if (state.isPayingEscrow) "Sending STK…" else "Send M-Pesa prompt")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = viewModel::dismissPayDepositDialog,
+                            enabled = !state.isPayingEscrow
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
                 )
             }
 
@@ -227,6 +298,58 @@ fun ListingCalendarScreen(
                             Text("Cancel")
                         }
                     }
+                )
+            }
+
+            if (state.showReleaseDialog) {
+                AlertDialog(
+                    onDismissRequest = { if (!state.isActing) viewModel.dismissReleaseDialog() },
+                    title = { Text("Release Escrow Funds", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                "Enter the 4-digit verification code provided by your landlord to confirm move-in and release funds.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            OutlinedTextField(
+                                value = state.releaseOtp,
+                                onValueChange = viewModel::onReleaseOtpChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Move-in Code") },
+                                placeholder = { Text("4 digits") },
+                                enabled = !state.isActing,
+                                singleLine = true,
+                                shape = MaterialTheme.shapes.medium
+                            )
+                            if (!state.dialogError.isNullOrBlank()) {
+                                Text(
+                                    state.dialogError.orEmpty(),
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = viewModel::confirmRelease, enabled = !state.isActing) {
+                            Text(if (state.isActing) "Releasing..." else "Confirm & Release")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.dismissReleaseDialog() }, enabled = !state.isActing) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            if (state.showEscrowDetails) {
+                EscrowDetailsDialog(
+                    summary = state.selectedEscrowSummary,
+                    isActing = state.isActing,
+                    error = state.dialogError,
+                    onDispute = viewModel::disputePayment,
+                    onDismiss = viewModel::dismissEscrowDetails
                 )
             }
         }
@@ -349,14 +472,18 @@ private fun CalendarBody(
     actionMessage: String?,
     myUserId: String?,
     joinableLiveTourId: String?,
+    isPayingEscrow: Boolean,
+    escrowMessage: String?,
     onSelectDate: (String) -> Unit,
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onRequestLiveTour: () -> Unit,
     onJoinLiveTour: (String) -> Unit,
+    onPayDeposit: (String, Double) -> Unit,
+    onOpenRelease: (String) -> Unit,
+    onViewEscrow: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Tenants only see their own requests — not other guests' names.
     val myBookings = if (isLandlordOwner) {
         emptyList()
     } else {
@@ -368,6 +495,16 @@ private fun CalendarBody(
         "${calendar.currency} ${it.toInt()}/mo"
     } ?: "Price on request"
 
+    // Tenants: calendar closed until they need a date. Landlords: open by default.
+    var calendarExpanded by rememberSaveable(isLandlordOwner) {
+        mutableStateOf(isLandlordOwner)
+    }
+
+    val metaParts = buildList {
+        calendar.propertyType?.let { add(typeLabel(it)) }
+        add("${calendar.unitsCount} unit${if (calendar.unitsCount == 1) "" else "s"}")
+    }
+
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(
@@ -376,10 +513,10 @@ private fun CalendarBody(
             top = KejaSafeHeaderContentInset + 8.dp,
             bottom = 28.dp
         ),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     text = calendar.title,
                     style = MaterialTheme.typography.headlineSmall,
@@ -388,48 +525,32 @@ private fun CalendarBody(
                 Text(
                     text = calendar.address,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = priceLabel,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Emerald700
-                )
-                calendar.propertyType?.let { type ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text(
-                        text = "${typeLabel(type)} · ${calendar.unitsCount} unit${if (calendar.unitsCount == 1) "" else "s"}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = priceLabel,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Emerald700
                     )
-                }
-                if (!isLandlordOwner) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (!joinableLiveTourId.isNullOrBlank()) {
-                        KejaSafePrimaryButton(
-                            text = "Join live tour",
-                            onClick = { onJoinLiveTour(joinableLiveTourId) },
-                            modifier = Modifier.fillMaxWidth()
+                    if (metaParts.isNotEmpty()) {
+                        Text(
+                            text = "·",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    } else {
-                        TextButton(
-                            onClick = onRequestLiveTour,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Request live tour")
-                        }
+                        Text(
+                            text = metaParts.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-            }
-        }
-
-        if (!actionMessage.isNullOrBlank()) {
-            item {
-                Text(
-                    text = actionMessage,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
             }
         }
 
@@ -448,62 +569,120 @@ private fun CalendarBody(
             }
         }
 
-        if (!isLandlordOwner && !calendar.fullyBooked) {
+        if (!isLandlordOwner) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (!joinableLiveTourId.isNullOrBlank()) {
+                        KejaSafePrimaryButton(
+                            text = "Join live tour",
+                            onClick = { onJoinLiveTour(joinableLiveTourId) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        KejaSafeOutlinedButton(
+                            text = "Request live tour",
+                            onClick = onRequestLiveTour,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    if (!calendar.fullyBooked) {
+                        DatePickerToggle(
+                            selectedDate = selectedDate,
+                            expanded = calendarExpanded,
+                            onToggle = { calendarExpanded = !calendarExpanded }
+                        )
+                    }
+                }
+            }
+        } else {
+            item {
+                DatePickerToggle(
+                    selectedDate = selectedDate,
+                    expanded = calendarExpanded,
+                    labelWhenEmpty = "View availability calendar",
+                    labelWhenSelected = selectedDate?.let { "Selected: $it" }.orEmpty(),
+                    onToggle = { calendarExpanded = !calendarExpanded }
+                )
+            }
+        }
+
+        if (!actionMessage.isNullOrBlank()) {
             item {
                 Text(
-                    text = "Tap a date to request a booking",
+                    text = actionMessage,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
 
         item {
-            MonthHeader(
-                label = calendar.monthLabel,
-                onPrev = onPrevMonth,
-                onNext = onNextMonth
-            )
-        }
-
-        item {
-            MonthGrid(
-                days = calendar.days,
-                selectedDate = selectedDate,
-                onSelect = onSelectDate
-            )
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            AnimatedVisibility(
+                visible = calendarExpanded && (isLandlordOwner || !calendar.fullyBooked),
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
             ) {
-                LegendDot(color = Emerald700, label = "Open")
-                LegendDot(color = Gold600, label = "Partial")
-                LegendDot(color = MaterialTheme.colorScheme.error, label = "Full")
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    MonthHeader(
+                        label = calendar.monthLabel,
+                        onPrev = onPrevMonth,
+                        onNext = onNextMonth
+                    )
+                    MonthGrid(
+                        days = calendar.days,
+                        selectedDate = selectedDate,
+                        onSelect = { date ->
+                            onSelectDate(date)
+                            if (!isLandlordOwner) calendarExpanded = false
+                        }
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        LegendDot(color = Emerald700, label = "Open")
+                        LegendDot(color = Gold600, label = "Partial")
+                        LegendDot(color = MaterialTheme.colorScheme.error, label = "Full")
+                    }
+                }
             }
         }
 
         if (!isLandlordOwner) {
             item {
-                Text(
-                    text = "Your requests",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Your requests",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (!escrowMessage.isNullOrBlank()) {
+                        Text(
+                            text = escrowMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Emerald700
+                        )
+                    }
+                }
             }
             if (myBookings.isEmpty()) {
                 item {
                     Text(
-                        text = "No requests yet. Tap an open date to book.",
+                        text = "No requests yet. Pick a start date to book.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
                 items(myBookings, key = { it.id }) { booking ->
-                    TenantBookingRow(booking)
+                    TenantBookingRow(
+                        booking = booking,
+                        isPaying = isPayingEscrow,
+                        onPayDeposit = onPayDeposit,
+                        onOpenRelease = onOpenRelease,
+                        onViewEscrow = onViewEscrow
+                    )
                 }
             }
         }
@@ -514,8 +693,52 @@ private fun CalendarBody(
                 message = when {
                     isLandlordOwner -> "Unit availability is shown here. Approve new booking requests from your home feed."
                     calendar.fullyBooked -> "All ${calendar.unitsCount} units are filled. Pick another house or try another date."
-                    else -> "Choose a start date, send a request, then wait for landlord approval. Status will show as Awaiting approval until they accept."
+                    else -> "Choose a start date, send a request, then wait for landlord approval."
                 }
+            )
+        }
+    }
+}
+
+@Composable
+private fun DatePickerToggle(
+    selectedDate: String?,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    labelWhenEmpty: String = "Pick a start date",
+    labelWhenSelected: String = selectedDate.orEmpty()
+) {
+    KejaSafeCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggle)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.CalendarMonth,
+                contentDescription = null,
+                tint = Emerald700,
+                modifier = Modifier.size(24.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (selectedDate.isNullOrBlank()) labelWhenEmpty else labelWhenSelected,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = if (expanded) "Tap a day below" else "Tap to open calendar",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (expanded) "Collapse calendar" else "Expand calendar",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -528,7 +751,7 @@ private fun FullyBookedBanner(units: Int, active: Int) {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.error.copy(alpha = 0.08f))
-                .padding(16.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -540,12 +763,12 @@ private fun FullyBookedBanner(units: Int, active: Int) {
             Column {
                 Text(
                     text = "Fully booked",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.error
                 )
                 Text(
-                    text = "$active / $units units occupied — nothing available right now.",
+                    text = "$active / $units units occupied",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -560,7 +783,7 @@ private fun AvailabilityBanner(openSlots: Int, units: Int, active: Int) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -572,12 +795,12 @@ private fun AvailabilityBanner(openSlots: Int, units: Int, active: Int) {
             Column {
                 Text(
                     text = "$openSlots open unit${if (openSlots == 1) "" else "s"}",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = Emerald700
                 )
                 Text(
-                    text = "$active of $units units currently booked",
+                    text = "$active of $units currently booked",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -722,7 +945,13 @@ private fun LegendDot(color: Color, label: String) {
 }
 
 @Composable
-private fun TenantBookingRow(booking: ListingBooking) {
+private fun TenantBookingRow(
+    booking: ListingBooking,
+    isPaying: Boolean,
+    onPayDeposit: (String, Double) -> Unit,
+    onOpenRelease: (String) -> Unit,
+    onViewEscrow: (String) -> Unit
+) {
     KejaSafeCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -740,8 +969,52 @@ private fun TenantBookingRow(booking: ListingBooking) {
                 )
                 TenantStatusChip(booking.status)
             }
+
+            if (booking.status == BookingStatus.CONFIRMED &&
+                (booking.escrowState == null || booking.escrowState == EscrowState.PENDING_PAYMENT)
+            ) {
+                Spacer(modifier = Modifier.height(12.dp))
+                KejaSafePrimaryButton(
+                    text = when {
+                        isPaying -> "Waiting for M-Pesa…"
+                        else -> "Pay Deposit to Escrow"
+                    },
+                    onClick = { booking.pricePerMonth?.let { onPayDeposit(booking.id, it) } },
+                    enabled = !isPaying,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else if (booking.escrowState == EscrowState.HELD_IN_ESCROW) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    KejaSafePrimaryButton(
+                        text = "Release Funds",
+                        onClick = { booking.escrowTransactionId?.let { onOpenRelease(it) } },
+                        modifier = Modifier.weight(1f)
+                    )
+                    KejaSafeOutlinedButton(
+                        text = "Details",
+                        onClick = { booking.escrowTransactionId?.let { onViewEscrow(it) } },
+                        modifier = Modifier.weight(0.6f)
+                    )
+                }
+            } else if (booking.escrowState != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Escrow: ${booking.escrowState!!.name.replace('_', ' ')}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Emerald700,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                KejaSafeOutlinedButton(
+                    text = "View escrow details",
+                    onClick = { booking.escrowTransactionId?.let { onViewEscrow(it) } },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             if (booking.notes.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = booking.notes,
                     style = MaterialTheme.typography.bodySmall,

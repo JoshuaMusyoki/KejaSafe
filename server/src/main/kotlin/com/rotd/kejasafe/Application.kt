@@ -11,7 +11,10 @@ import com.rotd.kejasafe.kyc.KycService
 import com.rotd.kejasafe.listing.ListingService
 import com.rotd.kejasafe.listing.LiveTourService
 import com.rotd.kejasafe.listing.StoryService
+import com.rotd.kejasafe.listing.propertyRequestRoutes
+import com.rotd.kejasafe.payment.mpesaCallbackRoutes
 import com.rotd.kejasafe.rent.RentService
+import com.rotd.kejasafe.rent.escrowRoutes
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -46,6 +49,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import io.ktor.server.websocket.WebSockets
 import io.ktor.utils.io.readRemaining
 import kotlinx.io.readByteArray
 import kotlinx.serialization.json.Json
@@ -70,6 +74,8 @@ fun Application.module() {
             encodeDefaults = true
         })
     }
+
+    install(WebSockets)
 
     install(CallLogging)
 
@@ -137,6 +143,9 @@ fun Application.module() {
         get("/stats") {
             call.respond(PlatformStatsService.getStats())
         }
+
+        // Safaricom Daraja STK callback (must be public / no JWT)
+        mpesaCallbackRoutes()
 
         route("/auth") {
             post("/register") {
@@ -282,11 +291,19 @@ fun Application.module() {
                     val principal = call.principal<JWTPrincipal>()
                     val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
                     val request = call.receive<PaymentRequest>()
-                    val success = RentService.payBill(request.billId, userId)
-                    if (success) {
-                        call.respond(HttpStatusCode.OK, mapOf("message" to "Payment successful"))
-                    } else {
-                        call.respond(HttpStatusCode.BadRequest, "Payment failed")
+                    try {
+                        val result = RentService.initiateBillPayment(
+                            billId = request.billId,
+                            payerUserId = userId,
+                            phoneNumber = request.phoneNumber
+                        )
+                        call.respond(HttpStatusCode.Accepted, BillPaymentResponse(
+                            billId = result["billId"].orEmpty(),
+                            checkoutRequestId = result["checkoutRequestId"].orEmpty(),
+                            message = result["message"].orEmpty()
+                        ))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Payment failed")
                     }
                 }
 
@@ -344,11 +361,19 @@ fun Application.module() {
                         val bytes = RentService.buildBillPdf(billId, userId)
                         call.response.header(
                             HttpHeaders.ContentDisposition,
-                            "attachment; filename=\"kejasafe-bill-$billId.pdf\""
+                            "inline; filename=\"kejasafe-invoice-$billId.pdf\""
                         )
                         call.respondBytes(bytes, ContentType.Application.Pdf)
+                    } catch (e: IllegalStateException) {
+                        println("Bill PDF not found for $billId: ${e.message}")
+                        call.respond(HttpStatusCode.NotFound, e.message ?: "Bill not found")
                     } catch (e: Exception) {
-                        call.respond(HttpStatusCode.NotFound, e.message ?: "Bill PDF not found")
+                        println("Bill PDF failed for $billId: ${e.message}")
+                        e.printStackTrace()
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            e.message?.take(200) ?: "Could not generate invoice PDF"
+                        )
                     }
                 }
             }
@@ -650,6 +675,9 @@ fun Application.module() {
                     }
                 }
             }
+
+            escrowRoutes()
+            propertyRequestRoutes()
 
             route("/chat") {
                 get("/connections") {

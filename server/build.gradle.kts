@@ -12,4 +12,8 @@ application {
 
 dependencies {
     api(project(":core"))
+    implementation(libs.ktorServerWebsockets)
+    implementation(libs.ktorClientOkhttp)
+    implementation(libs.ktorClientContentNegotiation)
+    implementation(libs.ktorSerializationKotlinxJson)
 }

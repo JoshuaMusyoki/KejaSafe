@@ -20,6 +20,7 @@ import com.rotd.kejasafe.PropertyListing
 import com.rotd.kejasafe.PropertyType
 import com.rotd.kejasafe.RequestType
 import com.rotd.kejasafe.RoommateMatch
+import com.rotd.kejasafe.db.EscrowTransactionsTable
 import com.rotd.kejasafe.db.ListingBookingsTable
 import com.rotd.kejasafe.db.ListingEventsTable
 import com.rotd.kejasafe.db.ListingPhotosTable
@@ -714,7 +715,8 @@ object ListingService {
             return row.toBooking(
                 listingTitle = listing?.get(ListingsTable.title).orEmpty(),
                 pricePerMonth = listing?.get(ListingsTable.pricePerMonth),
-                currency = listing?.get(ListingsTable.currency) ?: "KES"
+                currency = listing?.get(ListingsTable.currency) ?: "KES",
+                requesterUserId = userId
             )
         }
 
@@ -1016,23 +1018,37 @@ object ListingService {
     private fun ResultRow.toBooking(
         listingTitle: String,
         pricePerMonth: Double? = null,
-        currency: String = "KES"
-    ): ListingBooking = ListingBooking(
-        id = this[ListingBookingsTable.id],
-        listingId = this[ListingBookingsTable.listingId],
-        listingTitle = listingTitle,
-        landlordId = this[ListingBookingsTable.landlordId],
-        guestName = this[ListingBookingsTable.guestName],
-        guestUserId = this[ListingBookingsTable.guestUserId],
-        startDateMillis = this[ListingBookingsTable.startDateMillis],
-        endDateMillis = this[ListingBookingsTable.endDateMillis],
-        status = this[ListingBookingsTable.status],
-        notes = this[ListingBookingsTable.notes],
-        slotCount = this[ListingBookingsTable.slotCount],
-        pricePerMonth = pricePerMonth,
-        currency = currency,
-        seekingRoommate = this[ListingBookingsTable.seekingRoommate],
-        budgetMax = this[ListingBookingsTable.budgetMax],
-        roommateMatchId = this[ListingBookingsTable.roommateMatchId]
-    )
+        currency: String = "KES",
+        requesterUserId: String? = null
+    ): ListingBooking {
+        val bid = this[ListingBookingsTable.id]
+        val landlordId = this[ListingBookingsTable.landlordId]
+        val escrow = EscrowTransactionsTable.selectAll()
+            .where { EscrowTransactionsTable.bookingId eq bid }
+            .singleOrNull()
+
+        return ListingBooking(
+            id = bid,
+            listingId = this[ListingBookingsTable.listingId],
+            listingTitle = listingTitle,
+            landlordId = landlordId,
+            guestName = this[ListingBookingsTable.guestName],
+            guestUserId = this[ListingBookingsTable.guestUserId],
+            startDateMillis = this[ListingBookingsTable.startDateMillis],
+            endDateMillis = this[ListingBookingsTable.endDateMillis],
+            status = this[ListingBookingsTable.status],
+            notes = this[ListingBookingsTable.notes],
+            slotCount = this[ListingBookingsTable.slotCount],
+            pricePerMonth = pricePerMonth,
+            currency = currency,
+            seekingRoommate = this[ListingBookingsTable.seekingRoommate],
+            budgetMax = this[ListingBookingsTable.budgetMax],
+            roommateMatchId = this[ListingBookingsTable.roommateMatchId],
+            escrowState = escrow?.get(EscrowTransactionsTable.state),
+            escrowTransactionId = escrow?.get(EscrowTransactionsTable.id),
+            escrowVerificationOtp = if (requesterUserId == landlordId) {
+                escrow?.get(EscrowTransactionsTable.verificationOtp)
+            } else null
+        )
+    }
 }

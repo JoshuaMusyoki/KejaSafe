@@ -1,9 +1,7 @@
 package com.rotd.kejasafe.chat
 
-import com.rotd.kejasafe.data.platformEpochMillis
-
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -29,7 +27,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,8 +36,6 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -52,10 +47,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -87,11 +81,12 @@ import com.rotd.kejasafe.chat.components.ApartmentMessageActionSheet
 import com.rotd.kejasafe.chat.components.ChatPeopleSearchField
 import com.rotd.kejasafe.chat.components.MessageReceiptTicks
 import com.rotd.kejasafe.chat.components.PeerProfileBottomSheet
-import com.rotd.kejasafe.chat.components.formatJoinedDate
+import com.rotd.kejasafe.chat.components.PeerRow
 import com.rotd.kejasafe.components.KejaSafeFloatingNavBar
 import com.rotd.kejasafe.components.KejaSafeNavTab
 import com.rotd.kejasafe.components.ShimmerBlock
 import com.rotd.kejasafe.components.rememberShimmerBrush
+import com.rotd.kejasafe.data.platformEpochMillis
 import com.rotd.kejasafe.domain.chat.ApartmentChatMessage
 import com.rotd.kejasafe.domain.chat.ApartmentChatPeer
 import com.rotd.kejasafe.domain.chat.ChatTimelineItem
@@ -99,10 +94,10 @@ import com.rotd.kejasafe.domain.chat.buildChatTimeline
 import com.rotd.kejasafe.media.ImageBitmapCache
 import com.rotd.kejasafe.media.PdfReaderScreen
 import com.rotd.kejasafe.media.decodeToImageBitmap
-import com.rotd.kejasafe.media.renderPdfFirstPage
 import com.rotd.kejasafe.media.rememberImagePickerLauncher
 import com.rotd.kejasafe.media.rememberPdfPickerLauncher
 import com.rotd.kejasafe.media.rememberPdfShareHandler
+import com.rotd.kejasafe.media.renderPdfFirstPage
 import com.rotd.kejasafe.network.SessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -193,7 +188,7 @@ fun ChatInboxScreen(
                 modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
             )
 
-            TabRow(
+            SecondaryTabRow(
                 selectedTabIndex = if (state.selectedTab == ChatInboxTab.MESSAGES) 0 else 1,
                 containerColor = MaterialTheme.colorScheme.surface,
             ) {
@@ -376,133 +371,7 @@ private fun ErrorLine(message: String) {
 }
 
 @Composable
-private fun PeerRow(
-    row: InboxPeerRow,
-    myUserId: String?,
-    showConnectActions: Boolean,
-    onClick: () -> Unit,
-    onProfileClick: () -> Unit,
-    onConnect: (() -> Unit)? = null,
-    onAccept: (() -> Unit)? = null,
-    loadAttachment: (String) -> ByteArray? = { null },
-) {
-    val peer = row.peer
-    val action = row.actionFor(myUserId)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-            .clickable(onClick = onClick)
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                imageVector = if (peer.peerIsLandlord) Icons.Default.Home else Icons.AutoMirrored.Filled.Chat,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = peer.displayName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = peer.listingTitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (peer.joinedAtMillis > 0L) {
-                Text(
-                    text = "Joined ${formatJoinedDate(peer.joinedAtMillis)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                val last = row.lastMessage
-                if (last != null && last.senderId == myUserId) {
-                    MessageReceiptTicks(status = last.status)
-                }
-                if (last != null && last.isImage()) {
-                    InboxImageThumb(
-                        attachmentId = last.attachmentId,
-                        loadAttachment = loadAttachment,
-                    )
-                }
-                Text(
-                    text = when {
-                        last != null -> last.previewText()
-                        action == PeerConnectAction.PENDING_OUTGOING -> "Request pending"
-                        action == PeerConnectAction.ACCEPT -> "Wants to connect"
-                        action == PeerConnectAction.CONNECT -> "Tap to connect"
-                        peer.peerIsLandlord -> "Your landlord"
-                        else -> "Your tenant"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = when (action) {
-                        PeerConnectAction.ACCEPT, PeerConnectAction.CONNECT ->
-                            MaterialTheme.colorScheme.primary
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-            }
-        }
-        if (showConnectActions) {
-            when (action) {
-                PeerConnectAction.CONNECT -> {
-                    TextButton(onClick = { onConnect?.invoke() }) {
-                        Text("Connect", fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                PeerConnectAction.ACCEPT -> {
-                    TextButton(onClick = { onAccept?.invoke() }) {
-                        Text("Accept", fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                PeerConnectAction.MESSAGE -> {
-                    IconButton(onClick = onClick) {
-                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Message")
-                    }
-                }
-                else -> Unit
-            }
-        }
-        IconButton(onClick = onProfileClick) {
-            Icon(
-                imageVector = Icons.Default.Person,
-                contentDescription = "View profile",
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
-@Composable
-private fun InboxImageThumb(
+fun InboxImageThumb(
     attachmentId: String?,
     loadAttachment: (String) -> ByteArray?,
 ) {
@@ -717,20 +586,11 @@ fun ChatThreadScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            state.peer?.displayName ?: peer.displayName,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            peer.listingTitle,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    Text(
+                        state.peer?.displayName ?: peer.displayName,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

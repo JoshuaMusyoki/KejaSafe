@@ -46,6 +46,9 @@ sealed interface KejaSafeDestination : NavKey {
     @Serializable
     data object Rent : KejaSafeDestination
 
+    @Serializable
+    data object RequestProperty : KejaSafeDestination
+
     /** New listing when [listingId] is null; edit when set. */
     @Serializable
     data class CreateListing(val listingId: String? = null) : KejaSafeDestination

@@ -66,6 +66,8 @@ object BillsTable : Table("rent_bills") {
     val depositIncluded = bool("deposit_included").default(false)
     val electricityNote = varchar("electricity_note", 200).nullable()
     val paymentRequested = bool("payment_requested").default(false)
+    val mpesaCheckoutRequestId = varchar("mpesa_checkout_request_id", 100).nullable()
+    val mpesaReceiptCode = varchar("mpesa_receipt_code", 40).nullable()
 
     override val primaryKey = PrimaryKey(id)
 }
@@ -248,7 +250,10 @@ fun initDatabase() {
             LiveTourSessionsTable,
             CommunityStoriesTable,
             ChatConnectionsTable,
-            ChatMessagesTable
+            ChatMessagesTable,
+            EscrowTransactionsTable,
+            EscrowAuditLogTable,
+            PropertyRequestsTable
         )
         SchemaUtils.createMissingTablesAndColumns(
             UsersTable,
@@ -264,7 +269,10 @@ fun initDatabase() {
             LiveTourSessionsTable,
             CommunityStoriesTable,
             ChatConnectionsTable,
-            ChatMessagesTable
+            ChatMessagesTable,
+            EscrowTransactionsTable,
+            EscrowAuditLogTable,
+            PropertyRequestsTable
         )
     }
 }

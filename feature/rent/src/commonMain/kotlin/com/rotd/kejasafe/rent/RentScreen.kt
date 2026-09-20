@@ -69,30 +69,73 @@ fun RentScreen(
     val isLandlord = user?.role == UserRole.LANDLORD || user?.role == UserRole.ADMIN
     val savePdf = rememberPdfShareHandler()
     var payConfirmBill by remember { mutableStateOf<RentBill?>(null) }
+    var payPhone by remember { mutableStateOf("") }
     var editBill by remember { mutableStateOf<RentBill?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.loadBills()
     }
 
+    // Preview first — download only when user taps Download on this screen.
+    (state as? RentState.Success)?.previewBill?.let { bill ->
+        val success = state as RentState.Success
+        val needsPay = !isLandlord &&
+            (bill.status != BillStatus.PAID || bill.mpesaReceiptCode.isNullOrBlank())
+        InvoicePreviewScreen(
+            bill = bill,
+            pdfBytes = success.previewPdfBytes,
+            isLoadingPdf = success.isLoadingPreviewPdf,
+            pdfError = success.previewPdfError,
+            canRetryPayment = needsPay,
+            onBack = viewModel::dismissInvoicePreview,
+            onDownload = {
+                val latest = viewModel.state.value as? RentState.Success
+                val bytes = latest?.previewPdfBytes
+                    ?: error("PDF is still loading")
+                val name = latest.previewPdfFileName ?: "KejaSafe-Invoice.pdf"
+                savePdf(name, bytes)
+            },
+            onRetryPayment = {
+                viewModel.dismissInvoicePreview()
+                payPhone = viewModel.defaultPayPhone()
+                payConfirmBill = bill
+            }
+        )
+        return
+    }
+
     payConfirmBill?.let { bill ->
         AlertDialog(
             onDismissRequest = { payConfirmBill = null },
-            title = { Text("Pay rent") },
+            title = { Text("Pay with M-Pesa", fontWeight = FontWeight.SemiBold) },
             text = {
-                Text(
-                    "Confirm M-PESA payment of KES ${bill.totalAmount.toInt()} " +
-                        "for ${bill.propertyTitle.ifBlank { "this bill" }}?"
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "KES ${bill.totalAmount.toInt()} for ${bill.propertyTitle.ifBlank { "this bill" }}. " +
+                            "You'll get an STK Push — enter your M-Pesa PIN on your phone."
+                    )
+                    OutlinedTextField(
+                        value = payPhone,
+                        onValueChange = { payPhone = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("M-Pesa phone") },
+                        placeholder = { Text("07xxxxxxxx") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
+                        val phone = payPhone
+                        val id = bill.id
+                        val amount = bill.totalAmount
                         payConfirmBill = null
-                        viewModel.payBill(bill.id)
+                        viewModel.payBill(id, phoneNumber = phone, amount = amount)
                     }
                 ) {
-                    Text("Pay now")
+                    Text("Send M-Pesa prompt")
                 }
             },
             dismissButton = {
@@ -194,17 +237,22 @@ fun RentScreen(
                                 }
                             }
                             items(s.bills, key = { it.id }) { bill ->
-                                val unpaid = bill.status != BillStatus.PAID
+                                val unpaid = bill.status != BillStatus.PAID ||
+                                    bill.mpesaReceiptCode.isNullOrBlank()
                                 BillCard(
                                     bill = bill,
                                     isLandlord = isLandlord,
                                     canPay = !isLandlord && unpaid,
                                     paying = s.payingBillId == bill.id,
                                     requesting = s.requestingBillId == bill.id,
-                                    onPay = { payConfirmBill = bill },
+                                    loadingPdf = s.isLoadingPreviewPdf && s.previewBill?.id == bill.id,
+                                    onPay = {
+                                        payPhone = viewModel.defaultPayPhone()
+                                        payConfirmBill = bill
+                                    },
                                     onRequestPayment = { viewModel.requestPayment(bill.id) },
                                     onEdit = { editBill = bill },
-                                    onDownloadPdf = { viewModel.downloadPdf(bill.id, savePdf) }
+                                    onViewInvoice = { viewModel.previewInvoice(bill.id) }
                                 )
                             }
                         }
@@ -355,10 +403,11 @@ private fun BillCard(
     canPay: Boolean,
     paying: Boolean,
     requesting: Boolean,
+    loadingPdf: Boolean,
     onPay: () -> Unit,
     onRequestPayment: () -> Unit,
     onEdit: () -> Unit,
-    onDownloadPdf: () -> Unit
+    onViewInvoice: () -> Unit
 ) {
     KejaSafeCard {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -422,18 +471,18 @@ private fun BillCard(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = onDownloadPdf,
+            KejaSafeOutlinedButton(
+                text = if (loadingPdf) "Opening…" else "Preview invoice",
+                onClick = onViewInvoice,
+                enabled = !loadingPdf,
                 modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Download PDF")
-            }
+            )
 
             if (canPay) {
                 Spacer(modifier = Modifier.height(10.dp))
                 KejaSafePrimaryButton(
                     text = if (paying) {
-                        "Processing…"
+                        "Waiting for M-Pesa…"
                     } else if (bill.paymentRequested) {
                         "Pay now (requested)"
                     } else {
@@ -478,6 +527,7 @@ private fun BillCard(
 private fun StatusBadge(status: BillStatus) {
     val (label, container) = when (status) {
         BillStatus.PAID -> "Paid" to MaterialTheme.colorScheme.primaryContainer
+        BillStatus.PENDING_PAYMENT -> "Awaiting M-Pesa" to MaterialTheme.colorScheme.tertiaryContainer
         BillStatus.OVERDUE -> "Overdue" to MaterialTheme.colorScheme.errorContainer
         BillStatus.UNPAID -> "Unpaid" to MaterialTheme.colorScheme.secondaryContainer
     }

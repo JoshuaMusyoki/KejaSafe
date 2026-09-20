@@ -22,6 +22,8 @@ import com.rotd.kejasafe.listing.LandlordBookingsScreen
 import com.rotd.kejasafe.listing.LandlordHomeScreen
 import com.rotd.kejasafe.listing.ListingAnalyticsScreen
 import com.rotd.kejasafe.listing.ListingCalendarScreen
+import com.rotd.kejasafe.listing.RequestPropertyScreen
+import com.rotd.kejasafe.listing.RequestPropertyViewModel
 import com.rotd.kejasafe.listing.TenantHomeScreen
 import com.rotd.kejasafe.network.SessionManager
 import com.rotd.kejasafe.profile.EditProfileScreen
@@ -30,6 +32,7 @@ import com.rotd.kejasafe.rent.RentScreen
 import com.rotd.kejasafe.web.FeaturesScreen
 import com.rotd.kejasafe.web.LandingScreen
 import com.rotd.kejasafe.web.PolicyScreen
+import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
 fun KejaSafeNavHost(
@@ -183,7 +186,8 @@ fun KejaSafeNavHost(
                 selectedTab = KejaSafeNavTab.HOME,
                 onTabSelected = ::switchMainTab,
                 onNavigateToProperty = { id -> openDetail(KejaSafeDestination.ListingCalendar(id)) },
-                onNavigateToProfile = { switchMainTab(KejaSafeNavTab.PROFILE) }
+                onNavigateToProfile = { switchMainTab(KejaSafeNavTab.PROFILE) },
+                onNavigateToRequestProperty = { openDetail(KejaSafeDestination.RequestProperty) }
             )
         }
 
@@ -192,7 +196,16 @@ fun KejaSafeNavHost(
                 selectedTab = KejaSafeNavTab.HOME,
                 onTabSelected = ::switchMainTab,
                 onNavigateToProperty = { id -> openDetail(KejaSafeDestination.ListingCalendar(id)) },
-                onNavigateToProfile = { switchMainTab(KejaSafeNavTab.PROFILE) }
+                onNavigateToProfile = { switchMainTab(KejaSafeNavTab.PROFILE) },
+                onNavigateToRequestProperty = { openDetail(KejaSafeDestination.RequestProperty) }
+            )
+        }
+
+        entry<KejaSafeDestination.RequestProperty> {
+            val viewModel = koinViewModel<RequestPropertyViewModel>()
+            RequestPropertyScreen(
+                viewModel = viewModel,
+                onBack = ::goBack
             )
         }
 

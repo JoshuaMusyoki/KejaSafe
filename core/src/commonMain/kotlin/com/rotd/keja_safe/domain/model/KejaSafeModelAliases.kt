@@ -43,13 +43,3 @@ data class Feedback(
     val createdAt: Long = 0L,
     val synced: Boolean = false,
 )
-
-object DefaultLearningStacks {
-    const val FINANCIAL_LITERACY = "financial_literacy"
-    const val DATA_ANNOTATION = "data_annotation"
-}
-
-data class StackUnlockProgress(
-    val unlockedIndex: Int = 0,
-    val updatedAt: Long = 0L,
-)

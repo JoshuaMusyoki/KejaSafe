@@ -37,8 +37,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rotd.kejasafe.BookingStatus
+import com.rotd.kejasafe.EscrowState
 import com.rotd.kejasafe.RequestType
 import com.rotd.kejasafe.RoommateMatch
+import com.rotd.kejasafe.components.EscrowDetailsDialog
 import com.rotd.kejasafe.components.IncomingRequestCard
 import com.rotd.kejasafe.components.KejaSafeCard
 import com.rotd.kejasafe.components.KejaSafeErrorState
@@ -192,7 +195,49 @@ fun LandlordBookingsScreen(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
-                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        if (booking.escrowState != null) {
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(Emerald700.copy(alpha = 0.08f))
+                                                    .padding(12.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Escrow: ${booking.escrowState!!.name.replace('_', ' ')}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Emerald700,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                
+                                                if (booking.escrowState == EscrowState.HELD_IN_ESCROW && !booking.escrowVerificationOtp.isNullOrBlank()) {
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(
+                                                        text = "Move-in Code: ${booking.escrowVerificationOtp}",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                    Text(
+                                                        text = "Give this code to the student upon arrival to release funds.",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+
+                                                Text(
+                                                    text = "View payment details →",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Emerald700,
+                                                    modifier = Modifier
+                                                        .padding(top = 8.dp)
+                                                        .clickable { booking.escrowTransactionId?.let { viewModel.viewEscrowStatus(it) } }
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(14.dp))
                                         KejaSafePrimaryButton(
                                             text = "Generate bill",
                                             onClick = { viewModel.generateBill(booking.id) },
@@ -295,6 +340,15 @@ fun LandlordBookingsScreen(
                             Text("Cancel")
                         }
                     }
+                )
+            }
+
+            if (state.showEscrowDetails) {
+                EscrowDetailsDialog(
+                    summary = state.selectedEscrowSummary,
+                    isActing = state.isActingEscrow,
+                    error = state.escrowError,
+                    onDismiss = viewModel::dismissEscrowDetails
                 )
             }
         }

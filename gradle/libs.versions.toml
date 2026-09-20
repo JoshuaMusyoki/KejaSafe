@@ -12,6 +12,7 @@ grpcAndroid = "1.84.0"
 junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"
+kotlinxDatetime = "0.8.0"
 lifecycle = "2.8.4"
 activityCompose = "1.9.3"
 kotlin = "2.4.10"
@@ -52,7 +53,7 @@ googleGenerativeAi = "0.9.0"
 errorProneAnnotations = "2.31.0"
 koin = "4.1.1"
 workManager = "2.10.0"
-ktor = "3.0.3"
+ktor = "3.3.0"
 concurrentFutures = "1.2.0"
 securityCrypto = "1.1.0-alpha06"
 nearbyConnections = "19.0.0"
@@ -107,6 +108,7 @@ jetbrainsComposeUiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooli
 # Multiplatform
 comAndroidKotlinMultiplatformLibraryGradlePlugin = { module = "com.android.kotlin.multiplatform.library:com.android.kotlin.multiplatform.library.gradle.plugin", version.ref = "comAndroidKotlinMultiplatformLibraryGradlePlugin" }
 kotlinTest = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlinxDatetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
 kotlinxSerializationJson = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationCore" }
 kotlinTestJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 
@@ -278,6 +280,7 @@ ktorServerCors = { module = "io.ktor:ktor-server-cors-jvm", version.ref = "ktor"
 ktorServerCallLogging = { module = "io.ktor:ktor-server-call-logging-jvm", version.ref = "ktor" }
 ktorServerStatusPages = { module = "io.ktor:ktor-server-status-pages-jvm", version.ref = "ktor" }
 ktorServerSwagger = { module = "io.ktor:ktor-server-swagger-jvm", version.ref = "ktor" }
+ktorServerWebsockets = { module = "io.ktor:ktor-server-websockets-jvm", version.ref = "ktor" }
 ktorSerializationJson = { module = "io.ktor:ktor-serialization-kotlinx-json-jvm", version.ref = "ktor" }
 ktorServerTestHost = { module = "io.ktor:ktor-server-test-host-jvm", version.ref = "ktor" }
 exposedCore = { module = "org.jetbrains.exposed:exposed-core", version.ref = "exposed" }

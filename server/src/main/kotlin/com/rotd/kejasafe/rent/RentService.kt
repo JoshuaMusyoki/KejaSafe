@@ -22,6 +22,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import com.rotd.kejasafe.UpdateBillRequest
+import com.rotd.kejasafe.payment.MpesaService
 import java.time.LocalDate
 import java.util.UUID
 
@@ -192,7 +193,10 @@ object RentService {
                 val isTenant = row[BillsTable.userId] == userId
                 val isLandlord = row[BillsTable.propertyId] in ownListings
                 if (!isTenant && !isLandlord) return@mapNotNull null
-                toBill(row)
+                demoteUnverifiedPaid(row)
+                toBill(
+                    BillsTable.selectAll().where { BillsTable.id eq row[BillsTable.id] }.single()
+                )
             }
             .sortedByDescending { it.dueDate }
     }
@@ -208,20 +212,128 @@ object RentService {
             .singleOrNull()
             ?.get(ListingsTable.landlordId) == userId
         if (!isTenant && !isLandlord) return@transaction null
-        toBill(row)
+        demoteUnverifiedPaid(row)
+        toBill(
+            BillsTable.selectAll().where { BillsTable.id eq billId }.single()
+        )
     }
 
-    fun payBill(billId: String, payerUserId: String): Boolean = transaction {
+    /**
+     * Starts M-Pesa STK Push for a rent bill. Status becomes PENDING_PAYMENT until callback.
+     */
+    suspend fun initiateBillPayment(
+        billId: String,
+        payerUserId: String,
+        phoneNumber: String
+    ): Map<String, String> {
+        val phone = phoneNumber.trim()
+        if (phone.isBlank()) error("M-Pesa phone number is required")
+
+        val (amountKes, reference) = transaction {
+            val row = BillsTable.selectAll()
+                .where { BillsTable.id eq billId }
+                .singleOrNull()
+                ?: error("Bill not found")
+            if (row[BillsTable.userId] != payerUserId) error("Not your bill")
+
+            demoteUnverifiedPaid(row)
+            val fresh = BillsTable.selectAll().where { BillsTable.id eq billId }.single()
+            val status = fresh[BillsTable.status]
+            val receipt = fresh[BillsTable.mpesaReceiptCode]
+            if (status == BillStatus.PAID && !receipt.isNullOrBlank()) {
+                error("Bill already paid")
+            }
+
+            val kes = fresh[BillsTable.totalAmount].toLong().coerceAtLeast(1L)
+            BillsTable.update({ BillsTable.id eq billId }) {
+                it[BillsTable.status] = BillStatus.PENDING_PAYMENT
+                it[mpesaReceiptCode] = null
+            }
+            kes to billId.take(12)
+        }
+
+        val stk = try {
+            MpesaService.initiateStkPush(
+                phoneNumber = phone,
+                amountKes = amountKes,
+                reference = reference,
+                description = "Rent bill"
+            )
+        } catch (e: Exception) {
+            transaction {
+                BillsTable.update({ BillsTable.id eq billId }) {
+                    it[status] = BillStatus.UNPAID
+                }
+            }
+            throw e
+        }
+
+        if (!stk.accepted) {
+            transaction {
+                BillsTable.update({ BillsTable.id eq billId }) {
+                    it[status] = BillStatus.UNPAID
+                }
+            }
+            error(stk.failureMessage)
+        }
+
+        transaction {
+            BillsTable.update({ BillsTable.id eq billId }) {
+                it[mpesaCheckoutRequestId] = stk.CheckoutRequestID
+            }
+        }
+
+        return mapOf(
+            "billId" to billId,
+            "checkoutRequestId" to (stk.CheckoutRequestID ?: ""),
+            "message" to (stk.CustomerMessage
+                ?: "STK Push sent to $phone. Enter your M-Pesa PIN on your phone.")
+        )
+    }
+
+    fun handleMpesaCallback(
+        checkoutRequestId: String,
+        paid: Boolean,
+        resultDesc: String,
+        receiptCode: String? = null
+    ) = transaction {
         val row = BillsTable.selectAll()
-            .where { BillsTable.id eq billId }
-            .singleOrNull()
-            ?: return@transaction false
-        if (row[BillsTable.userId] != payerUserId) return@transaction false
-        if (row[BillsTable.status] == BillStatus.PAID) return@transaction true
-        BillsTable.update({ BillsTable.id eq billId }) {
-            it[status] = BillStatus.PAID
-            it[paymentRequested] = false
-        } > 0
+            .where { BillsTable.mpesaCheckoutRequestId eq checkoutRequestId }
+            .singleOrNull() ?: return@transaction
+        if (row[BillsTable.status] == BillStatus.PAID &&
+            !row[BillsTable.mpesaReceiptCode].isNullOrBlank()
+        ) {
+            return@transaction
+        }
+        if (paid) {
+            val code = receiptCode?.takeIf { it.isNotBlank() } ?: "MPESA-OK"
+            BillsTable.update({ BillsTable.id eq row[BillsTable.id] }) {
+                it[status] = BillStatus.PAID
+                it[paymentRequested] = false
+                it[mpesaReceiptCode] = code
+            }
+            println("Bill ${row[BillsTable.id]} marked PAID via M-Pesa ($code / $resultDesc)")
+        } else {
+            BillsTable.update({ BillsTable.id eq row[BillsTable.id] }) {
+                it[status] = BillStatus.UNPAID
+                it[mpesaReceiptCode] = null
+            }
+            println("Bill ${row[BillsTable.id]} M-Pesa failed: $resultDesc")
+        }
+    }
+
+    /**
+     * Earlier builds marked bills PAID without a real M-Pesa receipt — roll those back.
+     */
+    private fun demoteUnverifiedPaid(row: org.jetbrains.exposed.v1.core.ResultRow) {
+        if (row[BillsTable.status] == BillStatus.PAID &&
+            row[BillsTable.mpesaReceiptCode].isNullOrBlank()
+        ) {
+            BillsTable.update({ BillsTable.id eq row[BillsTable.id] }) {
+                it[status] = BillStatus.UNPAID
+                it[mpesaCheckoutRequestId] = null
+            }
+        }
     }
 
     /** Landlord nudges tenant to pay an open bill. */
@@ -306,7 +418,18 @@ object RentService {
                     ?: "Tenant"
             }
         }
-        return BillPdfGenerator.render(bill, tenantName)
+        val propertyAddress = transaction {
+            ListingsTable.selectAll()
+                .where { ListingsTable.id eq bill.propertyId }
+                .singleOrNull()
+                ?.get(ListingsTable.address)
+                .orEmpty()
+        }
+        return BillPdfGenerator.render(
+            bill = bill,
+            tenantName = tenantName,
+            propertyAddress = propertyAddress
+        )
     }
 
     private fun chargesFromListing(row: org.jetbrains.exposed.v1.core.ResultRow): ListingCharges {
@@ -351,7 +474,8 @@ object RentService {
             status = row[BillsTable.status],
             depositIncluded = row[BillsTable.depositIncluded],
             electricityNote = row[BillsTable.electricityNote],
-            paymentRequested = row[BillsTable.paymentRequested]
+            paymentRequested = row[BillsTable.paymentRequested],
+            mpesaReceiptCode = row[BillsTable.mpesaReceiptCode]
         )
     }
 }

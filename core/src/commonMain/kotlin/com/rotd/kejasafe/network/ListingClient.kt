@@ -11,6 +11,7 @@ import com.rotd.kejasafe.PendingListingPhoto
 import com.rotd.kejasafe.PropertyListing
 import com.rotd.kejasafe.GenerateBillRequest
 import com.rotd.kejasafe.PaymentRequest
+import com.rotd.kejasafe.BillPaymentResponse
 import com.rotd.kejasafe.RentBill
 import com.rotd.kejasafe.RoommateMatch
 import com.rotd.kejasafe.UpdateBillRequest
@@ -309,15 +310,25 @@ object ListingClient {
         Result.failure(AppException.from(e))
     }
 
-    suspend fun payBill(billId: String, amount: Double = 0.0): Result<Unit> = try {
+    suspend fun payBill(
+        billId: String,
+        phoneNumber: String,
+        amount: Double = 0.0
+    ): Result<BillPaymentResponse> = try {
         val token = authHeader() ?: return notSignedIn()
         val response = client.post("${AuthClient.BASE_URL}/rent/pay") {
             header(HttpHeaders.Authorization, token)
             contentType(ContentType.Application.Json)
-            setBody(PaymentRequest(billId = billId, amount = amount))
+            setBody(
+                PaymentRequest(
+                    billId = billId,
+                    amount = amount,
+                    phoneNumber = phoneNumber
+                )
+            )
         }
         if (response.status.isSuccess()) {
-            Result.success(Unit)
+            Result.success(response.body())
         } else {
             httpFailure(response, "Payment failed")
         }

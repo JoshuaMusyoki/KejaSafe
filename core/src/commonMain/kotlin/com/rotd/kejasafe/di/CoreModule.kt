@@ -1,9 +1,11 @@
 package com.rotd.kejasafe.di
 
 import com.rotd.kejasafe.data.CommunityRepository
+import com.rotd.kejasafe.data.EscrowRepository
 import com.rotd.kejasafe.data.ListingLocalStore
 import com.rotd.kejasafe.data.ListingRepository
 import com.rotd.kejasafe.data.ProfileRepository
+import com.rotd.kejasafe.data.PropertyRequestRepository
 import com.rotd.kejasafe.data.RentRepository
 import com.rotd.kejasafe.data.UserProfileDataSource
 import com.rotd.kejasafe.data.createListingLocalStore
@@ -25,6 +27,8 @@ val coreModule = module {
     single { ListingRepository(localStore = get()) }
     single { CommunityRepository() }
     single { RentRepository() }
+    single { PropertyRequestRepository() }
+    single { EscrowRepository() }
     single { ProfileRepository(authRepository = get()) }
     single<UserProfileDataSource> { createUserProfileDataSource() }
     single<BiometricAuthenticator> { createBiometricAuthenticator() }
