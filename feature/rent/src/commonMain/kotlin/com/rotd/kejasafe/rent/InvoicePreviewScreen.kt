@@ -149,9 +149,24 @@ fun InvoicePreviewScreen(
                             }
                         }
                     } else if (canRetryPayment) {
+                        bill.paymentFailureReason?.takeIf { it.isNotBlank() }?.let { reason ->
+                            Text(
+                                reason,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        if (bill.amountPaid > 0 && bill.status != BillStatus.PAID) {
+                            Text(
+                                "Paid KES ${bill.amountPaid.toLong()} · Remaining KES ${bill.remainingAmount.toLong()}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                         KejaSafePrimaryButton(
                             text = when (bill.status) {
                                 BillStatus.PENDING_PAYMENT -> "Retry M-Pesa payment"
+                                BillStatus.FAILED, BillStatus.CANCELLED -> "Try M-Pesa again"
+                                BillStatus.PARTIALLY_PAID -> "Pay remaining balance"
                                 else -> "Pay with M-Pesa"
                             },
                             onClick = onRetryPayment,
@@ -252,7 +267,8 @@ private fun InvoiceSummaryPreview(
     val statusColor = when (bill.status) {
         BillStatus.PAID -> Emerald700
         BillStatus.PENDING_PAYMENT -> MaterialTheme.colorScheme.tertiary
-        BillStatus.OVERDUE -> MaterialTheme.colorScheme.error
+        BillStatus.PARTIALLY_PAID -> Gold600
+        BillStatus.OVERDUE, BillStatus.FAILED, BillStatus.CANCELLED -> MaterialTheme.colorScheme.error
         BillStatus.UNPAID -> Gold600
     }
 

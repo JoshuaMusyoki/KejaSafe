@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.*
@@ -122,13 +123,47 @@ fun RequestPropertyScreen(
                 }
             }
 
-            KejaSafeFormField(label = "Area") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Area",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    TextButton(onClick = { viewModel.useCurrentLocation() }) {
+                        Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Use current area", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+                
                 KejaSafeTextField(
                     value = state.area,
                     onValueChange = { viewModel.updateArea(it) },
                     placeholder = "e.g. Rungiri, Kabete",
                     trailingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
                 )
+
+                if (state.estateSuggestions.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Column {
+                            state.estateSuggestions.forEach { estate ->
+                                DropdownMenuItem(
+                                    text = { Text(estate) },
+                                    onClick = { viewModel.selectEstate(estate) }
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

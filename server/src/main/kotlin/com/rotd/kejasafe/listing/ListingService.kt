@@ -121,6 +121,8 @@ object ListingService {
             it[ListingsTable.activeBookings] = 0
             it[ListingsTable.totalViews] = 0
             it[ListingsTable.inquiries] = 0
+            request.latitude?.let { lat -> it[ListingsTable.latitude] = lat }
+            request.longitude?.let { lng -> it[ListingsTable.longitude] = lng }
             it[ListingsTable.createdAt] = now
         }
         PropertyListing(
@@ -149,11 +151,33 @@ object ListingService {
             .sortedByDescending { it.createdAt }
     }
 
-    fun getBrowseListings(): List<PropertyListing> = transaction {
-        ListingsTable.selectAll()
+    private fun haversineDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return r * c
+    }
+
+    fun getBrowseListings(userLat: Double? = null, userLng: Double? = null): List<PropertyListing> = transaction {
+        val allListings = ListingsTable.selectAll()
             .where { ListingsTable.status inList listOf(ListingStatus.VERIFIED, ListingStatus.PENDING) }
             .map { row -> row.toListing(loadPhotos(row[ListingsTable.id])) }
-            .sortedByDescending { it.createdAt }
+        
+        if (userLat != null && userLng != null) {
+            // Filter by 30km and sort by distance
+            allListings.filter { haversineDistance(userLat, userLng, it.latitude, it.longitude) <= 30.0 }
+                .sortedBy { haversineDistance(userLat, userLng, it.latitude, it.longitude) }
+                .ifEmpty {
+                    // If none within 30km, return all sorted by distance (suggestions)
+                    allListings.sortedBy { haversineDistance(userLat, userLng, it.latitude, it.longitude) }
+                }
+        } else {
+            allListings.sortedByDescending { it.createdAt }
+        }
     }
 
     fun getListing(id: String): PropertyListing? = transaction {
@@ -277,6 +301,8 @@ object ListingService {
                 } else 0.0
             it[extraChargesJson] = chargesToJson(charges)
             it[deposit] = charges.deposit.coerceAtLeast(0.0)
+            request.latitude?.let { lat -> it[latitude] = lat }
+            request.longitude?.let { lng -> it[longitude] = lng }
         }
         if (updated == 0) return@transaction null
         ListingsTable.selectAll()
@@ -869,6 +895,8 @@ object ListingService {
             activeBookings = this[ListingsTable.activeBookings],
             totalViews = this[ListingsTable.totalViews],
             inquiries = this[ListingsTable.inquiries],
+            latitude = this[ListingsTable.latitude],
+            longitude = this[ListingsTable.longitude],
             createdAt = this[ListingsTable.createdAt]
         )
     }

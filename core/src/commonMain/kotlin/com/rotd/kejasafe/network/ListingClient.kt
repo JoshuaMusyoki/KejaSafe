@@ -471,10 +471,12 @@ object ListingClient {
         Result.failure(AppException.from(e))
     }
 
-    suspend fun getBrowseListings(): Result<List<PropertyListing>> = try {
+    suspend fun getBrowseListings(lat: Double? = null, lng: Double? = null): Result<List<PropertyListing>> = try {
         val token = authHeader()
         val response = client.get("${AuthClient.BASE_URL}/listings") {
             if (token != null) header(HttpHeaders.Authorization, token)
+            if (lat != null) parameter("lat", lat)
+            if (lng != null) parameter("lng", lng)
         }
         if (response.status.isSuccess()) {
             Result.success(response.body())

@@ -42,6 +42,32 @@ data class MpesaStkResponse(
             ?: "M-Pesa STK push failed"
 }
 
+/** Daraja STK Push Query — used when the callback URL is unreachable (local/dev). */
+@Serializable
+data class MpesaStkQueryRequest(
+    val BusinessShortCode: String,
+    val Password: String,
+    val Timestamp: String,
+    val CheckoutRequestID: String
+)
+
+@Serializable
+data class MpesaStkQueryResponse(
+    val ResponseCode: String? = null,
+    val ResponseDescription: String? = null,
+    val MerchantRequestID: String? = null,
+    val CheckoutRequestID: String? = null,
+    /** Query API returns this as a string (e.g. "0", "1032"). */
+    val ResultCode: String? = null,
+    val ResultDesc: String? = null,
+    val errorCode: String? = null,
+    val errorMessage: String? = null
+) {
+    val resultCodeInt: Int? get() = ResultCode?.trim()?.toIntOrNull()
+    /** True when Daraja returned a definitive ResultCode (not still waiting for PIN). */
+    val hasFinalResult: Boolean get() = resultCodeInt != null
+}
+
 /** Safaricom Daraja STK callback envelope. */
 @Serializable
 data class MpesaCallbackEnvelope(

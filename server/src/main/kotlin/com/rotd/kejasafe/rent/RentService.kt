@@ -182,26 +182,38 @@ object RentService {
         )
     }
 
-    fun getBillsForUser(userId: String): List<RentBill> = transaction {
-        val ownListings = ListingsTable.selectAll()
-            .where { ListingsTable.landlordId eq userId }
-            .map { it[ListingsTable.id] }
-            .toSet()
+    /**
+     * Returns bills for the user. Before reading, asks Daraja for any PENDING_PAYMENT
+     * STK outcomes so invoices update even when the callback URL cannot reach this server.
+     */
+    suspend fun getBillsForUser(userId: String): List<RentBill> {
+        syncPendingStkForUser(userId)
+        return transaction {
+            val ownListings = ListingsTable.selectAll()
+                .where { ListingsTable.landlordId eq userId }
+                .map { it[ListingsTable.id] }
+                .toSet()
 
-        BillsTable.selectAll()
-            .mapNotNull { row ->
-                val isTenant = row[BillsTable.userId] == userId
-                val isLandlord = row[BillsTable.propertyId] in ownListings
-                if (!isTenant && !isLandlord) return@mapNotNull null
-                demoteUnverifiedPaid(row)
-                toBill(
-                    BillsTable.selectAll().where { BillsTable.id eq row[BillsTable.id] }.single()
-                )
-            }
-            .sortedByDescending { it.dueDate }
+            BillsTable.selectAll()
+                .mapNotNull { row ->
+                    val isTenant = row[BillsTable.userId] == userId
+                    val isLandlord = row[BillsTable.propertyId] in ownListings
+                    if (!isTenant && !isLandlord) return@mapNotNull null
+                    demoteUnverifiedPaid(row)
+                    toBill(
+                        BillsTable.selectAll().where { BillsTable.id eq row[BillsTable.id] }.single()
+                    )
+                }
+                .sortedByDescending { it.dueDate }
+        }
     }
 
-    fun getBillForUser(billId: String, userId: String): RentBill? = transaction {
+    suspend fun getBillForUser(billId: String, userId: String): RentBill? {
+        syncPendingStkForBill(billId)
+        return readBillForUser(billId, userId)
+    }
+
+    fun readBillForUser(billId: String, userId: String): RentBill? = transaction {
         val row = BillsTable.selectAll()
             .where { BillsTable.id eq billId }
             .singleOrNull()
@@ -218,18 +230,91 @@ object RentService {
         )
     }
 
+    /** Query Daraja for every open STK visible to this user and apply final results. */
+    private suspend fun syncPendingStkForUser(userId: String) {
+        val pending = transaction {
+            val ownListings = ListingsTable.selectAll()
+                .where { ListingsTable.landlordId eq userId }
+                .map { it[ListingsTable.id] }
+                .toSet()
+            BillsTable.selectAll()
+                .mapNotNull { row ->
+                    val visible = row[BillsTable.userId] == userId ||
+                        row[BillsTable.propertyId] in ownListings
+                    if (!visible) return@mapNotNull null
+                    if (row[BillsTable.status] != BillStatus.PENDING_PAYMENT) return@mapNotNull null
+                    val checkout = row[BillsTable.mpesaCheckoutRequestId]?.takeIf { it.isNotBlank() }
+                        ?: return@mapNotNull null
+                    row[BillsTable.id] to checkout
+                }
+        }
+        pending.forEach { (billId, checkout) ->
+            queryAndApplyStk(billId, checkout)
+        }
+    }
+
+    private suspend fun syncPendingStkForBill(billId: String) {
+        val checkout = transaction {
+            val row = BillsTable.selectAll().where { BillsTable.id eq billId }.singleOrNull()
+                ?: return@transaction null
+            if (row[BillsTable.status] != BillStatus.PENDING_PAYMENT) return@transaction null
+            row[BillsTable.mpesaCheckoutRequestId]?.takeIf { it.isNotBlank() }
+        } ?: return
+        queryAndApplyStk(billId, checkout)
+    }
+
+    private suspend fun queryAndApplyStk(billId: String, checkoutRequestId: String) {
+        val query = try {
+            MpesaService.queryStkPush(checkoutRequestId)
+        } catch (e: Exception) {
+            println("STK query failed for bill $billId ($checkoutRequestId): ${e.message}")
+            return
+        }
+
+        val isProcessing = query.ResultDesc?.lowercase()?.contains("processing") == true ||
+            query.ResponseDescription?.lowercase()?.contains("processing") == true ||
+            query.errorMessage?.lowercase()?.contains("processing") == true ||
+            query.ResultCode?.lowercase()?.contains("processing") == true
+
+        if (isProcessing) {
+            println("STK query pending for bill $billId: still under processing")
+            // DO NOT fall through to mapMpesaFailure or let the transaction fail.
+            return
+        }
+
+        val resultCode = query.resultCodeInt ?: run {
+            println(
+                "STK query pending for bill $billId: " +
+                    "${query.ResponseDescription ?: query.errorMessage ?: query.ResultDesc}"
+            )
+            return
+        }
+        println(
+            "STK query final for bill $billId: ResultCode=$resultCode ${query.ResultDesc}"
+        )
+        handleMpesaCallback(
+            checkoutRequestId = checkoutRequestId,
+            resultCode = resultCode,
+            resultDesc = query.ResultDesc ?: query.ResponseDescription.orEmpty(),
+            receiptCode = if (resultCode == 0) "STK-$checkoutRequestId".take(40) else null,
+            paidAmountKes = null // credited from pendingPaymentAmount stored at initiate
+        )
+    }
+
     /**
      * Starts M-Pesa STK Push for a rent bill. Status becomes PENDING_PAYMENT until callback.
+     * @param amountKes optional custom amount for partial payment; defaults to remaining balance.
      */
     suspend fun initiateBillPayment(
         billId: String,
         payerUserId: String,
-        phoneNumber: String
+        phoneNumber: String,
+        amountKes: Long? = null
     ): Map<String, String> {
         val phone = phoneNumber.trim()
         if (phone.isBlank()) error("M-Pesa phone number is required")
 
-        val (amountKes, reference) = transaction {
+        val (payAmount, reference) = transaction {
             val row = BillsTable.selectAll()
                 .where { BillsTable.id eq billId }
                 .singleOrNull()
@@ -244,25 +329,39 @@ object RentService {
                 error("Bill already paid")
             }
 
-            val kes = fresh[BillsTable.totalAmount].toLong().coerceAtLeast(1L)
+            val alreadyPaid = fresh[BillsTable.amountPaid].coerceAtLeast(0.0)
+            val remaining = (fresh[BillsTable.totalAmount] - alreadyPaid).coerceAtLeast(0.0)
+            if (remaining < 1.0) error("Bill already fully paid")
+
+            val requested = amountKes?.takeIf { it > 0 }
+                ?: remaining.toLong().coerceAtLeast(1L)
+            if (requested < 1L) error("Amount must be at least 1 KES")
+            if (requested > remaining.toLong().coerceAtLeast(1L)) {
+                error("Amount cannot exceed remaining balance of KES ${remaining.toLong()}")
+            }
+
             BillsTable.update({ BillsTable.id eq billId }) {
                 it[BillsTable.status] = BillStatus.PENDING_PAYMENT
                 it[mpesaReceiptCode] = null
+                it[paymentFailureReason] = null
+                it[pendingPaymentAmount] = requested.toDouble()
             }
-            kes to billId.take(12)
+            requested to billId.take(12)
         }
 
         val stk = try {
             MpesaService.initiateStkPush(
                 phoneNumber = phone,
-                amountKes = amountKes,
+                amountKes = payAmount,
                 reference = reference,
                 description = "Rent bill"
             )
         } catch (e: Exception) {
             transaction {
+                val fallback = restoreOpenStatus(billId)
                 BillsTable.update({ BillsTable.id eq billId }) {
-                    it[status] = BillStatus.UNPAID
+                    it[status] = fallback
+                    it[pendingPaymentAmount] = null
                 }
             }
             throw e
@@ -270,8 +369,10 @@ object RentService {
 
         if (!stk.accepted) {
             transaction {
+                val fallback = restoreOpenStatus(billId)
                 BillsTable.update({ BillsTable.id eq billId }) {
-                    it[status] = BillStatus.UNPAID
+                    it[status] = fallback
+                    it[pendingPaymentAmount] = null
                 }
             }
             error(stk.failureMessage)
@@ -287,15 +388,17 @@ object RentService {
             "billId" to billId,
             "checkoutRequestId" to (stk.CheckoutRequestID ?: ""),
             "message" to (stk.CustomerMessage
-                ?: "STK Push sent to $phone. Enter your M-Pesa PIN on your phone.")
+                ?: "STK Push of KES $payAmount sent to $phone. Enter your M-Pesa PIN on your phone.")
         )
     }
 
     fun handleMpesaCallback(
         checkoutRequestId: String,
-        paid: Boolean,
+        resultCode: Int,
         resultDesc: String,
-        receiptCode: String? = null
+        receiptCode: String? = null,
+        paidAmountKes: Double? = null,
+        payerName: String? = null
     ) = transaction {
         val row = BillsTable.selectAll()
             .where { BillsTable.mpesaCheckoutRequestId eq checkoutRequestId }
@@ -305,20 +408,80 @@ object RentService {
         ) {
             return@transaction
         }
-        if (paid) {
+
+        if (resultCode == 0) {
+            val pending = row[BillsTable.pendingPaymentAmount]
+                ?: paidAmountKes
+                ?: 0.0
+            val credited = (paidAmountKes?.takeIf { it > 0 } ?: pending).coerceAtLeast(0.0)
+            val newPaid = (row[BillsTable.amountPaid] + credited).coerceAtMost(row[BillsTable.totalAmount])
+            val fullyPaid = newPaid + 0.001 >= row[BillsTable.totalAmount]
             val code = receiptCode?.takeIf { it.isNotBlank() } ?: "MPESA-OK"
             BillsTable.update({ BillsTable.id eq row[BillsTable.id] }) {
-                it[status] = BillStatus.PAID
-                it[paymentRequested] = false
-                it[mpesaReceiptCode] = code
+                it[amountPaid] = newPaid
+                it[pendingPaymentAmount] = null
+                it[paymentFailureReason] = null
+                it[paymentRequested] = !fullyPaid && row[BillsTable.paymentRequested]
+                it[status] = if (fullyPaid) BillStatus.PAID else BillStatus.PARTIALLY_PAID
+                it[mpesaReceiptCode] = if (fullyPaid) code else row[BillsTable.mpesaReceiptCode]
+                if (!payerName.isNullOrBlank()) {
+                    it[mpesaPayerName] = payerName
+                }
             }
-            println("Bill ${row[BillsTable.id]} marked PAID via M-Pesa ($code / $resultDesc)")
-        } else {
-            BillsTable.update({ BillsTable.id eq row[BillsTable.id] }) {
-                it[status] = BillStatus.UNPAID
+            // Keep latest receipt even on partials when provided.
+            if (!fullyPaid && !receiptCode.isNullOrBlank()) {
+                BillsTable.update({ BillsTable.id eq row[BillsTable.id] }) {
+                    it[mpesaReceiptCode] = receiptCode
+                }
+            }
+            println(
+                "Bill ${row[BillsTable.id]} M-Pesa OK: +$credited → paid=$newPaid / " +
+                    "${row[BillsTable.totalAmount]} ($code / $resultDesc)"
+            )
+            return@transaction
+        }
+
+        val (status, reason) = mapMpesaFailure(resultCode, resultDesc)
+        
+        // If it was already partially paid, don't clobber it to a full hard FAILED/CANCELLED state on subsequent checks
+        val currentAmountPaid = row[BillsTable.amountPaid]
+        val resolvedStatus = if (currentAmountPaid > 0.0) BillStatus.PARTIALLY_PAID else status
+
+        BillsTable.update({ BillsTable.id eq row[BillsTable.id] }) {
+            it[BillsTable.status] = resolvedStatus
+            it[pendingPaymentAmount] = null
+            it[paymentFailureReason] = if (resolvedStatus == BillStatus.PARTIALLY_PAID) null else reason
+            // Keep prior verified receipt if any partial success already happened.
+            if (currentAmountPaid <= 0.0) {
                 it[mpesaReceiptCode] = null
             }
-            println("Bill ${row[BillsTable.id]} M-Pesa failed: $resultDesc")
+        }
+        println("Bill ${row[BillsTable.id]} M-Pesa $status: $reason (code=$resultCode)")
+    }
+
+    /** Map Daraja ResultCode / ResultDesc to FAILED or CANCELLED with a short reason. */
+    private fun mapMpesaFailure(resultCode: Int, resultDesc: String): Pair<BillStatus, String> {
+        val desc = resultDesc.trim().ifBlank { "M-Pesa payment failed" }
+        val lower = desc.lowercase()
+        return when {
+            resultCode == 1 || lower.contains("insufficient") ->
+                BillStatus.FAILED to "Insufficient M-Pesa balance"
+            resultCode == 1032 || lower.contains("cancel") ->
+                BillStatus.CANCELLED to "Payment cancelled on phone"
+            resultCode == 1037 || lower.contains("timeout") ->
+                BillStatus.FAILED to "M-Pesa prompt timed out"
+            resultCode == 2001 || lower.contains("wrong pin") || lower.contains("pin") ->
+                BillStatus.FAILED to (desc.take(240))
+            else -> BillStatus.FAILED to desc.take(240)
+        }
+    }
+
+    private fun restoreOpenStatus(billId: String): BillStatus {
+        val row = BillsTable.selectAll().where { BillsTable.id eq billId }.singleOrNull()
+            ?: return BillStatus.UNPAID
+        return when {
+            row[BillsTable.amountPaid] > 0.0 -> BillStatus.PARTIALLY_PAID
+            else -> BillStatus.UNPAID
         }
     }
 
@@ -407,7 +570,7 @@ object RentService {
     }
 
     fun buildBillPdf(billId: String, requesterUserId: String): ByteArray {
-        val bill = getBillForUser(billId, requesterUserId)
+        val bill = readBillForUser(billId, requesterUserId)
             ?: error("Bill not found")
         val tenantName = bill.tenantName.ifBlank {
             transaction {
@@ -470,12 +633,15 @@ object RentService {
             year = row[BillsTable.year],
             items = items,
             totalAmount = row[BillsTable.totalAmount],
+            amountPaid = row[BillsTable.amountPaid],
             dueDate = row[BillsTable.dueDate],
             status = row[BillsTable.status],
             depositIncluded = row[BillsTable.depositIncluded],
             electricityNote = row[BillsTable.electricityNote],
             paymentRequested = row[BillsTable.paymentRequested],
-            mpesaReceiptCode = row[BillsTable.mpesaReceiptCode]
+            mpesaReceiptCode = row[BillsTable.mpesaReceiptCode],
+            mpesaPayerName = row[BillsTable.mpesaPayerName],
+            paymentFailureReason = row[BillsTable.paymentFailureReason]
         )
     }
 }

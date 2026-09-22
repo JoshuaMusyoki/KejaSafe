@@ -21,6 +21,7 @@ import com.rotd.kejasafe.ListingPhotoResponse
 import com.rotd.kejasafe.LiveTourMediaType
 import com.rotd.kejasafe.PendingListingPhoto
 import com.rotd.kejasafe.PickedImage
+import com.rotd.kejasafe.LocationProvider
 import com.rotd.kejasafe.PropertyListing
 import com.rotd.kejasafe.PropertyType
 import com.rotd.kejasafe.RoommateMatch
@@ -57,6 +58,7 @@ data class RequestPropertyUiState(
     val houseType: HouseType? = HouseType.APARTMENT,
     val listingType: ListingType = ListingType.RENT,
     val area: String = "Rungiri, Kabete",
+    val estateSuggestions: List<String> = emptyList(),
     val distance: DistancePreference = DistancePreference.SHORT_MATATU_RIDE,
     val budgetFrom: String = "10000",
     val budgetTo: String = "15000",
@@ -85,7 +87,41 @@ class RequestPropertyViewModel(
     fun updateSize(size: HouseSize) = _state.update { it.copy(size = size) }
     fun updateHouseType(type: HouseType?) = _state.update { it.copy(houseType = type) }
     fun updateListingType(type: ListingType) = _state.update { it.copy(listingType = type) }
-    fun updateArea(area: String) = _state.update { it.copy(area = area) }
+    
+    fun updateArea(area: String) {
+        _state.update { it.copy(area = area) }
+        updateEstateSuggestions(area)
+    }
+
+    private fun updateEstateSuggestions(area: String) {
+        val q = area.trim()
+        if (q.length < 3) {
+            _state.update { it.copy(estateSuggestions = emptyList()) }
+            return
+        }
+        
+        viewModelScope.launch {
+            val suggestions = runCatching { LocationProvider().searchPlaces(q) }.getOrNull() ?: emptyList()
+            _state.update { it.copy(estateSuggestions = suggestions) }
+        }
+    }
+
+    fun selectEstate(estate: String) {
+        _state.update { it.copy(area = estate, estateSuggestions = emptyList()) }
+    }
+
+    fun useCurrentLocation() {
+        viewModelScope.launch {
+            val coords = try { LocationProvider().getCurrentLocation() } catch (e: Exception) { null }
+            if (coords != null) {
+                val name = runCatching { LocationProvider().getPlaceName(coords.latitude, coords.longitude) }.getOrNull()
+                if (name != null) {
+                    updateArea(name)
+                }
+            }
+        }
+    }
+
     fun updateDistance(dist: DistancePreference) = _state.update { it.copy(distance = dist) }
     fun updateBudgetFrom(from: String) = _state.update { it.copy(budgetFrom = from.filter { it.isDigit() }) }
     fun updateBudgetTo(to: String) = _state.update { it.copy(budgetTo = to.filter { it.isDigit() }) }
@@ -229,7 +265,11 @@ data class TenantHomeState(
     val error: String? = null,
     val syncWarning: String? = null,
     val listings: List<PropertyListing> = emptyList(),
-    val searchQuery: String = ""
+    val searchQuery: String = "",
+    val userLatitude: Double? = null,
+    val userLongitude: Double? = null,
+    val userLocationName: String? = null,
+    val showLocationPrompt: Boolean = false
 )
 
 data class CreateListingUiState(
@@ -571,6 +611,29 @@ class CreateListingViewModel(
         // Always re-fetch when editing so home→edit shows latest title/photos after saves.
         if (!editingListingId.isNullOrBlank()) {
             loadListing(editingListingId)
+        } else if (_state.value.draft.latitude.isBlank()) {
+            // New listing: try to pre-fill location if not already set.
+            requestDeviceLocation()
+        }
+    }
+
+    fun requestDeviceLocation() {
+        viewModelScope.launch {
+            val coords = try {
+                LocationProvider().getCurrentLocation()
+            } catch (e: Exception) {
+                null
+            }
+            if (coords != null) {
+                _state.update { s ->
+                    s.copy(
+                        draft = s.draft.copy(
+                            latitude = coords.latitude.toString(),
+                            longitude = coords.longitude.toString()
+                        )
+                    )
+                }
+            }
         }
     }
 
@@ -590,7 +653,9 @@ class CreateListingViewModel(
                             university = listing.university.orEmpty(),
                             pricePerMonth = listing.pricePerMonth?.toString().orEmpty(),
                             propertyType = listing.propertyType ?: PropertyType.BEDSITTER,
-                            unitsCount = (listing.unitsCount ?: 1).toString()
+                            unitsCount = (listing.unitsCount ?: 1).toString(),
+                            latitude = listing.latitude.toString(),
+                            longitude = listing.longitude.toString()
                         ).run { listing.charges.toDraftFields().invoke(this) },
                         existingPhotos = listing.photos.ifEmpty {
                             listing.imageUrls.mapIndexed { index, url ->
@@ -735,6 +800,10 @@ class CreateListingViewModel(
 
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, error = null, syncNote = null) }
+            
+            val cleanLat = draft.latitude.replace(',', '.').trim()
+            val cleanLng = draft.longitude.replace(',', '.').trim()
+            
             val request = CreateListingRequest(
                 title = draft.title.trim(),
                 address = draft.address.trim(),
@@ -743,7 +812,9 @@ class CreateListingViewModel(
                 pricePerMonth = draft.pricePerMonth.toDoubleOrNull(),
                 propertyType = draft.propertyType,
                 unitsCount = draft.unitsCount.toIntOrNull()?.coerceAtLeast(1) ?: 1,
-                charges = draft.toCharges()
+                charges = draft.toCharges(),
+                latitude = cleanLat.toDoubleOrNull(),
+                longitude = cleanLng.toDoubleOrNull()
             )
             listingRepository.saveListing(
                 listingId = _state.value.listingId,
@@ -1318,7 +1389,7 @@ class ListingCalendarViewModel(
 class TenantHomeViewModel(
     private val listingRepository: ListingRepository
 ) : ViewModel() {
-    private val _state = MutableStateFlow(TenantHomeState())
+    private val _state = MutableStateFlow(TenantHomeState(showLocationPrompt = true))
     val state: StateFlow<TenantHomeState> = _state.asStateFlow()
 
     init {
@@ -1343,6 +1414,8 @@ class TenantHomeViewModel(
                 _state.update { it.copy(error = null, syncWarning = null) }
             }
             listingRepository.getBrowseListings(
+                lat = _state.value.userLatitude,
+                lng = _state.value.userLongitude,
                 onCacheHit = { cached ->
                     _state.update {
                         it.copy(listings = cached, isLoading = false, error = null)
@@ -1368,6 +1441,53 @@ class TenantHomeViewModel(
                         )
                     }
                 }
+        }
+    }
+
+    fun dismissLocationPrompt() {
+        _state.update { it.copy(showLocationPrompt = false) }
+    }
+
+    fun setManualLocation(lat: Double, lng: Double, name: String? = null) {
+        _state.update { 
+            it.copy(
+                userLatitude = lat, 
+                userLongitude = lng, 
+                userLocationName = name,
+                showLocationPrompt = false 
+            ) 
+        }
+        refresh(showLoading = true)
+        if (name == null) {
+            viewModelScope.launch {
+                val placeName = runCatching { LocationProvider().getPlaceName(lat, lng) }.getOrNull()
+                _state.update { it.copy(userLocationName = placeName) }
+            }
+        }
+    }
+
+    fun requestDeviceLocation() {
+        viewModelScope.launch {
+            val provider = LocationProvider()
+            val coords = try {
+                provider.getCurrentLocation()
+            } catch (e: Exception) {
+                null
+            }
+            if (coords != null) {
+                val name = runCatching { provider.getPlaceName(coords.latitude, coords.longitude) }.getOrNull()
+                _state.update {
+                    it.copy(
+                        userLatitude = coords.latitude,
+                        userLongitude = coords.longitude,
+                        userLocationName = name,
+                        showLocationPrompt = false
+                    )
+                }
+            } else {
+                _state.update { it.copy(error = "Could not fetch device GPS. Please pick a center manually.") }
+            }
+            refresh(showLoading = true)
         }
     }
 

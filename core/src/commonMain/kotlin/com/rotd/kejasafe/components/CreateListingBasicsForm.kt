@@ -162,6 +162,11 @@ fun CreateListingBasicsForm(
     onAddPhotosClick: (() -> Unit)? = null,
     onRemovePhoto: ((String) -> Unit)? = null,
     onRemoveExistingPhoto: ((String) -> Unit)? = null,
+    latitude: String = "",
+    onLatitudeChange: ((String) -> Unit)? = null,
+    longitude: String = "",
+    onLongitudeChange: ((String) -> Unit)? = null,
+    onGetLocationClick: (() -> Unit)? = null,
     isSubmitting: Boolean = false,
     errorMessage: String? = null,
     showContinueButton: Boolean = true,
@@ -199,6 +204,53 @@ fun CreateListingBasicsForm(
                     )
                 }
             )
+        }
+
+        if (onGetLocationClick != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = onGetLocationClick,
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Icon(Icons.Default.LocationOn, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Pin my current location")
+            }
+        }
+
+        if (onLatitudeChange != null && onLongitudeChange != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Map Pin Coordinates",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Used to show distance to tenants accurately. Use the button above to pin your current spot, or enter precise coordinates from Google Maps.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                KejaSafeFormField(label = "Latitude", modifier = Modifier.weight(1f)) {
+                    KejaSafeTextField(
+                        value = latitude,
+                        onValueChange = onLatitudeChange,
+                        placeholder = "-1.2921"
+                    )
+                }
+                KejaSafeFormField(label = "Longitude", modifier = Modifier.weight(1f)) {
+                    KejaSafeTextField(
+                        value = longitude,
+                        onValueChange = onLongitudeChange,
+                        placeholder = "36.8219"
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(14.dp))

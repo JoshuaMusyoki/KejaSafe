@@ -54,9 +54,10 @@ fun Route.propertyRequestRoutes() {
                 EscrowService.handleMpesaCallback(cb.CheckoutRequestID, paid, cb.ResultDesc)
                 RentService.handleMpesaCallback(
                     checkoutRequestId = cb.CheckoutRequestID,
-                    paid = paid,
+                    resultCode = cb.ResultCode,
                     resultDesc = cb.ResultDesc,
-                    receiptCode = cb.mpesaReceiptCode
+                    receiptCode = cb.mpesaReceiptCode,
+                    paidAmountKes = cb.metadataValue("Amount")?.toDoubleOrNull()
                 )
             } catch (e: Exception) {
                 println("Legacy callback error: ${e.message}")

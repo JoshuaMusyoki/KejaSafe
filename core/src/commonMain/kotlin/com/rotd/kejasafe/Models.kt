@@ -81,8 +81,14 @@ enum class BillStatus {
     UNPAID,
     /** STK Push sent; waiting for M-Pesa PIN / callback. */
     PENDING_PAYMENT,
+    /** At least one successful M-Pesa payment, but balance remains. */
+    PARTIALLY_PAID,
     PAID,
-    OVERDUE
+    OVERDUE,
+    /** STK failed (e.g. insufficient balance, wrong PIN, timeout). */
+    FAILED,
+    /** User cancelled the M-Pesa prompt. */
+    CANCELLED
 }
 
 @Serializable
@@ -164,6 +170,8 @@ data class RentBill(
     val year: Int,
     val items: List<BillItem>,
     val totalAmount: Double,
+    /** Sum of successful M-Pesa payments applied to this bill. */
+    val amountPaid: Double = 0.0,
     val dueDate: Long,
     val status: BillStatus = BillStatus.UNPAID,
     val eTimsInvoiceUrl: String? = null,
@@ -173,8 +181,14 @@ data class RentBill(
     /** Landlord asked the tenant to settle this bill. */
     val paymentRequested: Boolean = false,
     /** Safaricom M-Pesa receipt / confirmation code after a real payment. */
-    val mpesaReceiptCode: String? = null
-)
+    val mpesaReceiptCode: String? = null,
+    val mpesaPayerName: String? = null,
+    /** Last M-Pesa failure / cancel reason when status is FAILED or CANCELLED. */
+    val paymentFailureReason: String? = null
+) {
+    val remainingAmount: Double
+        get() = (totalAmount - amountPaid).coerceAtLeast(0.0)
+}
 
 @Serializable
 data class PaymentRequest(
@@ -261,6 +275,8 @@ data class PropertyListing(
     val activeBookings: Int = 0,
     val totalViews: Int = 0,
     val inquiries: Int = 0,
+    val latitude: Double = -1.2921,
+    val longitude: Double = 36.8219,
     val createdAt: Long = 0L
 )
 
@@ -273,7 +289,9 @@ data class CreateListingRequest(
     val pricePerMonth: Double? = null,
     val propertyType: PropertyType = PropertyType.BEDSITTER,
     val unitsCount: Int? = 1,
-    val charges: ListingCharges = ListingCharges()
+    val charges: ListingCharges = ListingCharges(),
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 @Serializable
@@ -517,6 +535,8 @@ data class CreateListingDraft(
     val electricityIsToken: Boolean = true,
     val electricityMonthly: String = "",
     val deposit: String = "",
+    val latitude: String = "",
+    val longitude: String = "",
     val extraCharges: List<DraftExtraCharge> = emptyList()
 )
 

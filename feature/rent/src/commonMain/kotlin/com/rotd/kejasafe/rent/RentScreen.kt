@@ -53,6 +53,7 @@ import com.rotd.kejasafe.components.KejaSafeNavTab
 import com.rotd.kejasafe.components.KejaSafeOfflineBanner
 import com.rotd.kejasafe.components.KejaSafeOutlinedButton
 import com.rotd.kejasafe.components.KejaSafePrimaryButton
+import com.rotd.kejasafe.media.rememberContactPhonePicker
 import com.rotd.kejasafe.media.rememberPdfShareHandler
 import com.rotd.kejasafe.network.SessionManager
 import kotlin.random.Random
@@ -70,7 +71,11 @@ fun RentScreen(
     val savePdf = rememberPdfShareHandler()
     var payConfirmBill by remember { mutableStateOf<RentBill?>(null) }
     var payPhone by remember { mutableStateOf("") }
+    var payAmountText by remember { mutableStateOf("") }
     var editBill by remember { mutableStateOf<RentBill?>(null) }
+    val pickContactPhone = rememberContactPhonePicker { number ->
+        payPhone = number.filter { it.isDigit() || it == '+' }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadBills()
@@ -98,6 +103,7 @@ fun RentScreen(
             onRetryPayment = {
                 viewModel.dismissInvoicePreview()
                 payPhone = viewModel.defaultPayPhone()
+                payAmountText = bill.remainingAmount.toLong().coerceAtLeast(1L).toString()
                 payConfirmBill = bill
             }
         )
@@ -105,14 +111,39 @@ fun RentScreen(
     }
 
     payConfirmBill?.let { bill ->
+        val remaining = bill.remainingAmount.toLong().coerceAtLeast(1L)
         AlertDialog(
             onDismissRequest = { payConfirmBill = null },
             title = { Text("Pay with M-Pesa", fontWeight = FontWeight.SemiBold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "KES ${bill.totalAmount.toInt()} for ${bill.propertyTitle.ifBlank { "this bill" }}. " +
-                            "You'll get an STK Push — enter your M-Pesa PIN on your phone."
+                        buildString {
+                            append("Balance KES $remaining for ${bill.propertyTitle.ifBlank { "this bill" }}.")
+                            if (bill.amountPaid > 0) {
+                                append(" Already paid KES ${bill.amountPaid.toLong()}.")
+                            }
+                            append(" You'll get an STK Push — enter your M-Pesa PIN on your phone.")
+                        }
+                    )
+                    bill.paymentFailureReason?.takeIf { it.isNotBlank() }?.let { reason ->
+                        Text(
+                            reason,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    OutlinedTextField(
+                        value = payAmountText,
+                        onValueChange = { value ->
+                            payAmountText = value.filter { it.isDigit() }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Amount (KES)") },
+                        placeholder = { Text(remaining.toString()) },
+                        supportingText = { Text("Pay in full or enter a smaller amount") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                     OutlinedTextField(
                         value = payPhone,
@@ -121,7 +152,12 @@ fun RentScreen(
                         label = { Text("M-Pesa phone") },
                         placeholder = { Text("07xxxxxxxx") },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        trailingIcon = {
+                            TextButton(onClick = pickContactPhone) {
+                                Text("Contacts")
+                            }
+                        }
                     )
                 }
             },
@@ -130,7 +166,9 @@ fun RentScreen(
                     onClick = {
                         val phone = payPhone
                         val id = bill.id
-                        val amount = bill.totalAmount
+                        val amount = payAmountText.toDoubleOrNull()
+                            ?.takeIf { it > 0 }
+                            ?: bill.remainingAmount
                         payConfirmBill = null
                         viewModel.payBill(id, phoneNumber = phone, amount = amount)
                     }
@@ -248,6 +286,9 @@ fun RentScreen(
                                     loadingPdf = s.isLoadingPreviewPdf && s.previewBill?.id == bill.id,
                                     onPay = {
                                         payPhone = viewModel.defaultPayPhone()
+                                        payAmountText = bill.remainingAmount.toLong()
+                                            .coerceAtLeast(1L)
+                                            .toString()
                                         payConfirmBill = bill
                                     },
                                     onRequestPayment = { viewModel.requestPayment(bill.id) },
@@ -416,7 +457,12 @@ private fun BillCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                KejaSafeHeadline(text = "KES ${bill.totalAmount.toInt()}")
+                Column {
+                    KejaSafeHeadline(text = "KES ${bill.totalAmount.toInt()}")
+                    if (bill.amountPaid > 0 && bill.status != BillStatus.PAID) {
+                        KejaSafeLabel(text = "Paid KES ${bill.amountPaid.toLong()} · Left KES ${bill.remainingAmount.toLong()}")
+                    }
+                }
                 StatusBadge(bill.status)
             }
 
@@ -438,6 +484,19 @@ private fun BillCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 KejaSafeLabel(text = "Includes security deposit")
             }
+            bill.paymentFailureReason
+                ?.takeIf {
+                    it.isNotBlank() &&
+                        bill.status in listOf(BillStatus.FAILED, BillStatus.CANCELLED)
+                }
+                ?.let { reason ->
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        reason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
 
             if (bill.paymentRequested && bill.status != BillStatus.PAID) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -528,7 +587,10 @@ private fun StatusBadge(status: BillStatus) {
     val (label, container) = when (status) {
         BillStatus.PAID -> "Paid" to MaterialTheme.colorScheme.primaryContainer
         BillStatus.PENDING_PAYMENT -> "Awaiting M-Pesa" to MaterialTheme.colorScheme.tertiaryContainer
+        BillStatus.PARTIALLY_PAID -> "Partially paid" to MaterialTheme.colorScheme.secondaryContainer
         BillStatus.OVERDUE -> "Overdue" to MaterialTheme.colorScheme.errorContainer
+        BillStatus.FAILED -> "Failed" to MaterialTheme.colorScheme.errorContainer
+        BillStatus.CANCELLED -> "Cancelled" to MaterialTheme.colorScheme.errorContainer
         BillStatus.UNPAID -> "Unpaid" to MaterialTheme.colorScheme.secondaryContainer
     }
     Surface(

@@ -156,14 +156,19 @@ fun LandlordListingCard(
 fun TenantPropertyCard(
     listing: PropertyListing,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    distanceKm: Double? = null
 ) {
     val priceText = listing.pricePerMonth?.let {
         "${listing.currency} ${it.toInt()}/mo"
     } ?: "Price on request"
     val typeBit = listing.propertyType?.let { typeLabel(it) }
     val unitsBit = listing.unitsCount?.let { n -> "$n unit${if (n == 1) "" else "s"}" }
-    val location = listOfNotNull(listing.address, typeBit, unitsBit).joinToString(" · ")
+    val distanceBit = distanceKm?.let {
+        if (it < 1.0) "${(it * 1000).toInt()}m away"
+        else "${(it * 10).toInt() / 10.0}km away (line)"
+    }
+    val location = listOfNotNull(listing.address, typeBit, unitsBit, distanceBit).joinToString(" · ")
 
     PropertyCard(
         imageUrl = listing.imageUrl.orEmpty(),

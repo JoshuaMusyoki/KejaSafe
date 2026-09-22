@@ -97,5 +97,7 @@ fun PropertyListing.applyRequest(request: CreateListingRequest): PropertyListing
     pricePerMonth = request.pricePerMonth,
     propertyType = request.propertyType,
     unitsCount = request.unitsCount,
-    charges = request.charges
+    charges = request.charges,
+    latitude = request.latitude ?: latitude,
+    longitude = request.longitude ?: longitude
 )

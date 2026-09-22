@@ -20,7 +20,10 @@ object InvoicePdfGenerator {
         val statusLabel = when (bill.status) {
             BillStatus.PAID -> "PAID"
             BillStatus.PENDING_PAYMENT -> "PENDING"
+            BillStatus.PARTIALLY_PAID -> "PARTIAL"
             BillStatus.OVERDUE -> "OVERDUE"
+            BillStatus.FAILED -> "FAILED"
+            BillStatus.CANCELLED -> "CANCELLED"
             BillStatus.UNPAID -> "UNPAID"
         }
         val issued = formatDate(issuedAtMillis.coerceAtLeast(0L))
@@ -49,7 +52,8 @@ object InvoicePdfGenerator {
         val statusColor = when (bill.status) {
             BillStatus.PAID -> "0.04 0.42 0.33"
             BillStatus.PENDING_PAYMENT -> "0.20 0.45 0.70"
-            BillStatus.OVERDUE -> "0.75 0.22 0.17"
+            BillStatus.PARTIALLY_PAID -> "0.55 0.40 0.10"
+            BillStatus.OVERDUE, BillStatus.FAILED, BillStatus.CANCELLED -> "0.75 0.22 0.17"
             BillStatus.UNPAID -> "0.72 0.48 0.08"
         }
         ops.append("$statusColor rg\n420 ${fmt(y - 4)} 80 16 re f\n")
@@ -125,8 +129,10 @@ object InvoicePdfGenerator {
         ops.append("0.12 0.14 0.16 rg\n")
         ops.append(textAt(40.0, 110.0, "/F2", 11, "Payment"))
         val receipt = bill.mpesaReceiptCode?.takeIf { it.isNotBlank() }
+        val payerName = bill.mpesaPayerName?.takeIf { it.isNotBlank() }
         if (bill.status == BillStatus.PAID && receipt != null) {
-            ops.append(textAt(40.0, 94.0, "/F1", 10, "Paid via M-Pesa. Confirmation code: $receipt"))
+            val paidByText = if (payerName != null) " (paid by $payerName)" else ""
+            ops.append(textAt(40.0, 94.0, "/F1", 10, "Paid via M-Pesa$paidByText. Confirmation code: $receipt"))
             ops.append(textAt(40.0, 80.0, "/F1", 10, "Keep this invoice for your records."))
         } else {
             ops.append(textAt(40.0, 94.0, "/F1", 10, "Pay securely in the KejaSafe app via M-Pesa."))

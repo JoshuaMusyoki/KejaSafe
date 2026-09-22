@@ -37,6 +37,8 @@ class ListingRepository(
     private val localStore: ListingLocalStore = createListingLocalStore()
 ) {
     suspend fun getBrowseListings(
+        lat: Double? = null,
+        lng: Double? = null,
         onCacheHit: ((List<PropertyListing>) -> Unit)? = null
     ): Result<OfflineData<List<PropertyListing>>> =
         offlineFirst(
@@ -45,7 +47,7 @@ class ListingRepository(
                 JsonCache.putList(CacheKeys.BROWSE_LISTINGS, list, PropertyListing.serializer())
                 localStore.upsertListings(list)
             },
-            fetch = { ListingClient.getBrowseListings() },
+            fetch = { ListingClient.getBrowseListings(lat, lng) },
             onCacheHit = onCacheHit
         )
 
@@ -234,6 +236,8 @@ class ListingRepository(
             propertyType = request.propertyType,
             unitsCount = request.unitsCount,
             charges = request.charges,
+            latitude = request.latitude ?: -1.2921,
+            longitude = request.longitude ?: 36.8219,
             status = ListingStatus.PENDING,
             createdAt = timestamp
         )

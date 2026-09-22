@@ -41,7 +41,9 @@ import com.rotd.kejasafe.components.KejaSafeTextField
 import com.rotd.kejasafe.components.StudentInsightCard
 import com.rotd.kejasafe.components.TenantListingsShimmer
 import com.rotd.kejasafe.components.TenantPropertyCard
+import com.rotd.kejasafe.rememberLocationPermissionState
 import com.rotd.kejasafe.theme.KejaSafeTheme
+import com.rotd.kejasafe.utils.calculateDistance
 
 @Composable
 fun TenantHomeScreen(
@@ -56,6 +58,12 @@ fun TenantHomeScreen(
     val listings = viewModel.filteredListings()
     val showShimmer = state.isLoading && state.listings.isEmpty()
     val showEmpty = !state.isLoading && state.listings.isEmpty() && state.error == null
+
+    val locationPermission = rememberLocationPermissionState { granted ->
+        if (granted) {
+            viewModel.requestDeviceLocation()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.refresh(showLoading = state.listings.isEmpty())
@@ -150,7 +158,11 @@ fun TenantHomeScreen(
 
                 item {
                     Text(
-                        text = "Nearby Listings",
+                        text = if (state.userLocationName != null) {
+                            "Houses around ${state.userLocationName}"
+                        } else {
+                            "Nearby Listings"
+                        },
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -179,13 +191,53 @@ fun TenantHomeScreen(
                                 )
                             }
                         }
-                        items(listings, key = { it.id }) { listing ->
+
+                        val within30km = listings.filter { listing ->
+                            state.userLatitude?.let { lat ->
+                                state.userLongitude?.let { lng ->
+                                    calculateDistance(
+                                        lat, lng, 
+                                        listing.latitude, listing.longitude
+                                    ) <= 30.0
+                                }
+                            } ?: true
+                        }
+
+                        if (within30km.isEmpty() && state.userLatitude != null) {
+                            item {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        text = "No listings found within 30km of your location.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                    Text(
+                                        text = "Here are some suggestions around you:",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        val displayedListings = if (within30km.isEmpty() && state.userLatitude != null) listings else within30km
+
+                        items(displayedListings, key = { it.id }) { listing ->
+                            val distance = state.userLatitude?.let { lat ->
+                                state.userLongitude?.let { lng ->
+                                    calculateDistance(
+                                        lat, lng, 
+                                        listing.latitude, listing.longitude
+                                    )
+                                }
+                            }
                             TenantPropertyCard(
                                 listing = listing,
+                                distanceKm = distance,
                                 onClick = { onNavigateToProperty(listing.id) }
                             )
                         }
-                        if (listings.isEmpty() && state.searchQuery.isNotBlank()) {
+                        if (displayedListings.isEmpty() && state.searchQuery.isNotBlank()) {
                             item {
                                 Text(
                                     text = "No houses match “${state.searchQuery.trim()}”.",
@@ -222,6 +274,20 @@ fun TenantHomeScreen(
                     contentDescription = "Request a property"
                 )
             }
+        }
+
+        if (state.showLocationPrompt) {
+            LocationOnboardingSheet(
+                onDismiss = viewModel::dismissLocationPrompt,
+                onUseCurrentLocation = {
+                    if (locationPermission.isGranted) {
+                        viewModel.requestDeviceLocation()
+                    } else {
+                        locationPermission.launchPermissionRequest()
+                    }
+                },
+                onPickManual = viewModel::setManualLocation
+            )
         }
     }
 }

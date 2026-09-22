@@ -61,13 +61,18 @@ object BillsTable : Table("rent_bills") {
     val month = integer("month")
     val year = integer("year")
     val totalAmount = double("total_amount")
+    val amountPaid = double("amount_paid").default(0.0)
+    /** Amount requested in the current open STK Push (applied on success callback). */
+    val pendingPaymentAmount = double("pending_payment_amount").nullable()
     val dueDate = long("due_date")
-    val status = enumerationByName("status", 20, BillStatus::class).default(BillStatus.UNPAID)
+    val status = enumerationByName("status", 24, BillStatus::class).default(BillStatus.UNPAID)
     val depositIncluded = bool("deposit_included").default(false)
     val electricityNote = varchar("electricity_note", 200).nullable()
     val paymentRequested = bool("payment_requested").default(false)
     val mpesaCheckoutRequestId = varchar("mpesa_checkout_request_id", 100).nullable()
     val mpesaReceiptCode = varchar("mpesa_receipt_code", 40).nullable()
+    val mpesaPayerName = varchar("mpesa_payer_name", 120).nullable()
+    val paymentFailureReason = varchar("payment_failure_reason", 240).nullable()
 
     override val primaryKey = PrimaryKey(id)
 }
@@ -105,6 +110,8 @@ object ListingsTable : Table("listings") {
     val activeBookings = integer("active_bookings").default(0)
     val totalViews = integer("total_views").default(0)
     val inquiries = integer("inquiries").default(0)
+    val latitude = double("latitude").default(-1.2921)
+    val longitude = double("longitude").default(36.8219)
     val createdAt = long("created_at")
 
     override val primaryKey = PrimaryKey(id)

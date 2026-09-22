@@ -187,7 +187,9 @@ fun Application.module() {
 
         // Public browse endpoints (tenants can view housing without auth, auth still accepted)
         get("/listings") {
-            call.respond(ListingService.getBrowseListings())
+            val lat = call.request.queryParameters["lat"]?.toDoubleOrNull()
+            val lng = call.request.queryParameters["lng"]?.toDoubleOrNull()
+            call.respond(ListingService.getBrowseListings(lat, lng))
         }
 
         get("/listings/{id}") {
@@ -295,7 +297,8 @@ fun Application.module() {
                         val result = RentService.initiateBillPayment(
                             billId = request.billId,
                             payerUserId = userId,
-                            phoneNumber = request.phoneNumber
+                            phoneNumber = request.phoneNumber,
+                            amountKes = request.amount.takeIf { it > 0 }?.toLong()
                         )
                         call.respond(HttpStatusCode.Accepted, BillPaymentResponse(
                             billId = result["billId"].orEmpty(),

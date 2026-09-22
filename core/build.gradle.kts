@@ -18,6 +18,7 @@ kotlin {
             implementation(libs.firebaseAuth)
             implementation(libs.firebaseDataconnect)
             implementation(libs.kotlinxCoroutinesPlayServices)
+            implementation(libs.playServicesLocation)
             implementation(libs.androidxBiometric)
             implementation(libs.androidxSecurityCrypto)
             implementation(libs.androidxFragmentKtx)

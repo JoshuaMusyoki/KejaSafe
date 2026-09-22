@@ -26,6 +26,8 @@ object MpesaService {
         "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
     private const val STK_PUSH_URL =
         "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+    private const val STK_QUERY_URL =
+        "https://sandbox.safaricom.co.ke/mpesa/stkpushquery/v1/query"
 
     suspend fun getAccessToken(): String {
         val auth = Base64.getEncoder().encodeToString(
@@ -55,8 +57,8 @@ object MpesaService {
         )
 
         val formattedPhone = formatMpesaPhone(phoneNumber)
-        val safeReference = reference.take(12).ifBlank { "KejaSafe" }
-        val safeDesc = description.take(20).ifBlank { "KejaSafe payment" }
+        val safeReference = reference.filter { it.isLetterOrDigit() }.take(12).ifBlank { "KejaSafe" }
+        val safeDesc = description.filter { it.isLetterOrDigit() }.take(20).ifBlank { "Payment" }
 
         val request = MpesaStkRequest(
             BusinessShortCode = ServerConfig.mpesaBusinessShortCode,
@@ -76,6 +78,29 @@ object MpesaService {
             header(HttpHeaders.Authorization, "Bearer $token")
             contentType(ContentType.Application.Json)
             setBody(request)
+        }.body()
+    }
+
+    /**
+     * Asks Daraja for the final STK outcome. Use when the callback URL cannot reach this server.
+     */
+    suspend fun queryStkPush(checkoutRequestId: String): MpesaStkQueryResponse {
+        val token = getAccessToken()
+        val timestamp = SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(Date())
+        val password = Base64.getEncoder().encodeToString(
+            "${ServerConfig.mpesaBusinessShortCode}${ServerConfig.mpesaPasskey}$timestamp".toByteArray()
+        )
+        return client.post(STK_QUERY_URL) {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(
+                MpesaStkQueryRequest(
+                    BusinessShortCode = ServerConfig.mpesaBusinessShortCode,
+                    Password = password,
+                    Timestamp = timestamp,
+                    CheckoutRequestID = checkoutRequestId
+                )
+            )
         }.body()
     }
 

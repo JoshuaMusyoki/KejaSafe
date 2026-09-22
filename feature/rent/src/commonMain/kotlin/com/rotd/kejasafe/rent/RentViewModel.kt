@@ -99,11 +99,12 @@ class RentViewModel(
             _state.value = current.copy(payingBillId = billId, message = null)
             ListingClient.payBill(billId, phoneNumber = phone, amount = amount)
                 .onSuccess { response ->
+                    val paidBefore = current.bills.find { it.id == billId }?.amountPaid ?: 0.0
                     _state.value = current.copy(
                         payingBillId = billId,
                         message = response.message
                     )
-                    pollBillPaid(billId)
+                    pollBillPaid(billId, paidBefore)
                 }
                 .onFailure { e ->
                     _state.value = current.copy(
@@ -114,7 +115,7 @@ class RentViewModel(
         }
     }
 
-    private fun pollBillPaid(billId: String) {
+    private fun pollBillPaid(billId: String, paidBefore: Double) {
         viewModelScope.launch {
             repeat(40) {
                 delay(3_000)
@@ -129,8 +130,34 @@ class RentViewModel(
                     )
                     return@launch
                 }
-                if (bill?.status == BillStatus.UNPAID && current?.payingBillId == billId) {
-                    // Payment cancelled / failed — stop waiting early if user retries later.
+                if (
+                    bill?.status == BillStatus.PARTIALLY_PAID &&
+                    bill.amountPaid > paidBefore &&
+                    current?.payingBillId == billId
+                ) {
+                    _state.value = RentState.Success(
+                        bills = bills,
+                        message = "Partial payment received. Remaining KES ${bill.remainingAmount.toLong()}",
+                        syncWarning = current.syncWarning
+                    )
+                    return@launch
+                }
+                if (
+                    bill != null &&
+                    current?.payingBillId == billId &&
+                    bill.status in listOf(BillStatus.FAILED, BillStatus.CANCELLED)
+                ) {
+                    val reason = bill.paymentFailureReason
+                        ?: when (bill.status) {
+                            BillStatus.CANCELLED -> "Payment cancelled"
+                            else -> "Payment failed"
+                        }
+                    _state.value = RentState.Success(
+                        bills = bills,
+                        message = reason,
+                        syncWarning = current.syncWarning
+                    )
+                    return@launch
                 }
                 if (current != null) {
                     _state.value = current.copy(bills = bills, payingBillId = billId)
