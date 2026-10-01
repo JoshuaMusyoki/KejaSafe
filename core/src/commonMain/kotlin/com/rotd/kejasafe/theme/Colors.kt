@@ -1,7 +1,9 @@
 package com.rotd.kejasafe.theme
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 // Brand Colors - Emerald
@@ -81,3 +83,24 @@ internal val DarkColorScheme = darkColorScheme(
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005)
 )
+
+object KejaSafeDashboardColors {
+    val BackgroundDark: Color @Composable get() = MaterialTheme.colorScheme.background
+    val SidebarBg: Color @Composable get() = MaterialTheme.colorScheme.surface
+    val MiddleListBg: Color @Composable get() = MaterialTheme.colorScheme.surface
+    val ThreadBg: Color @Composable get() = MaterialTheme.colorScheme.background
+    val CardBg: Color @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+    val CardBorder: Color @Composable get() = MaterialTheme.colorScheme.outlineVariant
+    val InputBg: Color @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+    val InputBorder: Color @Composable get() = MaterialTheme.colorScheme.outline
+    val EmeraldPrimary: Color @Composable get() = MaterialTheme.colorScheme.primary
+    val EmeraldAccent: Color @Composable get() = MaterialTheme.colorScheme.primary
+    val PlumActiveBg: Color @Composable get() = MaterialTheme.colorScheme.primaryContainer
+    val PlumBorder: Color @Composable get() = MaterialTheme.colorScheme.primary
+    val TextWhite: Color @Composable get() = MaterialTheme.colorScheme.onBackground
+    val TextGrey: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+    val TextEmeraldLabel: Color @Composable get() = MaterialTheme.colorScheme.primary
+    val ReceivedBubbleBg: Color @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+    val ReceivedBubbleBorder: Color @Composable get() = MaterialTheme.colorScheme.outlineVariant
+    val SentBubbleBg: Color @Composable get() = MaterialTheme.colorScheme.primaryContainer
+}

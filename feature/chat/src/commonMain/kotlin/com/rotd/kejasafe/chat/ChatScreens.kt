@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -165,99 +167,162 @@ fun ChatInboxScreen(
         )
     }
 
-    Scaffold(
-        bottomBar = {
-            KejaSafeFloatingNavBar(
-                selectedTab = selectedTab,
-                onTabSelected = onTabSelected,
-                onCreateListingClick = onCreateListingClick.takeIf { isLandlord },
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-            )
+    var selectedPeer by remember { mutableStateOf<ApartmentChatPeer?>(null) }
+    val currentPeer = selectedPeer
+
+    val threadViewModel: ChatThreadViewModel? = if (currentPeer != null) {
+        koinViewModel(key = "web_${currentPeer.listingId}_${currentPeer.userId}") {
+            parametersOf(currentPeer)
         }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-        ) {
-            Text(
-                text = "Chat",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-            )
+    } else null
 
-            SecondaryTabRow(
-                selectedTabIndex = if (state.selectedTab == ChatInboxTab.MESSAGES) 0 else 1,
-                containerColor = MaterialTheme.colorScheme.surface,
+    val pickImages = rememberImagePickerLauncher { files ->
+        threadViewModel?.sendAttachments(files, ApartmentChatMessage.TYPE_IMAGE)
+    }
+    val pickPdfs = rememberPdfPickerLauncher { files ->
+        threadViewModel?.sendAttachments(files, ApartmentChatMessage.TYPE_PDF)
+    }
+
+    LaunchedEffect(state.messageRows, state.peopleRows) {
+        val rows = if (state.selectedTab == ChatInboxTab.MESSAGES) state.messageRows else state.peopleRows
+        if (selectedPeer == null && rows.isNotEmpty()) {
+            selectedPeer = rows.first().peer
+        }
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val isWebOrWide = maxWidth >= 720.dp
+        if (isWebOrWide) {
+            val threadState = threadViewModel?.state?.collectAsStateWithLifecycle()?.value
+            var threadDraft by remember(currentPeer) { mutableStateOf("") }
+
+            KejaSafeWebDashboardShell(
+                currentTab = KejaSafeNavTab.CHAT,
+                currentChatTab = state.selectedTab,
+                onTabSelected = onTabSelected,
+                onChatTabSelected = { tab -> viewModel.selectTab(tab) },
+                onLogout = { SessionManager.clearSession() }
             ) {
-                Tab(
-                    selected = state.selectedTab == ChatInboxTab.MESSAGES,
-                    onClick = { viewModel.selectTab(ChatInboxTab.MESSAGES) },
-                    text = { Text("Messages") }
-                )
-                Tab(
-                    selected = state.selectedTab == ChatInboxTab.PEOPLE,
-                    onClick = { viewModel.selectTab(ChatInboxTab.PEOPLE) },
-                    text = { Text(peopleTabLabel) }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            val showInitialLoader = state.isLoading && when (state.selectedTab) {
-                ChatInboxTab.MESSAGES -> state.messageRows.isEmpty()
-                ChatInboxTab.PEOPLE -> state.peopleRows.isEmpty()
-            }
-
-            PullToRefreshBox(
-                isRefreshing = state.isLoading && !showInitialLoader,
-                onRefresh = viewModel::refresh,
-                state = pullRefreshState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            ) {
-                when (state.selectedTab) {
-                    ChatInboxTab.MESSAGES -> {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            Text(
-                                text = "Connected apartment chats",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-                            MessagesTabContent(
-                                state = state,
-                                onOpenThread = onOpenThread,
-                                onOpenProfile = viewModel::openProfile,
-                                loadAttachment = viewModel::loadAttachment,
-                            )
+                KejaSafeWebChatLayout(
+                    inboxState = state,
+                    onOpenThread = { peer ->
+                        selectedPeer = peer
+                    },
+                    onOpenProfile = viewModel::openProfile,
+                    onSearchQueryChange = viewModel::updateSearch,
+                    onSelectTab = viewModel::selectTab,
+                    loadAttachment = viewModel::loadAttachment,
+                    selectedPeer = currentPeer,
+                    threadState = threadState,
+                    threadDraft = threadDraft,
+                    onThreadDraftChange = { threadDraft = it },
+                    onSendThreadMessage = {
+                        if (threadDraft.isNotBlank()) {
+                            threadViewModel?.updateDraft(threadDraft)
+                            threadViewModel?.send()
+                            threadDraft = ""
                         }
+                    },
+                    onPickImages = pickImages,
+                    onPickPdfs = pickPdfs
+                )
+            }
+        } else {
+            Scaffold(
+                bottomBar = {
+                    KejaSafeFloatingNavBar(
+                        selectedTab = selectedTab,
+                        onTabSelected = onTabSelected,
+                        onCreateListingClick = onCreateListingClick.takeIf { isLandlord },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                }
+            ) { padding ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Text(
+                        text = "Chat",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                    )
+
+                    SecondaryTabRow(
+                        selectedTabIndex = if (state.selectedTab == ChatInboxTab.MESSAGES) 0 else 1,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ) {
+                        Tab(
+                            selected = state.selectedTab == ChatInboxTab.MESSAGES,
+                            onClick = { viewModel.selectTab(ChatInboxTab.MESSAGES) },
+                            text = { Text("Messages") }
+                        )
+                        Tab(
+                            selected = state.selectedTab == ChatInboxTab.PEOPLE,
+                            onClick = { viewModel.selectTab(ChatInboxTab.PEOPLE) },
+                            text = { Text(peopleTabLabel) }
+                        )
                     }
-                    ChatInboxTab.PEOPLE -> {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            ChatPeopleSearchField(
-                                query = state.searchQuery,
-                                onQueryChange = viewModel::updateSearch,
-                                placeholder = if (isLandlord) "Search tenants…" else "Search people…",
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-                            Text(
-                                text = "Your landlord is connected by default. Other tenants need a request.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-                            PeopleTabContent(
-                                state = state,
-                                onOpenThread = onOpenThread,
-                                onOpenProfile = viewModel::openProfile,
-                                onConnect = viewModel::connect,
-                                onAccept = viewModel::accept,
-                                loadAttachment = viewModel::loadAttachment,
-                            )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val showInitialLoader = state.isLoading && when (state.selectedTab) {
+                        ChatInboxTab.MESSAGES -> state.messageRows.isEmpty()
+                        ChatInboxTab.PEOPLE -> state.peopleRows.isEmpty()
+                    }
+
+                    PullToRefreshBox(
+                        isRefreshing = state.isLoading && !showInitialLoader,
+                        onRefresh = viewModel::refresh,
+                        state = pullRefreshState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    ) {
+                        when (state.selectedTab) {
+                            ChatInboxTab.MESSAGES -> {
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    Text(
+                                        text = "Connected apartment chats",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(bottom = 12.dp)
+                                    )
+                                    MessagesTabContent(
+                                        state = state,
+                                        onOpenThread = onOpenThread,
+                                        onOpenProfile = viewModel::openProfile,
+                                        loadAttachment = viewModel::loadAttachment,
+                                    )
+                                }
+                            }
+                            ChatInboxTab.PEOPLE -> {
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    ChatPeopleSearchField(
+                                        query = state.searchQuery,
+                                        onQueryChange = viewModel::updateSearch,
+                                        placeholder = if (isLandlord) "Search tenants…" else "Search people…",
+                                        modifier = Modifier.padding(bottom = 12.dp)
+                                    )
+                                    Text(
+                                        text = "Your landlord is connected by default. Other tenants need a request.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(bottom = 12.dp)
+                                    )
+                                    PeopleTabContent(
+                                        state = state,
+                                        onOpenThread = onOpenThread,
+                                        onOpenProfile = viewModel::openProfile,
+                                        onConnect = viewModel::connect,
+                                        onAccept = viewModel::accept,
+                                        loadAttachment = viewModel::loadAttachment,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -633,8 +698,8 @@ fun ChatThreadScreen(
                             DropdownMenuItem(
                                 text = { Text("Photo") },
                                 onClick = {
-                                    attachMenuOpen = false
                                     pickImages()
+                                    attachMenuOpen = false
                                 },
                                 leadingIcon = {
                                     Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
@@ -643,8 +708,8 @@ fun ChatThreadScreen(
                             DropdownMenuItem(
                                 text = { Text("PDF") },
                                 onClick = {
-                                    attachMenuOpen = false
                                     pickPdfs()
+                                    attachMenuOpen = false
                                 },
                                 leadingIcon = {
                                     Icon(Icons.Default.PictureAsPdf, contentDescription = null)
@@ -970,30 +1035,36 @@ private fun ChatPdfThumb(
 }
 
 @Composable
-private fun ChatImageThumb(
+internal fun ChatImageThumb(
     attachmentId: String?,
     loadAttachment: (String) -> ByteArray?,
 ) {
     var bitmap by remember(attachmentId) { mutableStateOf<ImageBitmap?>(null) }
+    var failed by remember(attachmentId) { mutableStateOf(false) }
     val brush = rememberShimmerBrush()
     LaunchedEffect(attachmentId) {
         val cacheKey = attachmentId?.let { "chat-img:$it" }
         val cached = cacheKey?.let { ImageBitmapCache.get(it) }
         if (cached != null) {
             bitmap = cached
+            failed = false
             return@LaunchedEffect
         }
-        // Keep shimmer visible briefly so media feels progressive, not a sudden dump.
-        kotlinx.coroutines.delay(90)
-        val decoded = withContext(Dispatchers.Default) {
-            attachmentId
-                ?.let(loadAttachment)
-                ?.decodeToImageBitmap()
+        var decoded: ImageBitmap? = null
+        // The thread can render before the attachment download finishes.
+        for (attempt in 0 until 15) {
+            val bytes = attachmentId?.let(loadAttachment)
+            if (bytes != null) {
+                decoded = withContext(Dispatchers.Default) { bytes.decodeToImageBitmap() }
+                break
+            }
+            kotlinx.coroutines.delay(if (attempt == 0) 90 else 300)
         }
         if (decoded != null && cacheKey != null) {
             ImageBitmapCache.put(cacheKey, decoded)
         }
         bitmap = decoded
+        failed = decoded == null
     }
     Box(
         modifier = Modifier
@@ -1003,15 +1074,20 @@ private fun ChatImageThumb(
         contentAlignment = Alignment.Center,
     ) {
         val image = bitmap
-        if (image != null) {
-            Image(
+        when {
+            image != null -> Image(
                 bitmap = image,
                 contentDescription = "Shared photo",
                 modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp),
                 contentScale = ContentScale.Crop,
             )
-        } else {
-            ShimmerBlock(
+            failed -> Icon(
+                Icons.Default.BrokenImage,
+                contentDescription = "Photo failed to load",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(48.dp),
+            )
+            else -> ShimmerBlock(
                 modifier = Modifier.fillMaxWidth().height(160.dp),
                 brush = brush,
                 shape = RoundedCornerShape(8.dp),

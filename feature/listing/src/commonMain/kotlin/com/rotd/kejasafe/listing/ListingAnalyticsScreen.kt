@@ -46,6 +46,7 @@ import com.rotd.kejasafe.components.ListingStatusBadge
 import com.rotd.kejasafe.components.NewInquiriesBadge
 import com.rotd.kejasafe.components.PerformanceMetricCard
 import com.rotd.kejasafe.components.ViewsMetricBadge
+import com.rotd.kejasafe.listing.viewModel.ListingAnalyticsViewModel
 import com.rotd.kejasafe.theme.Emerald700
 import com.rotd.kejasafe.theme.Gold600
 import com.rotd.kejasafe.theme.KejaSafeTheme

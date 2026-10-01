@@ -397,10 +397,7 @@ class ChatThreadViewModel(
     }
 
     fun loadAttachment(attachmentId: String): ByteArray? =
-        chatRepository.loadAttachment(attachmentId) ?: run {
-            _state.update { it.copy(error = "Could not load this file. Try sending it again.") }
-            null
-        }
+        chatRepository.loadAttachment(attachmentId)
 
     fun onThreadVisible() {
         viewModelScope.launch {

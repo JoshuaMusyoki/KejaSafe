@@ -1,13 +1,8 @@
 package com.rotd.kejasafe.listing
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,12 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -43,25 +39,39 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rotd.kejasafe.CampusProximity
+import com.rotd.kejasafe.ListingPerformance
+import com.rotd.kejasafe.PropertyListing
 import com.rotd.kejasafe.PropertyType
+import com.rotd.kejasafe.components.CenteredListingCardRow
+import com.rotd.kejasafe.components.CenteredMarketplaceTileRow
+import com.rotd.kejasafe.components.CompactListingCard
 import com.rotd.kejasafe.components.KejaSafeAppBar
+import com.rotd.kejasafe.components.ListingPhoto
+import com.rotd.kejasafe.components.ListingStatusBadge
 import com.rotd.kejasafe.components.KejaSafeAppBarContentInset
-import com.rotd.kejasafe.components.KejaSafeCard
+import com.rotd.kejasafe.components.KejaSafeDetailPopup
 import com.rotd.kejasafe.components.KejaSafeErrorState
 import com.rotd.kejasafe.components.KejaSafeFloatingNavBar
 import com.rotd.kejasafe.components.KejaSafeNavTab
 import com.rotd.kejasafe.components.KejaSafeOfflineBanner
-import com.rotd.kejasafe.components.LandlordListingCard
-import com.rotd.kejasafe.components.LandlordListingsShimmer
+import com.rotd.kejasafe.components.KejaSafePrimaryButton
 import com.rotd.kejasafe.components.ListingMetricShimmer
+import com.rotd.kejasafe.components.MarketplaceSectionHeader
+import com.rotd.kejasafe.components.MarketplaceTileCard
+import com.rotd.kejasafe.components.MarketplaceTileTone
 import com.rotd.kejasafe.components.NewInquiriesBadge
 import com.rotd.kejasafe.components.PerformanceMetricCard
 import com.rotd.kejasafe.components.ViewsMetricBadge
-import com.rotd.kejasafe.theme.Emerald700
-import com.rotd.kejasafe.theme.Gold600
+import com.rotd.kejasafe.listing.viewModel.LandlordHomeViewModel
 import com.rotd.kejasafe.theme.KejaSafeTheme
-import com.rotd.kejasafe.theme.Slate900
 import org.koin.compose.viewmodel.koinViewModel
+
+private enum class LandlordHomePopup {
+    VIEWERS,
+    INQUIRIES,
+    BOOKINGS,
+    LISTING
+}
 
 @Composable
 fun LandlordHomeScreen(
@@ -77,9 +87,10 @@ fun LandlordHomeScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val showShimmer = state.isLoading && state.listings.isEmpty()
     val showEmptyListings = !state.isLoading && state.listings.isEmpty() && state.error == null
-    var performanceExpanded by rememberSaveable { mutableStateOf(false) }
     val pendingCount = state.requests.size
     val approvedCount = state.confirmedBookings.size
+    var activePopup by rememberSaveable { mutableStateOf<LandlordHomePopup?>(null) }
+    var selectedListingId by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.refresh(showLoading = state.listings.isEmpty())
@@ -96,11 +107,16 @@ fun LandlordHomeScreen(
             )
         }
     ) { padding ->
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = padding.calculateBottomPadding())
         ) {
+            val useDialog = maxWidth >= 640.dp
+            val selectedListing = selectedListingId?.let { id ->
+                state.listings.firstOrNull { it.id == id }
+            }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
@@ -130,81 +146,27 @@ fun LandlordHomeScreen(
                 }
 
                 item {
-                    CollapsiblePerformanceHeader(
-                        expanded = performanceExpanded,
-                        summary = performanceSummary(state.performance),
-                        onToggle = { performanceExpanded = !performanceExpanded }
-                    )
+                    MarketplaceSectionHeader(title = "Listing Performance")
                 }
 
                 item {
-                    AnimatedVisibility(
-                        visible = performanceExpanded,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically()
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            if (showShimmer) {
-                                repeat(3) { ListingMetricShimmer() }
-                            } else {
-                                val perf = state.performance
-                                val viewProgress = when {
-                                    perf.totalViews <= 0 -> 0.05f
-                                    else -> (perf.totalViews / 20f).coerceIn(0.08f, 1f)
-                                }
-                                PerformanceMetricCard(
-                                    title = "Unique viewers",
-                                    value = formatWithCommas(perf.totalViews),
-                                    valueColor = Emerald700,
-                                    badge = { ViewsMetricBadge(deltaPercent = perf.viewsDeltaPercent) },
-                                    progress = viewProgress,
-                                    footer = "People who viewed your listings"
-                                )
-                                PerformanceMetricCard(
-                                    title = "Inquiries",
-                                    value = perf.inquiries.toString(),
-                                    valueColor = Gold600,
-                                    accentColor = Gold600,
-                                    badge = if (perf.hasNewInquiries) {
-                                        { NewInquiriesBadge() }
-                                    } else {
-                                        null
-                                    },
-                                    footer = when {
-                                        perf.inquiries <= 0 -> "People who sent a booking request"
-                                        perf.hasNewInquiries -> "New interest this week"
-                                        else -> "${perf.inquiries} unique tenant${if (perf.inquiries == 1) "" else "s"}"
-                                    }
-                                )
-                                val units = perf.unitsCount.coerceAtLeast(1)
-                                val segments = units.coerceAtMost(8)
-                                val filled = (
-                                    (perf.activeBookings.toFloat() / units) * segments
-                                    )
-                                    .toInt()
-                                    .coerceIn(0, segments)
-                                val occupancyPct = (
-                                    (perf.activeBookings.toDouble() / units) * 100.0
-                                    ).toInt().coerceIn(0, 100)
-                                PerformanceMetricCard(
-                                    title = "Active Bookings",
-                                    value = perf.activeBookings.toString(),
-                                    valueColor = Slate900,
-                                    trailingLabel = "Units: ${perf.unitsCount}",
-                                    segmentedProgress = filled to segments,
-                                    footer = "$occupancyPct% occupancy across your units"
-                                )
-                            }
+                    if (showShimmer) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                        ) {
+                            repeat(3) { ListingMetricShimmer() }
                         }
+                    } else {
+                        LandlordPerformanceTiles(
+                            performance = state.performance,
+                            pendingCount = pendingCount,
+                            approvedCount = approvedCount,
+                            onViewers = { activePopup = LandlordHomePopup.VIEWERS },
+                            onInquiries = { activePopup = LandlordHomePopup.INQUIRIES },
+                            onBookings = { activePopup = LandlordHomePopup.BOOKINGS }
+                        )
                     }
-                }
-
-                item {
-                    BookingsEntryCard(
-                        pendingCount = pendingCount,
-                        approvedCount = approvedCount,
-                        onClick = onNavigateToBookings
-                    )
                 }
 
                 item {
@@ -213,14 +175,12 @@ fun LandlordHomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Your Listings",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
+                        MarketplaceSectionHeader(title = "Your Listings")
                         Button(
                             onClick = onNavigateToCreateListing,
-                            colors = ButtonDefaults.buttonColors(containerColor = Emerald700),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            ),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -232,7 +192,18 @@ fun LandlordHomeScreen(
 
                 when {
                     showShimmer -> {
-                        item { LandlordListingsShimmer(count = 2) }
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                            ) {
+                                repeat(2) {
+                                    Box(modifier = Modifier.width(240.dp)) {
+                                        ListingMetricShimmer()
+                                    }
+                                }
+                            }
+                        }
                     }
                     showEmptyListings -> {
                         item {
@@ -244,12 +215,22 @@ fun LandlordHomeScreen(
                         }
                     }
                     else -> {
-                        items(state.listings, key = { it.id }) { listing ->
-                            LandlordListingCard(
-                                listing = listing,
-                                onEdit = { onNavigateToEditListing(listing.id) },
-                                onViewAnalytics = { onNavigateToAnalytics(listing.id) }
-                            )
+                        item {
+                            CenteredListingCardRow(
+                                items = state.listings,
+                                key = { it.id }
+                            ) { listing ->
+                                CompactListingCard(
+                                    listing = listing,
+                                    onView = {
+                                        selectedListingId = listing.id
+                                        activePopup = LandlordHomePopup.LISTING
+                                    },
+                                    trailingBadge = {
+                                        ListingStatusBadge(status = listing.status)
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -263,103 +244,252 @@ fun LandlordHomeScreen(
                 frosted = true,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
+
+            when (activePopup) {
+                LandlordHomePopup.VIEWERS -> {
+                    KejaSafeDetailPopup(
+                        title = "Unique viewers",
+                        onDismiss = { activePopup = null },
+                        useDialog = useDialog,
+                        content = {
+                            PerformanceMetricCard(
+                                title = "Unique viewers",
+                                value = formatWithCommas(state.performance.totalViews),
+                                valueColor = MaterialTheme.colorScheme.primary,
+                                badge = { ViewsMetricBadge(deltaPercent = state.performance.viewsDeltaPercent) },
+                                progress = viewerProgress(state.performance),
+                                footer = "People who viewed your listings"
+                            )
+                        }
+                    )
+                }
+                LandlordHomePopup.INQUIRIES -> {
+                    KejaSafeDetailPopup(
+                        title = "Inquiries",
+                        onDismiss = { activePopup = null },
+                        useDialog = useDialog,
+                        content = {
+                            PerformanceMetricCard(
+                                title = "Inquiries",
+                                value = state.performance.inquiries.toString(),
+                                valueColor = MaterialTheme.colorScheme.secondary,
+                                accentColor = MaterialTheme.colorScheme.secondary,
+                                badge = if (state.performance.hasNewInquiries) {
+                                    { NewInquiriesBadge() }
+                                } else {
+                                    null
+                                },
+                                footer = inquiryFooter(state.performance)
+                            )
+                        }
+                    )
+                }
+                LandlordHomePopup.BOOKINGS -> {
+                    KejaSafeDetailPopup(
+                        title = "Bookings",
+                        onDismiss = { activePopup = null },
+                        useDialog = useDialog,
+                        content = {
+                            BookingsPopupContent(
+                                performance = state.performance,
+                                pendingCount = pendingCount,
+                                approvedCount = approvedCount
+                            )
+                        },
+                        footer = {
+                            KejaSafePrimaryButton(
+                                text = "Open bookings",
+                                onClick = {
+                                    activePopup = null
+                                    onNavigateToBookings()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    )
+                }
+                LandlordHomePopup.LISTING -> selectedListing?.let { listing ->
+                    KejaSafeDetailPopup(
+                        title = listing.title,
+                        onDismiss = {
+                            activePopup = null
+                            selectedListingId = null
+                        },
+                        useDialog = useDialog,
+                        content = {
+                            ListingPopupContent(listing = listing)
+                        },
+                        footer = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                KejaSafePrimaryButton(
+                                    text = "Edit listing",
+                                    onClick = {
+                                        activePopup = null
+                                        selectedListingId = null
+                                        onNavigateToEditListing(listing.id)
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Button(
+                                    onClick = {
+                                        activePopup = null
+                                        selectedListingId = null
+                                        onNavigateToAnalytics(listing.id)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        contentColor = MaterialTheme.colorScheme.onSurface
+                                    )
+                                ) {
+                                    Text("Analytics")
+                                }
+                            }
+                        }
+                    )
+                }
+                null -> Unit
+            }
         }
     }
 }
 
 @Composable
-private fun CollapsiblePerformanceHeader(
-    expanded: Boolean,
-    summary: String,
-    onToggle: () -> Unit
+private fun LandlordPerformanceTiles(
+    performance: ListingPerformance,
+    pendingCount: Int,
+    approvedCount: Int,
+    onViewers: () -> Unit,
+    onInquiries: () -> Unit,
+    onBookings: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggle)
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Listing Performance",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            if (!expanded) {
-                Text(
-                    text = summary,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+    CenteredMarketplaceTileRow {
+        MarketplaceTileCard(
+            title = "Viewers",
+            value = formatWithCommas(performance.totalViews),
+            subtitle = "+${performance.viewsDeltaPercent}% this week",
+            actionLabel = "Details",
+            onAction = onViewers,
+            tone = MarketplaceTileTone.PRIMARY,
+            icon = Icons.Default.Visibility,
+            badge = { ViewsMetricBadge(deltaPercent = performance.viewsDeltaPercent) }
+        )
+        MarketplaceTileCard(
+            title = "Inquiries",
+            value = performance.inquiries.toString(),
+            subtitle = inquiryFooter(performance),
+            actionLabel = "Details",
+            onAction = onInquiries,
+            tone = MarketplaceTileTone.SECONDARY,
+            icon = Icons.Default.Groups,
+            badge = if (performance.hasNewInquiries) {
+                { NewInquiriesBadge() }
+            } else {
+                null
             }
-        }
-        Icon(
-            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-            contentDescription = if (expanded) "Collapse performance" else "Expand performance",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        MarketplaceTileCard(
+            title = "Bookings",
+            value = performance.activeBookings.toString(),
+            subtitle = when {
+                pendingCount > 0 -> "$pendingCount pending · $approvedCount approved"
+                approvedCount > 0 -> "$approvedCount approved stay${if (approvedCount == 1) "" else "s"}"
+                else -> "Manage requests and stays"
+            },
+            actionLabel = "Open",
+            onAction = onBookings,
+            tone = MarketplaceTileTone.NEUTRAL,
+            icon = Icons.Default.Event
         )
     }
 }
 
 @Composable
-private fun BookingsEntryCard(
+private fun BookingsPopupContent(
+    performance: ListingPerformance,
     pendingCount: Int,
-    approvedCount: Int,
-    onClick: () -> Unit
+    approvedCount: Int
 ) {
-    KejaSafeCard(
+    val units = performance.unitsCount.coerceAtLeast(1)
+    val segments = units.coerceAtMost(8)
+    val filled = ((performance.activeBookings.toFloat() / units) * segments)
+        .toInt()
+        .coerceIn(0, segments)
+    val occupancyPct = ((performance.activeBookings.toDouble() / units) * 100.0)
+        .toInt()
+        .coerceIn(0, 100)
+
+    PerformanceMetricCard(
+        title = "Active Bookings",
+        value = performance.activeBookings.toString(),
+        valueColor = MaterialTheme.colorScheme.onSurface,
+        trailingLabel = "Units: ${performance.unitsCount}",
+        segmentedProgress = filled to segments,
+        footer = "$occupancyPct% occupancy across your units"
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+    Text(
+        text = when {
+            pendingCount > 0 -> "$pendingCount request${if (pendingCount == 1) "" else "s"} waiting for your response."
+            approvedCount > 0 -> "$approvedCount approved booking${if (approvedCount == 1) "" else "s"} on the calendar."
+            else -> "No pending requests right now."
+        },
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+private fun ListingPopupContent(listing: PropertyListing) {
+    ListingPhoto(
+        imageUrl = listing.imageUrl,
+        contentDescription = listing.title,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .height(180.dp)
     ) {
-        Row(
+        ListingStatusBadge(
+            status = listing.status,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.Event,
-                contentDescription = null,
-                tint = Emerald700,
-                modifier = Modifier.size(28.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Bookings",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = when {
-                        pendingCount > 0 ->
-                            "$pendingCount pending · $approvedCount approved"
-                        approvedCount > 0 ->
-                            "$approvedCount approved stay${if (approvedCount == 1) "" else "s"}"
-                        else -> "Manage requests and approved stays"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Text(
-                text = "Open",
-                style = MaterialTheme.typography.labelLarge,
-                color = Emerald700,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
+                .align(Alignment.TopEnd)
+                .padding(12.dp)
+        )
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+    Text(
+        text = listing.title,
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = listing.address,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    listing.pricePerMonth?.let { price ->
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "${listing.currency} ${price.toInt()}/mo",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 }
 
-private fun performanceSummary(perf: com.rotd.kejasafe.ListingPerformance): String {
-    val viewers = "${perf.totalViews} viewer${if (perf.totalViews == 1) "" else "s"}"
-    val inquiries = "${perf.inquiries} inquir${if (perf.inquiries == 1) "y" else "ies"}"
-    val bookings = "${perf.activeBookings} active"
-    return "$viewers · $inquiries · $bookings"
+private fun viewerProgress(performance: ListingPerformance): Float = when {
+    performance.totalViews <= 0 -> 0.05f
+    else -> (performance.totalViews / 20f).coerceIn(0.08f, 1f)
+}
+
+private fun inquiryFooter(performance: ListingPerformance): String = when {
+    performance.inquiries <= 0 -> "People who sent a booking request"
+    performance.hasNewInquiries -> "New interest this week"
+    else -> "${performance.inquiries} unique tenant${if (performance.inquiries == 1) "" else "s"}"
 }
 
 fun CampusProximity.displayLabel(): String = when (this) {

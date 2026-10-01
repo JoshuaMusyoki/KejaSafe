@@ -12,6 +12,7 @@ import com.rotd.kejasafe.auth.LoginScreen
 import com.rotd.kejasafe.auth.RegisterScreen
 import com.rotd.kejasafe.chat.ChatInboxScreen
 import com.rotd.kejasafe.chat.ChatThreadScreen
+import com.rotd.kejasafe.chat.KejaSafeWebDashboardShell
 import com.rotd.kejasafe.components.KejaSafeNavTab
 import com.rotd.kejasafe.components.destinationForTab
 import com.rotd.kejasafe.components.homeDestinationForRole
@@ -22,9 +23,10 @@ import com.rotd.kejasafe.listing.LandlordBookingsScreen
 import com.rotd.kejasafe.listing.LandlordHomeScreen
 import com.rotd.kejasafe.listing.ListingAnalyticsScreen
 import com.rotd.kejasafe.listing.ListingCalendarScreen
+import com.rotd.kejasafe.listing.ListingSearchScreen
 import com.rotd.kejasafe.listing.RequestPropertyScreen
-import com.rotd.kejasafe.listing.RequestPropertyViewModel
 import com.rotd.kejasafe.listing.TenantHomeScreen
+import com.rotd.kejasafe.listing.viewModel.RequestPropertyViewModel
 import com.rotd.kejasafe.network.SessionManager
 import com.rotd.kejasafe.profile.EditProfileScreen
 import com.rotd.kejasafe.profile.ProfileScreen
@@ -80,6 +82,24 @@ fun KejaSafeNavHost(
         if (isWeb) showLanding() else showLogin()
     }
 
+    fun switchMainTab(tab: KejaSafeNavTab) {
+        replaceRoot(destinationForTab(tab, currentRole()))
+    }
+
+    @Composable
+    fun webDashboard(tab: KejaSafeNavTab, content: @Composable () -> Unit) {
+        if (isWeb) {
+            KejaSafeWebDashboardShell(
+                currentTab = tab,
+                onTabSelected = ::switchMainTab,
+                onLogout = ::navigateToLogin,
+                content = content
+            )
+        } else {
+            content()
+        }
+    }
+
     fun navigateHomeForRole() {
         if (!SessionManager.isLogged()) {
             navigateToLogin()
@@ -91,10 +111,6 @@ fun KejaSafeNavHost(
             return
         }
         replaceRoot(homeDestinationForRole(currentRole()))
-    }
-
-    fun switchMainTab(tab: KejaSafeNavTab) {
-        replaceRoot(destinationForTab(tab, currentRole()))
     }
 
     fun openDetail(destination: KejaSafeDestination) {
@@ -182,22 +198,54 @@ fun KejaSafeNavHost(
         }
 
         entry<KejaSafeDestination.Home> {
-            TenantHomeScreen(
-                selectedTab = KejaSafeNavTab.HOME,
-                onTabSelected = ::switchMainTab,
-                onNavigateToProperty = { id -> openDetail(KejaSafeDestination.ListingCalendar(id)) },
-                onNavigateToProfile = { switchMainTab(KejaSafeNavTab.PROFILE) },
-                onNavigateToRequestProperty = { openDetail(KejaSafeDestination.RequestProperty) }
-            )
+            webDashboard(KejaSafeNavTab.HOME) {
+                TenantHomeScreen(
+                    selectedTab = KejaSafeNavTab.HOME,
+                    onTabSelected = ::switchMainTab,
+                    onNavigateToProperty = { id -> openDetail(KejaSafeDestination.ListingCalendar(id)) },
+                    onNavigateToProfile = { switchMainTab(KejaSafeNavTab.PROFILE) },
+                    onNavigateToSearch = { query, lat, lng ->
+                        openDetail(
+                            KejaSafeDestination.ListingSearch(
+                                query = query,
+                                latitude = lat,
+                                longitude = lng
+                            )
+                        )
+                    },
+                    onNavigateToRequestProperty = { openDetail(KejaSafeDestination.RequestProperty) }
+                )
+            }
         }
 
         entry<KejaSafeDestination.TenantHome> {
-            TenantHomeScreen(
-                selectedTab = KejaSafeNavTab.HOME,
-                onTabSelected = ::switchMainTab,
+            webDashboard(KejaSafeNavTab.HOME) {
+                TenantHomeScreen(
+                    selectedTab = KejaSafeNavTab.HOME,
+                    onTabSelected = ::switchMainTab,
+                    onNavigateToProperty = { id -> openDetail(KejaSafeDestination.ListingCalendar(id)) },
+                    onNavigateToProfile = { switchMainTab(KejaSafeNavTab.PROFILE) },
+                    onNavigateToSearch = { query, lat, lng ->
+                        openDetail(
+                            KejaSafeDestination.ListingSearch(
+                                query = query,
+                                latitude = lat,
+                                longitude = lng
+                            )
+                        )
+                    },
+                    onNavigateToRequestProperty = { openDetail(KejaSafeDestination.RequestProperty) }
+                )
+            }
+        }
+
+        entry<KejaSafeDestination.ListingSearch> { destination ->
+            ListingSearchScreen(
+                onBack = ::goBack,
                 onNavigateToProperty = { id -> openDetail(KejaSafeDestination.ListingCalendar(id)) },
-                onNavigateToProfile = { switchMainTab(KejaSafeNavTab.PROFILE) },
-                onNavigateToRequestProperty = { openDetail(KejaSafeDestination.RequestProperty) }
+                initialQuery = destination.query,
+                initialLatitude = destination.latitude,
+                initialLongitude = destination.longitude
             )
         }
 
@@ -210,15 +258,17 @@ fun KejaSafeNavHost(
         }
 
         entry<KejaSafeDestination.LandlordHome> {
-            LandlordHomeScreen(
-                selectedTab = KejaSafeNavTab.HOME,
-                onTabSelected = ::switchMainTab,
-                onNavigateToProfile = { switchMainTab(KejaSafeNavTab.PROFILE) },
-                onNavigateToCreateListing = { openDetail(KejaSafeDestination.CreateListing()) },
-                onNavigateToEditListing = { id -> openDetail(KejaSafeDestination.CreateListing(listingId = id)) },
-                onNavigateToAnalytics = { id -> openDetail(KejaSafeDestination.ListingAnalytics(id)) },
-                onNavigateToBookings = { openDetail(KejaSafeDestination.LandlordBookings) }
-            )
+            webDashboard(KejaSafeNavTab.HOME) {
+                LandlordHomeScreen(
+                    selectedTab = KejaSafeNavTab.HOME,
+                    onTabSelected = ::switchMainTab,
+                    onNavigateToProfile = { switchMainTab(KejaSafeNavTab.PROFILE) },
+                    onNavigateToCreateListing = { openDetail(KejaSafeDestination.CreateListing()) },
+                    onNavigateToEditListing = { id -> openDetail(KejaSafeDestination.CreateListing(listingId = id)) },
+                    onNavigateToAnalytics = { id -> openDetail(KejaSafeDestination.ListingAnalytics(id)) },
+                    onNavigateToBookings = { openDetail(KejaSafeDestination.LandlordBookings) }
+                )
+            }
         }
 
         entry<KejaSafeDestination.LandlordBookings> {
@@ -271,13 +321,15 @@ fun KejaSafeNavHost(
         }
 
         entry<KejaSafeDestination.Profile> {
-            ProfileScreen(
-                selectedTab = KejaSafeNavTab.PROFILE,
-                onTabSelected = ::switchMainTab,
-                onEditProfile = { openDetail(KejaSafeDestination.EditProfile) },
-                onLogout = { navigateToLogin() },
-                onCreateListingClick = { openDetail(KejaSafeDestination.CreateListing()) }
-            )
+            webDashboard(KejaSafeNavTab.PROFILE) {
+                ProfileScreen(
+                    selectedTab = KejaSafeNavTab.PROFILE,
+                    onTabSelected = ::switchMainTab,
+                    onEditProfile = { openDetail(KejaSafeDestination.EditProfile) },
+                    onLogout = { navigateToLogin() },
+                    onCreateListingClick = { openDetail(KejaSafeDestination.CreateListing()) }
+                )
+            }
         }
 
         entry<KejaSafeDestination.EditProfile> {
@@ -295,11 +347,13 @@ fun KejaSafeNavHost(
         }
 
         entry<KejaSafeDestination.Rent> {
-            RentScreen(
-                selectedTab = KejaSafeNavTab.BILLS,
-                onTabSelected = ::switchMainTab,
-                onCreateListingClick = { openDetail(KejaSafeDestination.CreateListing()) }
-            )
+            webDashboard(KejaSafeNavTab.BILLS) {
+                RentScreen(
+                    selectedTab = KejaSafeNavTab.BILLS,
+                    onTabSelected = ::switchMainTab,
+                    onCreateListingClick = { openDetail(KejaSafeDestination.CreateListing()) }
+                )
+            }
         }
 
         entry<KejaSafeDestination.Chat> {

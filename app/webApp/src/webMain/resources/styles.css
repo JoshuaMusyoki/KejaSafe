@@ -5,7 +5,11 @@ html, body {
     padding: 0;
     overflow: auto;
     background: #002114;
-    font-family: "Inter", system-ui, sans-serif;
+    font-family: "Inter", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", system-ui, sans-serif;
+}
+
+canvas {
+    font-family: "Inter", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", system-ui, sans-serif;
 }
 
 #compose-target {

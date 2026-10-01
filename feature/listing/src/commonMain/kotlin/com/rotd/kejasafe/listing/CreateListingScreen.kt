@@ -28,7 +28,6 @@ import com.rotd.kejasafe.components.CreateListingBasicsForm
 import com.rotd.kejasafe.components.KejaSafeHeader
 import com.rotd.kejasafe.components.KejaSafeHeaderContentInset
 import com.rotd.kejasafe.media.rememberImagePickerLauncher
-import com.rotd.kejasafe.rememberLocationPermissionState
 import com.rotd.kejasafe.theme.KejaSafeTheme
 
 @Composable
@@ -48,12 +47,6 @@ fun CreateListingScreen(
     val typeLabels = propertyTypes.associateWith { it.displayLabel() }
     val scrollState = rememberScrollState()
     val isEdit = !listingId.isNullOrBlank()
-
-    val locationPermission = rememberLocationPermissionState { granted ->
-        if (granted) {
-            viewModel.requestDeviceLocation()
-        }
-    }
 
     // Clear any sticky post-save state before collecting save events (avoids open→flash→close).
     LaunchedEffect(listingId) {
@@ -179,16 +172,15 @@ fun CreateListingScreen(
                         onAddPhotosClick = pickPhotos,
                         onRemovePhoto = viewModel::removePendingPhoto,
                         onRemoveExistingPhoto = viewModel::removeExistingPhoto,
-                        latitude = state.draft.latitude,
-                        onLatitudeChange = { lat -> viewModel.updateDraft { it.copy(latitude = lat) } },
-                        longitude = state.draft.longitude,
-                        onLongitudeChange = { lng -> viewModel.updateDraft { it.copy(longitude = lng) } },
-                        onGetLocationClick = {
-                            if (locationPermission.isGranted) {
-                                viewModel.requestDeviceLocation()
-                            } else {
-                                locationPermission.launchPermissionRequest()
-                            }
+                        landmarkQuery = state.draft.landmarkQuery,
+                        onLandmarkQueryChange = viewModel::onLandmarkQueryChange,
+                        placeSuggestions = state.placeSuggestions,
+                        onLandmarkSelected = viewModel::selectLandmark,
+                        isSearchingPlaces = state.isSearchingPlaces,
+                        selectedLandmark = state.draft.landmarkName,
+                        distanceMeters = state.draft.distanceMeters,
+                        onDistanceChange = { value ->
+                            viewModel.updateDraft { it.copy(distanceMeters = value.filter { c -> c.isDigit() }) }
                         },
                         isSubmitting = state.isSaving,
                         errorMessage = state.error ?: state.syncNote,

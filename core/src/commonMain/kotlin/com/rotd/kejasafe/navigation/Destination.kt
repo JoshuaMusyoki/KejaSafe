@@ -49,6 +49,14 @@ sealed interface KejaSafeDestination : NavKey {
     @Serializable
     data object RequestProperty : KejaSafeDestination
 
+    /** Browse / filter all houses. Optional query and coordinates come from tenant home. */
+    @Serializable
+    data class ListingSearch(
+        val query: String = "",
+        val latitude: Double? = null,
+        val longitude: Double? = null,
+    ) : KejaSafeDestination
+
     /** New listing when [listingId] is null; edit when set. */
     @Serializable
     data class CreateListing(val listingId: String? = null) : KejaSafeDestination

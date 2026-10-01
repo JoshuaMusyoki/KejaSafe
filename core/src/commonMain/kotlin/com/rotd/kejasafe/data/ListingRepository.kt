@@ -17,6 +17,10 @@ import com.rotd.kejasafe.network.ListingClient
 import com.rotd.kejasafe.network.SessionManager
 import com.rotd.kejasafe.storage.CacheKeys
 import com.rotd.kejasafe.storage.JsonCache
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 data class LandlordHomeSnapshot(
@@ -36,20 +40,25 @@ data class ListingSaveResult(
 class ListingRepository(
     private val localStore: ListingLocalStore = createListingLocalStore()
 ) {
+    private val browseMutex = Mutex()
+
     suspend fun getBrowseListings(
         lat: Double? = null,
         lng: Double? = null,
         onCacheHit: ((List<PropertyListing>) -> Unit)? = null
-    ): Result<OfflineData<List<PropertyListing>>> =
-        offlineFirst(
-            readCache = { JsonCache.getList(CacheKeys.BROWSE_LISTINGS, PropertyListing.serializer()) },
-            writeCache = { list ->
-                JsonCache.putList(CacheKeys.BROWSE_LISTINGS, list, PropertyListing.serializer())
-                localStore.upsertListings(list)
-            },
-            fetch = { ListingClient.getBrowseListings(lat, lng) },
-            onCacheHit = onCacheHit
-        )
+    ): Result<OfflineData<List<PropertyListing>>> = withContext(Dispatchers.Default) {
+        browseMutex.withLock {
+            offlineFirst(
+                readCache = { JsonCache.getList(CacheKeys.BROWSE_LISTINGS, PropertyListing.serializer()) },
+                writeCache = { list ->
+                    JsonCache.putList(CacheKeys.BROWSE_LISTINGS, list, PropertyListing.serializer())
+                    localStore.upsertListings(list)
+                },
+                fetch = { ListingClient.getBrowseListings(lat, lng) },
+                onCacheHit = onCacheHit
+            )
+        }
+    }
 
     suspend fun getMyListings(
         onCacheHit: ((List<PropertyListing>) -> Unit)? = null

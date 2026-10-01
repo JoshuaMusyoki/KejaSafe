@@ -13,7 +13,7 @@ object ServerConfig {
     val jwtAudience: String = env("KEJASAFE_JWT_AUDIENCE") ?: "kejasafe-users"
 
     val databaseUrl: String = env("KEJASAFE_DB_URL")
-        ?: "jdbc:h2:file:./build/db/kejasafe;DB_CLOSE_DELAY=-1;"
+        ?: "jdbc:h2:file:./build/db/kejasafe;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;INIT=CREATE SCHEMA IF NOT EXISTS PUBLIC;"
     val databaseDriver: String = env("KEJASAFE_DB_DRIVER") ?: "org.h2.Driver"
 
     /** Managed Postgres needs credentials; the local H2 file does not. */
@@ -45,6 +45,9 @@ object ServerConfig {
     /** Must be a public HTTPS URL that Safaricom can reach (e.g. ngrok → /mpesa/callback). */
     val mpesaCallbackUrl: String = env("MPESA_CALLBACK_URL")
         ?: "https://your-api-domain.com/mpesa/callback"
+
+    /** Server-side key for Places Autocomplete. Never shipped to the app. */
+    val googlePlacesApiKey: String? = env("GOOGLE_PLACES_API_KEY")
 
     private fun env(name: String): String? = System.getenv(name)?.trim()?.ifBlank { null }
 }

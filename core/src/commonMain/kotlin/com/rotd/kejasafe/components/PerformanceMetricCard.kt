@@ -29,6 +29,9 @@ import com.rotd.kejasafe.theme.Emerald700
 import com.rotd.kejasafe.theme.Gold600
 import com.rotd.kejasafe.theme.Slate200
 
+/**
+ * Full-width performance metric (analytics / detailed views).
+ */
 @Composable
 fun PerformanceMetricCard(
     title: String,
@@ -106,6 +109,96 @@ fun PerformanceMetricCard(
                         filled = segmentedProgress.first,
                         total = segmentedProgress.second,
                         color = Emerald700
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Dense marketplace-style metric tile for landlord home grids.
+ * Same density language as property cards: compact header, hero value, short footer.
+ */
+@Composable
+fun CompactPerformanceStatCard(
+    title: String,
+    value: String,
+    valueColor: Color,
+    footer: String,
+    modifier: Modifier = Modifier,
+    badge: @Composable (() -> Unit)? = null,
+    accentColor: Color? = null,
+    trailingLabel: String? = null,
+    progress: Float? = null,
+    segmentedProgress: Pair<Int, Int>? = null
+) {
+    KejaSafeCard(modifier = modifier) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            if (accentColor != null) {
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height(108.dp)
+                        .background(accentColor)
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (trailingLabel != null) {
+                        Text(
+                            text = trailingLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    badge?.invoke()
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = valueColor,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Text(
+                    text = footer,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2
+                )
+
+                if (progress != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LinearProgressTrack(progress = progress, color = valueColor)
+                }
+
+                if (segmentedProgress != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    SegmentedProgress(
+                        filled = segmentedProgress.first,
+                        total = segmentedProgress.second,
+                        color = valueColor
                     )
                 }
             }

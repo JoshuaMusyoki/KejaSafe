@@ -1,5 +1,6 @@
 package com.rotd.kejasafe.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -29,6 +30,7 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rotd.kejasafe.DraftExtraCharge
+import com.rotd.kejasafe.LandmarkSuggestion
 import com.rotd.kejasafe.PendingListingPhoto
 import com.rotd.kejasafe.theme.KejaSafeTheme
 
@@ -162,11 +165,14 @@ fun CreateListingBasicsForm(
     onAddPhotosClick: (() -> Unit)? = null,
     onRemovePhoto: ((String) -> Unit)? = null,
     onRemoveExistingPhoto: ((String) -> Unit)? = null,
-    latitude: String = "",
-    onLatitudeChange: ((String) -> Unit)? = null,
-    longitude: String = "",
-    onLongitudeChange: ((String) -> Unit)? = null,
-    onGetLocationClick: (() -> Unit)? = null,
+    landmarkQuery: String = "",
+    onLandmarkQueryChange: ((String) -> Unit)? = null,
+    placeSuggestions: List<LandmarkSuggestion> = emptyList(),
+    onLandmarkSelected: ((LandmarkSuggestion) -> Unit)? = null,
+    isSearchingPlaces: Boolean = false,
+    selectedLandmark: String = "",
+    distanceMeters: String = "",
+    onDistanceChange: ((String) -> Unit)? = null,
     isSubmitting: Boolean = false,
     errorMessage: String? = null,
     showContinueButton: Boolean = true,
@@ -206,48 +212,80 @@ fun CreateListingBasicsForm(
             )
         }
 
-        if (onGetLocationClick != null) {
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = onGetLocationClick,
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Icon(Icons.Default.LocationOn, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Pin my current location")
-            }
-        }
-
-        if (onLatitudeChange != null && onLongitudeChange != null) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "Map Pin Coordinates",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Used to show distance to tenants accurately. Use the button above to pin your current spot, or enter precise coordinates from Google Maps.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                KejaSafeFormField(label = "Latitude", modifier = Modifier.weight(1f)) {
-                    KejaSafeTextField(
-                        value = latitude,
-                        onValueChange = onLatitudeChange,
-                        placeholder = "-1.2921"
+        if (onLandmarkQueryChange != null) {
+            Spacer(modifier = Modifier.height(14.dp))
+            KejaSafeFormField(label = "Nearby landmark") {
+                KejaSafeTextField(
+                    value = landmarkQuery,
+                    onValueChange = onLandmarkQueryChange,
+                    placeholder = "Road, market, or landmark",
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+                Text(
+                    text = "Suggestions appear as you type. Pick one, then say how far the house is.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                if (isSearchingPlaces) {
+                    Text(
+                        text = "Searching places…",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
-                KejaSafeFormField(label = "Longitude", modifier = Modifier.weight(1f)) {
+                if (placeSuggestions.isNotEmpty() && onLandmarkSelected != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        placeSuggestions.forEach { suggestion ->
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onLandmarkSelected(suggestion) },
+                                shape = MaterialTheme.shapes.medium,
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                    Text(
+                                        text = suggestion.name,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    if (suggestion.description.isNotBlank() && suggestion.description != suggestion.name) {
+                                        Text(
+                                            text = suggestion.description,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (selectedLandmark.isNotBlank()) {
+                    Text(
+                        text = "Selected: $selectedLandmark",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+            if (onDistanceChange != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                KejaSafeFormField(label = "Distance from that landmark (meters)") {
                     KejaSafeTextField(
-                        value = longitude,
-                        onValueChange = onLongitudeChange,
-                        placeholder = "36.8219"
+                        value = distanceMeters,
+                        onValueChange = { onDistanceChange(it.filter { c -> c.isDigit() }) },
+                        placeholder = "e.g. 200"
                     )
                 }
             }

@@ -50,6 +50,7 @@ import com.rotd.kejasafe.components.KejaSafeHeaderContentInset
 import com.rotd.kejasafe.components.KejaSafeOfflineBanner
 import com.rotd.kejasafe.components.KejaSafePrimaryButton
 import com.rotd.kejasafe.components.ListingMetricShimmer
+import com.rotd.kejasafe.listing.viewModel.LandlordHomeViewModel
 import com.rotd.kejasafe.theme.Emerald700
 import com.rotd.kejasafe.theme.KejaSafeTheme
 import org.koin.compose.viewmodel.koinViewModel

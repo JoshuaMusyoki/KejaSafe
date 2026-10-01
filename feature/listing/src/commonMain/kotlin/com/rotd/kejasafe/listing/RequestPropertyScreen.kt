@@ -30,6 +30,7 @@ import com.rotd.kejasafe.domain.listing.DistancePreference
 import com.rotd.kejasafe.domain.listing.HouseSize
 import com.rotd.kejasafe.domain.listing.HouseType
 import com.rotd.kejasafe.domain.listing.ListingType
+import com.rotd.kejasafe.listing.viewModel.RequestPropertyViewModel
 import com.rotd.kejasafe.theme.KejaSafeTheme
 import com.rotd.kejasafe.theme.ScreenPreviews
 

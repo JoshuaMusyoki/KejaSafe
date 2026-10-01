@@ -13,6 +13,7 @@ import com.rotd.kejasafe.listing.LiveTourService
 import com.rotd.kejasafe.listing.StoryService
 import com.rotd.kejasafe.listing.propertyRequestRoutes
 import com.rotd.kejasafe.payment.mpesaCallbackRoutes
+import com.rotd.kejasafe.places.placesRoutes
 import com.rotd.kejasafe.rent.RentService
 import com.rotd.kejasafe.rent.escrowRoutes
 import io.ktor.http.ContentType
@@ -200,6 +201,8 @@ fun Application.module() {
         }
 
         authenticate("auth-jwt") {
+            placesRoutes()
+
             route("/kyc") {
                 post("/submit") {
                     val principal = call.principal<JWTPrincipal>()

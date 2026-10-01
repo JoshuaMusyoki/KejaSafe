@@ -537,6 +537,10 @@ data class CreateListingDraft(
     val deposit: String = "",
     val latitude: String = "",
     val longitude: String = "",
+    val landmarkQuery: String = "",
+    val landmarkName: String = "",
+    val landmarkPlaceId: String = "",
+    val distanceMeters: String = "",
     val extraCharges: List<DraftExtraCharge> = emptyList()
 )
 
