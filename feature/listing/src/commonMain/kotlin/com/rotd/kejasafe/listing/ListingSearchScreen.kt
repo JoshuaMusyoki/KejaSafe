@@ -41,6 +41,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -83,6 +85,7 @@ fun ListingSearchScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val results = state.results
     val universities = state.universities
+    val pullRefreshState = rememberPullToRefreshState()
     val locationPermission = rememberLocationPermissionState { granted ->
         if (granted) viewModel.requestDeviceLocation()
     }
@@ -209,10 +212,16 @@ fun ListingSearchScreen(
                     }
                 }
                 else -> {
-                    Column(
+                    PullToRefreshBox(
+                        isRefreshing = state.isRefreshing,
+                        onRefresh = { viewModel.refresh(showLoading = false) },
+                        state = pullRefreshState,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
+                    ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize()
                     ) {
                     if (state.syncWarning != null) {
                         KejaSafeOfflineBanner(
@@ -277,6 +286,7 @@ fun ListingSearchScreen(
                                 )
                             }
                         }
+                    }
                     }
                     }
                 }

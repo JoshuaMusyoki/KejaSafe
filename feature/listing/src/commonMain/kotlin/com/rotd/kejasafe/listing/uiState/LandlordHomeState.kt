@@ -9,6 +9,7 @@ import com.rotd.kejasafe.RoommateMatch
 
 data class LandlordHomeState(
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
     /** Soft banner when showing cached data after a failed refresh. */
     val syncWarning: String? = null,

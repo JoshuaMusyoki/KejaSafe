@@ -4,6 +4,7 @@ import com.rotd.kejasafe.PropertyListing
 
 data class TenantHomeState(
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
     val syncWarning: String? = null,
     val listings: List<PropertyListing> = emptyList(),

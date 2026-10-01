@@ -27,6 +27,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +71,7 @@ private enum class TenantHomePopup {
     LISTING
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TenantHomeScreen(
     selectedTab: KejaSafeNavTab = KejaSafeNavTab.HOME,
@@ -114,6 +117,13 @@ fun TenantHomeScreen(
                 state.listings.firstOrNull { it.id == id }
             }
 
+            val pullRefreshState = rememberPullToRefreshState()
+            PullToRefreshBox(
+                isRefreshing = state.isRefreshing,
+                onRefresh = { viewModel.refresh(showLoading = false) },
+                state = pullRefreshState,
+                modifier = Modifier.fillMaxSize()
+            ) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
@@ -361,6 +371,7 @@ fun TenantHomeScreen(
                 }
 
                 item { Spacer(modifier = Modifier.height(24.dp)) }
+            }
             }
 
             KejaSafeAppBar(

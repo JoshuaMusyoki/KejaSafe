@@ -38,6 +38,7 @@ class TenantHomeViewModel(
     )
     val state: StateFlow<TenantHomeState> = _state.asStateFlow()
     private var enrichJob: Job? = null
+    private var refreshGeneration = 0
 
     init {
         viewModelScope.launch(Dispatchers.Default) {
@@ -70,24 +71,33 @@ class TenantHomeViewModel(
     }
 
     fun refresh(showLoading: Boolean = true) {
+        val generation = ++refreshGeneration
         viewModelScope.launch {
-            if (showLoading && _state.value.listings.isEmpty()) {
-                _state.update { it.copy(isLoading = true, error = null, syncWarning = null) }
-            } else {
-                _state.update { it.copy(error = null, syncWarning = null) }
+            val firstLoad = showLoading && _state.value.listings.isEmpty()
+            _state.update {
+                it.copy(
+                    isLoading = firstLoad,
+                    isRefreshing = !firstLoad,
+                    error = null,
+                    syncWarning = null
+                )
             }
             listingRepository.getBrowseListings(
                 lat = _state.value.userLatitude,
                 lng = _state.value.userLongitude,
                 onCacheHit = { cached ->
-                    publishListings(cached, syncWarning = null, enrich = false)
+                    if (generation == refreshGeneration && _state.value.listings.isEmpty()) {
+                        publishListings(cached, syncWarning = null, enrich = false)
+                    }
                 }
             )
                 .onSuccess { offline ->
+                    if (generation != refreshGeneration) return@onSuccess
                     publishListings(offline.value, offline.syncWarning, enrich = true)
                     offerLocationPromptIfNeeded()
                 }
                 .onFailure { e ->
+                    if (generation != refreshGeneration) return@onFailure
                     _state.update {
                         it.copy(
                             isLoading = false,
@@ -96,10 +106,13 @@ class TenantHomeViewModel(
                         )
                     }
                     val shown = _state.value.listings
-                    if (shown.isNotEmpty() && ! _state.value.distancesReady) {
+                    if (shown.isNotEmpty() && !_state.value.distancesReady) {
                         publishListings(shown, syncWarning = null, enrich = true)
                     }
                 }
+            if (generation == refreshGeneration) {
+                _state.update { it.copy(isRefreshing = false, isLoading = false) }
+            }
         }
     }
 

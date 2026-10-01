@@ -24,6 +24,7 @@ class LandlordHomeViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(LandlordHomeState())
     val state: StateFlow<LandlordHomeState> = _state.asStateFlow()
+    private var refreshGeneration = 0
 
     init {
         refresh(showLoading = true)
@@ -41,27 +42,35 @@ class LandlordHomeViewModel(
 
 
     fun refresh(showLoading: Boolean = true) {
+        val generation = ++refreshGeneration
         viewModelScope.launch {
-            if (showLoading && _state.value.listings.isEmpty()) {
-                _state.update { it.copy(isLoading = true, error = null, syncWarning = null) }
-            } else {
-                _state.update { it.copy(error = null, syncWarning = null) }
+            val firstLoad = showLoading && _state.value.listings.isEmpty()
+            _state.update {
+                it.copy(
+                    isLoading = firstLoad,
+                    isRefreshing = !firstLoad,
+                    error = null,
+                    syncWarning = null
+                )
             }
             listingRepository.loadLandlordHome(
                 onCacheHit = { snapshot ->
-                    _state.update {
-                        it.copy(
-                            listings = snapshot.listings,
-                            performance = snapshot.performance,
-                            requests = snapshot.requests,
-                            confirmedBookings = snapshot.confirmedBookings,
-                            isLoading = false,
-                            error = null
-                        )
+                    if (generation == refreshGeneration && _state.value.listings.isEmpty()) {
+                        _state.update {
+                            it.copy(
+                                listings = snapshot.listings,
+                                performance = snapshot.performance,
+                                requests = snapshot.requests,
+                                confirmedBookings = snapshot.confirmedBookings,
+                                isLoading = false,
+                                error = null
+                            )
+                        }
                     }
                 }
             )
                 .onSuccess { offline ->
+                    if (generation != refreshGeneration) return@onSuccess
                     val snapshot = offline.value
                     _state.update {
                         it.copy(
@@ -76,6 +85,7 @@ class LandlordHomeViewModel(
                     }
                 }
                 .onFailure { e ->
+                    if (generation != refreshGeneration) return@onFailure
                     _state.update {
                         it.copy(
                             isLoading = false,
@@ -84,6 +94,9 @@ class LandlordHomeViewModel(
                         )
                     }
                 }
+            if (generation == refreshGeneration) {
+                _state.update { it.copy(isRefreshing = false, isLoading = false) }
+            }
         }
     }
 

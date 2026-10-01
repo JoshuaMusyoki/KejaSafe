@@ -91,24 +91,29 @@ private external fun bindPickerCallback(callback: (String) -> Unit)
             finish();
         });
         input.onchange = async function () {
-            var files = input.files ? Array.prototype.slice.call(input.files) : [];
-            for (var i = 0; i < files.length; i++) {
-                var file = files[i];
-                var buf = new Uint8Array(await file.arrayBuffer());
-                var binary = '';
-                var chunk = 0x8000;
-                for (var offset = 0; offset < buf.length; offset += chunk) {
-                    var slice = buf.subarray(offset, Math.min(offset + chunk, buf.length));
-                    binary += String.fromCharCode.apply(null, slice);
+            try {
+                var files = input.files ? Array.prototype.slice.call(input.files) : [];
+                for (var i = 0; i < files.length; i++) {
+                    var file = files[i];
+                    var buf = new Uint8Array(await file.arrayBuffer());
+                    var binary = '';
+                    var chunk = 0x8000;
+                    for (var offset = 0; offset < buf.length; offset += chunk) {
+                        var slice = buf.subarray(offset, Math.min(offset + chunk, buf.length));
+                        var parts = new Array(slice.length);
+                        for (var j = 0; j < slice.length; j++) parts[j] = slice[j];
+                        binary += String.fromCharCode.apply(null, parts);
+                    }
+                    deliver(JSON.stringify({
+                        name: file.name || 'image.jpg',
+                        type: file.type || '',
+                        data: btoa(binary)
+                    }));
                 }
-                deliver(JSON.stringify({
-                    name: file.name || 'image.jpg',
-                    type: file.type || '',
-                    data: btoa(binary)
-                }));
+            } finally {
+                deliver('');
+                finish();
             }
-            deliver('');
-            finish();
         };
         (document.body || document.documentElement).appendChild(input);
         input.click();
