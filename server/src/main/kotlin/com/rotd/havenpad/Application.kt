@@ -622,6 +622,19 @@ fun Application.module() {
                     call.respond(LiveTourService.openToursForTenant(userId))
                 }
 
+                get("/incoming") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val ring = LiveTourService.incomingRing(userId)
+                    call.respond(if (ring == null) emptyList() else listOf(ring))
+                }
+
+                get("/history") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(LiveTourService.callHistory(userId))
+                }
+
                 get("/{sessionId}") {
                     val principal = call.principal<JWTPrincipal>()
                     val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
@@ -632,6 +645,36 @@ fun Application.module() {
                     else call.respond(HttpStatusCode.NotFound, "Live tour not found")
                 }
 
+                post("/{sessionId}/ring") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.ring(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respondText(
+                            text = e.message ?: "Could not ring",
+                            status = HttpStatusCode.BadRequest
+                        )
+                    }
+                }
+
+                post("/{sessionId}/joined") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.markJoined(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respondText(
+                            text = e.message ?: "Could not join tour",
+                            status = HttpStatusCode.BadRequest
+                        )
+                    }
+                }
+
                 post("/{sessionId}/confirm") {
                     val principal = call.principal<JWTPrincipal>()
                     val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
@@ -640,7 +683,10 @@ fun Application.module() {
                     try {
                         call.respond(LiveTourService.confirmTour(sessionId, userId))
                     } catch (e: Exception) {
-                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not confirm tour")
+                        call.respondText(
+                            text = e.message ?: "Could not confirm tour",
+                            status = HttpStatusCode.BadRequest
+                        )
                     }
                 }
 
@@ -666,6 +712,60 @@ fun Application.module() {
                         call.respond(LiveTourService.issueToken(sessionId, userId))
                     } catch (e: Exception) {
                         call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not issue LiveKit token")
+                    }
+                }
+
+                get("/{sessionId}/rtc") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.rtcRoom(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not load call")
+                    }
+                }
+
+                post("/{sessionId}/rtc/offer") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<RtcSessionDescription>()
+                    try {
+                        LiveTourService.saveOffer(sessionId, userId, body)
+                        call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not save offer")
+                    }
+                }
+
+                post("/{sessionId}/rtc/answer") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<RtcSessionDescription>()
+                    try {
+                        LiveTourService.saveAnswer(sessionId, userId, body)
+                        call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not save answer")
+                    }
+                }
+
+                post("/{sessionId}/rtc/ice") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<RtcIceCandidate>()
+                    try {
+                        LiveTourService.addIce(sessionId, userId, body)
+                        call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not save ICE candidate")
                     }
                 }
 

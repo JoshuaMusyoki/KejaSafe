@@ -478,7 +478,52 @@ data class LiveTourSession(
     val preferredTimeNote: String = "",
     val createdAt: Long = 0L,
     val startedAt: Long? = null,
-    val endedAt: Long? = null
+    val endedAt: Long? = null,
+    /** User who placed a direct call. Blank for a scheduled tour request. */
+    val callerId: String = "",
+    val answeredAt: Long? = null,
+    val missed: Boolean = false,
+)
+
+/** One row on the chat Calls tab. */
+@Serializable
+data class CallLogEntry(
+    val sessionId: String,
+    val listingId: String,
+    val listingTitle: String = "",
+    val peerUserId: String,
+    val peerName: String = "",
+    val peerIsLandlord: Boolean = false,
+    val mediaType: LiveTourMediaType = LiveTourMediaType.VIDEO,
+    val missed: Boolean = false,
+    val outgoing: Boolean = false,
+    val status: LiveTourStatus = LiveTourStatus.ENDED,
+    val createdAt: Long = 0L,
+    val endedAt: Long? = null,
+)
+
+@Serializable
+data class RtcSessionDescription(
+    val type: String,
+    val sdp: String,
+)
+
+@Serializable
+data class RtcIceCandidate(
+    val candidate: String,
+    val sdpMid: String? = null,
+    val sdpMLineIndex: Int? = null,
+)
+
+/** Signaling snapshot. Same shape as the Firebase RTC codelab room. */
+@Serializable
+data class RtcRoomSnapshot(
+    val role: String,
+    val mediaType: LiveTourMediaType = LiveTourMediaType.VIDEO,
+    val offer: RtcSessionDescription? = null,
+    val answer: RtcSessionDescription? = null,
+    val callerCandidates: List<RtcIceCandidate> = emptyList(),
+    val calleeCandidates: List<RtcIceCandidate> = emptyList(),
 )
 
 @Serializable

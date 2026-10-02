@@ -238,44 +238,50 @@ class RentViewModel(
             val current = _state.value as? RentState.Success ?: return@launch
             val bill = current.bills.find { it.id == billId } ?: return@launch
             val fileName = "HavenPad-Invoice-${bill.year}-${bill.month.toString().padStart(2, '0')}.pdf"
-            // Build PDF on-device immediately so preview/download never depend on the API.
+            _state.value = current.copy(
+                previewBill = bill,
+                previewPdfBytes = null,
+                previewPdfFileName = fileName,
+                isLoadingPreviewPdf = true,
+                previewPdfError = null,
+                message = null
+            )
+
             val localPdf = runCatching {
                 InvoicePdfGenerator.render(
                     bill = bill,
                     tenantName = bill.tenantName.ifBlank { "Tenant" }
                 )
             }.getOrNull()
-
-            _state.value = current.copy(
-                previewBill = bill,
-                previewPdfBytes = localPdf,
-                previewPdfFileName = fileName,
-                isLoadingPreviewPdf = localPdf == null,
-                previewPdfError = if (localPdf == null) "Could not build invoice PDF" else null,
-                message = null
-            )
-
-            // Optional: refresh from server if local build failed.
-            if (localPdf == null) {
-                ListingClient.downloadBillPdf(billId)
-                    .onSuccess { bytes ->
-                        val latest = _state.value as? RentState.Success ?: return@onSuccess
-                        if (latest.previewBill?.id != billId) return@onSuccess
-                        _state.value = latest.copy(
-                            previewPdfBytes = bytes,
-                            isLoadingPreviewPdf = false,
-                            previewPdfError = null
-                        )
-                    }
-                    .onFailure { e ->
-                        val latest = _state.value as? RentState.Success ?: return@onFailure
-                        if (latest.previewBill?.id != billId) return@onFailure
-                        _state.value = latest.copy(
-                            isLoadingPreviewPdf = false,
-                            previewPdfError = e.userMessage()
-                        )
-                    }
+            val afterLocal = _state.value as? RentState.Success ?: return@launch
+            if (afterLocal.previewBill?.id != billId) return@launch
+            if (localPdf != null) {
+                _state.value = afterLocal.copy(
+                    previewPdfBytes = localPdf,
+                    isLoadingPreviewPdf = false,
+                    previewPdfError = null
+                )
+                return@launch
             }
+
+            ListingClient.downloadBillPdf(billId)
+                .onSuccess { bytes ->
+                    val latest = _state.value as? RentState.Success ?: return@onSuccess
+                    if (latest.previewBill?.id != billId) return@onSuccess
+                    _state.value = latest.copy(
+                        previewPdfBytes = bytes,
+                        isLoadingPreviewPdf = false,
+                        previewPdfError = null
+                    )
+                }
+                .onFailure { e ->
+                    val latest = _state.value as? RentState.Success ?: return@onFailure
+                    if (latest.previewBill?.id != billId) return@onFailure
+                    _state.value = latest.copy(
+                        isLoadingPreviewPdf = false,
+                        previewPdfError = e.userMessage()
+                    )
+                }
         }
     }
 

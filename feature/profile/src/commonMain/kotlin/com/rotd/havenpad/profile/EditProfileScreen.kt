@@ -1,11 +1,13 @@
 package com.rotd.havenpad.profile
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -87,10 +89,16 @@ fun EditProfileScreen(
                 val isStudent = user.role == UserRole.STUDENT
                 val isLandlord = user.role == UserRole.LANDLORD || user.role == UserRole.ADMIN
 
-                Column(
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding)
+                        .padding(padding),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 680.dp)
+                        .fillMaxWidth()
                         .padding(horizontal = HavenPadTheme.spacing.containerMarginMobile)
                         .verticalScroll(rememberScrollState())
                         .padding(vertical = 16.dp)
@@ -199,6 +207,7 @@ fun EditProfileScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(24.dp))
+                }
                 }
             }
         }

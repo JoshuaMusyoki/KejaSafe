@@ -42,6 +42,7 @@ fun IncomingRequestCard(
     request: IncomingRequest,
     primaryActionLabel: String,
     secondaryActionLabel: String,
+    actionsEnabled: Boolean = true,
     onPrimaryAction: () -> Unit,
     onSecondaryAction: () -> Unit,
     modifier: Modifier = Modifier
@@ -116,6 +117,7 @@ fun IncomingRequestCard(
             ) {
                 OutlinedButton(
                     onClick = onSecondaryAction,
+                    enabled = actionsEnabled,
                     modifier = Modifier.weight(1f),
                     shape = MaterialTheme.shapes.medium,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -127,6 +129,7 @@ fun IncomingRequestCard(
                 }
                 Button(
                     onClick = onPrimaryAction,
+                    enabled = actionsEnabled,
                     modifier = Modifier.weight(1f),
                     shape = MaterialTheme.shapes.medium,
                     colors = ButtonDefaults.buttonColors(

@@ -9,10 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,7 +35,7 @@ import com.rotd.havenpad.theme.HavenPadTheme
 @Composable
 fun HavenPadAppBar(
     modifier: Modifier = Modifier,
-    onTuneClick: (() -> Unit)? = null,
+    onNotificationClick: (() -> Unit)? = null,
     onProfileClick: (() -> Unit)? = null,
     showProfile: Boolean = true,
     frosted: Boolean = true
@@ -85,11 +85,10 @@ fun HavenPadAppBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Home,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp)
+                HavenPadLogoImage(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(6.dp))
                 )
                 Text(
                     text = "HavenPad",
@@ -100,11 +99,11 @@ fun HavenPadAppBar(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (onTuneClick != null) {
-                    IconButton(onClick = onTuneClick) {
+                if (onNotificationClick != null) {
+                    IconButton(onClick = onNotificationClick) {
                         Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = "Filters",
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Notifications",
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }

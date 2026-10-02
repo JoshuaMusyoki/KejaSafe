@@ -6,6 +6,7 @@ import com.rotd.havenpad.LiveTourMediaType
 import com.rotd.havenpad.LiveTourSession
 import com.rotd.havenpad.LiveTourStatus
 import com.rotd.havenpad.error.userMessage
+import com.rotd.havenpad.network.CallLogBus
 import com.rotd.havenpad.network.LiveTourClient
 import com.rotd.havenpad.network.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,30 +68,23 @@ class LiveTourCallViewModel(
     }
 
     fun join(session: LiveTourMediaSession) {
+        val tour = _state.value.session ?: return
+        val me = SessionManager.currentUser.value?.id.orEmpty()
         viewModelScope.launch {
             _state.update { it.copy(isJoining = true, error = null) }
-            LiveTourClient.fetchToken(sessionId)
-                .onSuccess { details ->
-                    val video = details.mediaType == LiveTourMediaType.VIDEO
-                    session.connect(
-                        serverUrl = details.serverUrl,
-                        token = details.participantToken,
-                        enableCamera = video,
-                        enableMic = true,
-                    )
-                    _state.update {
-                        it.copy(
-                            isJoining = false,
-                            listingTitle = details.listingTitle.ifBlank { it.listingTitle },
-                            mediaType = details.mediaType,
-                        )
-                    }
-                }
-                .onFailure { e ->
-                    _state.update {
-                        it.copy(isJoining = false, error = e.userMessage())
-                    }
-                }
+            if (tour.callerId.isBlank() || me == tour.callerId) {
+                LiveTourClient.ring(tour.id)
+            } else {
+                LiveTourClient.markJoined(tour.id)
+            }
+            val video = tour.mediaType == LiveTourMediaType.VIDEO
+            session.connect(
+                sessionId = tour.id,
+                asCaller = me == tour.landlordId,
+                enableCamera = video,
+                enableMic = true,
+            )
+            _state.update { it.copy(isJoining = false, mediaType = tour.mediaType) }
         }
     }
 
@@ -98,6 +92,7 @@ class LiveTourCallViewModel(
         viewModelScope.launch {
             session.disconnect()
             LiveTourClient.endTour(sessionId)
+            CallLogBus.ended()
             _state.update { it.copy(ended = true) }
         }
     }

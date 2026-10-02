@@ -29,8 +29,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +48,7 @@ import com.rotd.havenpad.LiveTourStatus
 import com.rotd.havenpad.components.HavenPadHeader
 import com.rotd.havenpad.components.HavenPadHeaderContentInset
 import com.rotd.havenpad.components.HavenPadPrimaryButton
+import com.rotd.havenpad.network.IncomingCallCenter
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -65,8 +70,25 @@ fun LiveTourCallScreen(
         viewModel.join(media)
     }
 
+    var autoJoined by remember(sessionId) { mutableStateOf(false) }
+
+    DisposableEffect(sessionId) {
+        IncomingCallCenter.suppress(sessionId)
+        onDispose { IncomingCallCenter.unsuppress(sessionId) }
+    }
+
     LaunchedEffect(state.ended) {
         if (state.ended) onBack()
+    }
+
+    LaunchedEffect(state.session?.id, state.session?.status, state.viewerId) {
+        val session = state.session ?: return@LaunchedEffect
+        val direct = session.callerId.isNotBlank() &&
+            (session.status == LiveTourStatus.READY || session.status == LiveTourStatus.ACTIVE)
+        if (direct && !autoJoined && !state.isJoining) {
+            autoJoined = true
+            requestJoin()
+        }
     }
 
     Scaffold(
@@ -237,10 +259,7 @@ fun LiveTourCallScreen(
 
             HavenPadHeader(
                 title = state.listingTitle.ifBlank { "Live tour" },
-                onBackClick = {
-                    media.disconnect()
-                    onBack()
-                },
+                onBackClick = { viewModel.endCall(media) },
                 frosted = false,
                 modifier = Modifier.align(Alignment.TopCenter)
             )

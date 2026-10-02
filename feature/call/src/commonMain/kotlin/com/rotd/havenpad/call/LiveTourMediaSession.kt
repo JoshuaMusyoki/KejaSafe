@@ -20,8 +20,8 @@ interface LiveTourMediaSession {
     val cameraEnabled: StateFlow<Boolean>
 
     suspend fun connect(
-        serverUrl: String,
-        token: String,
+        sessionId: String,
+        asCaller: Boolean,
         enableCamera: Boolean,
         enableMic: Boolean,
     )

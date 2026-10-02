@@ -20,6 +20,22 @@ expect fun showIncomingChatNotification(
     peerIsLandlord: Boolean = false,
 )
 
+/** Full-screen house-tour ring. Android turns the screen on; other platforms show a notification. */
+expect fun showIncomingHouseTourRing(
+    callerName: String,
+    listingTitle: String,
+    sessionId: String,
+    peerUserId: String = "",
+    listingId: String = "",
+    peerIsLandlord: Boolean = false,
+)
+
+expect fun cancelHouseTourRing(sessionId: String)
+
+expect fun startHouseTourRingSound()
+
+expect fun stopHouseTourRingSound()
+
 /** Start background delivery after login. */
 expect fun onSessionSaved()
 

@@ -199,6 +199,28 @@ object LiveTourSessionsTable : Table("live_tour_sessions") {
     val createdAt = long("created_at")
     val startedAt = long("started_at").nullable()
     val endedAt = long("ended_at").nullable()
+    val callerId = varchar("caller_id", 50).default("")
+    val answeredAt = long("answered_at").nullable()
+    val missed = bool("missed").default(false)
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object LiveTourRtcTable : Table("live_tour_rtc") {
+    val sessionId = varchar("session_id", 50)
+    val offerSdp = text("offer_sdp").nullable()
+    val answerSdp = text("answer_sdp").nullable()
+
+    override val primaryKey = PrimaryKey(sessionId)
+}
+
+object LiveTourIceTable : Table("live_tour_ice") {
+    val id = varchar("id", 50)
+    val sessionId = varchar("session_id", 50)
+    val fromCaller = bool("from_caller")
+    val candidate = text("candidate")
+    val sdpMid = varchar("sdp_mid", 64).nullable()
+    val sdpMLineIndex = integer("sdp_m_line_index").nullable()
 
     override val primaryKey = PrimaryKey(id)
 }
@@ -261,6 +283,8 @@ fun initDatabase() {
             ListingEventsTable,
             RoommateMatchesTable,
             LiveTourSessionsTable,
+            LiveTourRtcTable,
+            LiveTourIceTable,
             CommunityStoriesTable,
             ChatConnectionsTable,
             ChatMessagesTable,
@@ -280,6 +304,8 @@ fun initDatabase() {
             ListingEventsTable,
             RoommateMatchesTable,
             LiveTourSessionsTable,
+            LiveTourRtcTable,
+            LiveTourIceTable,
             CommunityStoriesTable,
             ChatConnectionsTable,
             ChatMessagesTable,

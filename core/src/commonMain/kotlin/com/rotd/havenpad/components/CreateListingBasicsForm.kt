@@ -180,7 +180,7 @@ fun CreateListingBasicsForm(
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         if (showAppBar) {
-            HavenPadAppBar(showProfile = false, onTuneClick = {})
+            HavenPadAppBar(showProfile = false)
             Spacer(modifier = Modifier.height(8.dp))
         }
 

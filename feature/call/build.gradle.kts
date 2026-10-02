@@ -15,7 +15,7 @@ kotlin {
             implementation(libs.androidxLifecycleViewmodelCompose)
         }
         androidMain.dependencies {
-            implementation(libs.livekitAndroid)
+            implementation(libs.webRtc)
             implementation(libs.accompanistPermissions)
         }
     }

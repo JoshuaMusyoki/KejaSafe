@@ -1,5 +1,7 @@
 package com.rotd.havenpad.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -154,6 +156,14 @@ fun HavenPadNavHost(
         ChatLaunchRequest.consume()
     }
 
+    val pendingTour by TourLaunchRequest.pending.collectAsState()
+    LaunchedEffect(pendingTour) {
+        val sessionId = pendingTour ?: return@LaunchedEffect
+        if (!SessionManager.isLogged()) return@LaunchedEffect
+        TourLaunchRequest.consume()
+        openDetail(HavenPadDestination.LiveTourCall(sessionId))
+    }
+
     /** Landing CTAs: signed-in visitors go straight to their dashboard, others to login. */
     fun openSignIn(returnToLanding: Boolean = false) {
         if (SessionManager.isLogged()) {
@@ -244,7 +254,8 @@ fun HavenPadNavHost(
                             )
                         )
                     },
-                    onNavigateToRequestProperty = { openDetail(HavenPadDestination.RequestProperty) }
+                    onNavigateToRequestProperty = { openDetail(HavenPadDestination.RequestProperty) },
+                    onNavigateToNotifications = { openDetail(HavenPadDestination.Notifications) }
                 )
             }
         }
@@ -265,7 +276,8 @@ fun HavenPadNavHost(
                             )
                         )
                     },
-                    onNavigateToRequestProperty = { openDetail(HavenPadDestination.RequestProperty) }
+                    onNavigateToRequestProperty = { openDetail(HavenPadDestination.RequestProperty) },
+                    onNavigateToNotifications = { openDetail(HavenPadDestination.Notifications) }
                 )
             }
         }
@@ -297,7 +309,8 @@ fun HavenPadNavHost(
                     onNavigateToCreateListing = { openDetail(HavenPadDestination.CreateListing()) },
                     onNavigateToEditListing = { id -> openDetail(HavenPadDestination.CreateListing(listingId = id)) },
                     onNavigateToAnalytics = { id -> openDetail(HavenPadDestination.ListingAnalytics(id)) },
-                    onNavigateToBookings = { openDetail(HavenPadDestination.LandlordBookings) }
+                    onNavigateToBookings = { openDetail(HavenPadDestination.LandlordBookings) },
+                    onNavigateToNotifications = { openDetail(HavenPadDestination.Notifications) }
                 )
             }
         }
@@ -358,6 +371,10 @@ fun HavenPadNavHost(
                     onTabSelected = ::switchMainTab,
                     onEditProfile = { openDetail(HavenPadDestination.EditProfile) },
                     onOpenNotifications = { openDetail(HavenPadDestination.Notifications) },
+                    onOpenHome = { switchMainTab(HavenPadNavTab.HOME) },
+                    onOpenChat = { switchMainTab(HavenPadNavTab.CHAT) },
+                    onOpenBills = { switchMainTab(HavenPadNavTab.BILLS) },
+                    onOpenBookings = { openDetail(HavenPadDestination.LandlordBookings) },
                     onLogout = { navigateToLogin() },
                     onCreateListingClick = { openDetail(HavenPadDestination.CreateListing()) }
                 )
@@ -453,14 +470,21 @@ fun HavenPadNavHost(
         }
     }
 
-    NavDisplay(
-        modifier = modifier,
-        backStack = backStack,
-        onBack = {
-            if (backStack.size > 1) {
-                backStack.removeLastOrNull()
+    Box(modifier = modifier.fillMaxSize()) {
+        NavDisplay(
+            modifier = Modifier.fillMaxSize(),
+            backStack = backStack,
+            onBack = {
+                if (backStack.size > 1) {
+                    backStack.removeLastOrNull()
+                }
+            },
+            entryProvider = entryProvider
+        )
+        if (signedInUser != null) {
+            com.rotd.havenpad.call.IncomingCallOverlay { sessionId ->
+                openDetail(HavenPadDestination.LiveTourCall(sessionId))
             }
-        },
-        entryProvider = entryProvider
-    )
+        }
+    }
 }

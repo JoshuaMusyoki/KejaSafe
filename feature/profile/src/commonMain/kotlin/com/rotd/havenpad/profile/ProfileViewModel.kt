@@ -37,6 +37,7 @@ data class ProfileUiState(
     val biometricAvailable: Boolean = false,
     val biometricEnabled: Boolean = false,
     val biometricMessage: String? = null,
+    val accountMessage: String? = null,
     val showBiometricPasswordPrompt: Boolean = false,
 )
 
@@ -194,6 +195,27 @@ class ProfileViewModel(
 
     fun dismissBiometricPasswordPrompt() {
         _state.update { it.copy(showBiometricPasswordPrompt = false) }
+    }
+
+    fun sendPasswordReset() {
+        val email = _state.value.user?.email?.takeIf { it.isNotBlank() } ?: return
+        viewModelScope.launch {
+            authRepository.sendPasswordResetEmail(email).fold(
+                onSuccess = {
+                    _state.update {
+                        it.copy(accountMessage = "Password reset email sent to $email.")
+                    }
+                },
+                onFailure = { error ->
+                    val message = if (error is UnsupportedOperationException) {
+                        "Password reset is available in the HavenPad phone app."
+                    } else {
+                        error.userMessage()
+                    }
+                    _state.update { it.copy(accountMessage = message) }
+                }
+            )
+        }
     }
 
     private fun refreshBiometricState() {

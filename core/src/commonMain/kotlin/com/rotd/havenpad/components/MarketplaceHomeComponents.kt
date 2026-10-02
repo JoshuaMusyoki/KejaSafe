@@ -1,5 +1,6 @@
 package com.rotd.havenpad.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,30 +60,61 @@ enum class MarketplaceTileTone {
 @Composable
 fun marketplaceTileColors(tone: MarketplaceTileTone): MarketplaceTileColorSet {
     val scheme = MaterialTheme.colorScheme
+    val light = scheme.background.luminance() > 0.5f
+    fun edge(fill: Color, darkBorder: Color): Color =
+        if (light) fill.over(scheme.surface).darken(0.06f) else darkBorder
+
     return when (tone) {
-        MarketplaceTileTone.PRIMARY -> MarketplaceTileColorSet(
-            container = scheme.primaryContainer.copy(alpha = 0.55f),
-            border = scheme.primary.copy(alpha = 0.35f),
-            accent = scheme.primary,
-            onAccent = scheme.onPrimary,
-            actionFill = scheme.primary.copy(alpha = 0.16f)
-        )
-        MarketplaceTileTone.SECONDARY -> MarketplaceTileColorSet(
-            container = scheme.secondaryContainer.copy(alpha = 0.65f),
-            border = scheme.secondary.copy(alpha = 0.35f),
-            accent = scheme.secondary,
-            onAccent = scheme.onSecondary,
-            actionFill = scheme.secondary.copy(alpha = 0.16f)
-        )
-        MarketplaceTileTone.NEUTRAL -> MarketplaceTileColorSet(
-            container = scheme.surfaceVariant.copy(alpha = 0.75f),
-            border = scheme.outlineVariant,
-            accent = scheme.onSurface,
-            onAccent = scheme.surface,
-            actionFill = scheme.primary.copy(alpha = 0.14f)
-        )
+        MarketplaceTileTone.PRIMARY -> {
+            val fill = scheme.primaryContainer.copy(alpha = 0.55f)
+            MarketplaceTileColorSet(
+                container = fill,
+                border = edge(fill, scheme.primaryContainer.copy(alpha = 0.35f)),
+                accent = scheme.primary,
+                onAccent = scheme.onPrimary,
+                actionFill = scheme.primary.copy(alpha = 0.16f)
+            )
+        }
+        MarketplaceTileTone.SECONDARY -> {
+            val fill = scheme.secondaryContainer.copy(alpha = 0.65f)
+            MarketplaceTileColorSet(
+                container = fill,
+                border = edge(fill, scheme.secondaryContainer.copy(alpha = 0.35f)),
+                accent = scheme.secondary,
+                onAccent = scheme.onSecondary,
+                actionFill = scheme.secondary.copy(alpha = 0.16f)
+            )
+        }
+        MarketplaceTileTone.NEUTRAL -> {
+            val fill = scheme.surfaceVariant.copy(alpha = 0.75f)
+            MarketplaceTileColorSet(
+                container = fill,
+                border = edge(fill, scheme.outlineVariant.copy(alpha = 0.45f)),
+                accent = scheme.onSurface,
+                onAccent = scheme.surface,
+                actionFill = scheme.primary.copy(alpha = 0.14f)
+            )
+        }
     }
 }
+
+/** Opaque result of drawing this color over [background]. */
+private fun Color.over(background: Color): Color {
+    val a = alpha
+    return Color(
+        red = red * a + background.red * (1f - a),
+        green = green * a + background.green * (1f - a),
+        blue = blue * a + background.blue * (1f - a),
+        alpha = 1f
+    )
+}
+
+private fun Color.darken(amount: Float): Color = Color(
+    red = (red * (1f - amount)).coerceIn(0f, 1f),
+    green = (green * (1f - amount)).coerceIn(0f, 1f),
+    blue = (blue * (1f - amount)).coerceIn(0f, 1f),
+    alpha = 1f
+)
 
 data class MarketplaceTileColorSet(
     val container: Color,
@@ -92,7 +125,7 @@ data class MarketplaceTileColorSet(
 )
 
 /**
- * Uzilopp-style compact dashboard tile: icon, headline value, short subtitle, pill action.
+ * HavenPad-style compact dashboard tile: icon, headline value, short subtitle, pill action.
  * Colors follow Material theme so light/dark stay readable.
  */
 @Composable
@@ -110,16 +143,16 @@ fun MarketplaceTileCard(
     val colors = marketplaceTileColors(tone)
 
     Card(
-        modifier = modifier
-            .widthIn(min = 156.dp, max = 220.dp)
-            .border(1.dp, colors.border, MaterialTheme.shapes.large),
+        modifier = modifier.widthIn(min = 156.dp, max = 220.dp),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = colors.container),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        border = BorderStroke(1.dp, colors.border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

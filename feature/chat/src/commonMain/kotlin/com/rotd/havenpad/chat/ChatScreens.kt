@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -46,6 +47,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -79,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rotd.havenpad.CallLogEntry
 import com.rotd.havenpad.chat.components.ApartmentMessageActionSheet
 import com.rotd.havenpad.chat.components.ChatPeopleSearchField
 import com.rotd.havenpad.chat.components.ForwardPeerDialog
@@ -241,6 +244,8 @@ fun ChatInboxScreen(
                     notificationsAllowed = chatNotificationsAllowed(),
                     onEnableNotifications = { requestChatNotificationPermission() },
                     onOpenNotifications = onOpenNotifications,
+                    onCallLog = viewModel::callLogPeer,
+                    onMessageLog = { entry -> selectedPeer = entry.toPeer() },
                 )
                 val webThread = threadState
                 if (webThread?.showForwardPicker == true) {
@@ -300,7 +305,11 @@ fun ChatInboxScreen(
                     }
 
                     SecondaryTabRow(
-                        selectedTabIndex = if (state.selectedTab == ChatInboxTab.MESSAGES) 0 else 1,
+                        selectedTabIndex = when (state.selectedTab) {
+                            ChatInboxTab.MESSAGES -> 0
+                            ChatInboxTab.PEOPLE -> 1
+                            ChatInboxTab.CALLS -> 2
+                        },
                         containerColor = MaterialTheme.colorScheme.surface,
                     ) {
                         Tab(
@@ -313,6 +322,14 @@ fun ChatInboxScreen(
                             onClick = { viewModel.selectTab(ChatInboxTab.PEOPLE) },
                             text = { Text(peopleTabLabel) }
                         )
+                        Tab(
+                            selected = state.selectedTab == ChatInboxTab.CALLS,
+                            onClick = {
+                                viewModel.selectTab(ChatInboxTab.CALLS)
+                                viewModel.loadCallHistory()
+                            },
+                            text = { Text("Calls") }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -320,6 +337,7 @@ fun ChatInboxScreen(
                     val showInitialLoader = state.isLoading && when (state.selectedTab) {
                         ChatInboxTab.MESSAGES -> state.messageRows.isEmpty()
                         ChatInboxTab.PEOPLE -> state.peopleRows.isEmpty()
+                        ChatInboxTab.CALLS -> false
                     }
 
                     PullToRefreshBox(
@@ -346,6 +364,15 @@ fun ChatInboxScreen(
                                         loadAttachment = viewModel::loadAttachment,
                                     )
                                 }
+                            }
+                            ChatInboxTab.CALLS -> {
+                                CallHistoryList(
+                                    rows = state.callRows,
+                                    busy = state.callBusy,
+                                    error = state.callError,
+                                    onCall = viewModel::callLogPeer,
+                                    onMessage = { entry -> onOpenThread(entry.toPeer()) },
+                                )
                             }
                             ChatInboxTab.PEOPLE -> {
                                 Column(modifier = Modifier.fillMaxSize()) {
@@ -376,6 +403,114 @@ fun ChatInboxScreen(
                 }
             }
         }
+    }
+}
+
+fun CallLogEntry.toPeer(): ApartmentChatPeer = ApartmentChatPeer(
+    userId = peerUserId,
+    displayName = peerName.ifBlank { "HavenPad" },
+    listingId = listingId,
+    listingTitle = listingTitle,
+    bookingId = "",
+    peerIsLandlord = peerIsLandlord,
+)
+
+@Composable
+fun CallHistoryList(
+    rows: List<CallLogEntry>,
+    busy: Boolean,
+    error: String?,
+    onCall: (CallLogEntry) -> Unit,
+    onMessage: (CallLogEntry) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(bottom = 16.dp),
+    ) {
+        if (!error.isNullOrBlank()) {
+            item {
+                Text(
+                    text = error,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+        if (rows.isEmpty()) {
+            item {
+                Text(
+                    text = "Calls and missed calls show up here after you hang up.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 24.dp),
+                )
+            }
+        }
+        items(rows, key = { it.sessionId }) { entry ->
+            val label = when {
+                entry.missed && entry.outgoing -> "No answer"
+                entry.missed -> "Missed call"
+                entry.outgoing -> "Outgoing call"
+                else -> "Call"
+            }
+            val whenLabel = callAgeLabel(entry.endedAt ?: entry.createdAt)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = entry.peerName.ifBlank { "HavenPad" },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (entry.listingTitle.isNotBlank()) {
+                    Text(
+                        text = entry.listingTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    text = "$label · $whenLabel",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (entry.missed) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { onMessage(entry) },
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Message")
+                    }
+                    Button(
+                        onClick = { onCall(entry) },
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(if (busy) "Calling…" else "Call")
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun callAgeLabel(millis: Long): String {
+    if (millis <= 0L) return "Just now"
+    val mins = (platformEpochMillis() - millis) / 60_000L
+    return when {
+        mins < 1 -> "Just now"
+        mins < 60 -> "${mins}m ago"
+        mins < 24 * 60 -> "${mins / 60}h ago"
+        else -> "${mins / (24 * 60)}d ago"
     }
 }
 

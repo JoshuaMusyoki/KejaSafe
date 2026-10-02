@@ -85,6 +85,7 @@ fun LandlordHomeScreen(
     onNavigateToEditListing: (String) -> Unit = {},
     onNavigateToAnalytics: (String) -> Unit = {},
     onNavigateToBookings: () -> Unit = {},
+    onNavigateToNotifications: () -> Unit = {},
     viewModel: LandlordHomeViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -250,7 +251,7 @@ fun LandlordHomeScreen(
             }
 
             HavenPadAppBar(
-                onTuneClick = {},
+                onNotificationClick = onNavigateToNotifications,
                 onProfileClick = onNavigateToProfile,
                 frosted = true,
                 modifier = Modifier.align(Alignment.TopCenter)

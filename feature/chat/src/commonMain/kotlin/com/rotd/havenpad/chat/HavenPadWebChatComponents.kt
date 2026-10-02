@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.House
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -78,6 +77,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rotd.havenpad.CallLogEntry
 import com.rotd.havenpad.components.HavenPadNavTab
 import com.rotd.havenpad.data.platformEpochMillis
 import com.rotd.havenpad.chat.components.ForwardedLabel
@@ -125,6 +125,8 @@ fun HavenPadWebChatLayout(
     notificationsAllowed: Boolean = true,
     onEnableNotifications: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
+    onCallLog: (CallLogEntry) -> Unit = {},
+    onMessageLog: (CallLogEntry) -> Unit = {},
 ) {
     ProvideEmojiFont {
     Row(
@@ -145,6 +147,8 @@ fun HavenPadWebChatLayout(
             onSelectTab = onSelectTab,
             loadAttachment = loadAttachment,
             onOpenNotifications = onOpenNotifications,
+            onCallLog = onCallLog,
+            onMessageLog = onMessageLog,
         )
 
         // Column 3: Right Active Live Chat Thread Panel
@@ -575,6 +579,8 @@ fun HavenPadMiddleChatroomsList(
     onSelectTab: (ChatInboxTab) -> Unit,
     loadAttachment: (String) -> ByteArray?,
     onOpenNotifications: () -> Unit = {},
+    onCallLog: (CallLogEntry) -> Unit = {},
+    onMessageLog: (CallLogEntry) -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -632,6 +638,28 @@ fun HavenPadMiddleChatroomsList(
                         )
                     }
                 }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable { onSelectTab(ChatInboxTab.CALLS) }
+                ) {
+                    Text(
+                        text = "Calls",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (state.selectedTab == ChatInboxTab.CALLS) FontWeight.Bold else FontWeight.Normal,
+                        color = if (state.selectedTab == ChatInboxTab.CALLS) HavenPadWebChatColors.TextWhite else HavenPadWebChatColors.TextGrey
+                    )
+                    if (state.selectedTab == ChatInboxTab.CALLS) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(28.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(HavenPadWebChatColors.EmeraldPrimary)
+                        )
+                    }
+                }
             }
 
             NotificationBell(
@@ -674,6 +702,17 @@ fun HavenPadMiddleChatroomsList(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        if (state.selectedTab == ChatInboxTab.CALLS) {
+            CallHistoryList(
+                rows = state.callRows,
+                busy = state.callBusy,
+                error = state.callError,
+                onCall = onCallLog,
+                onMessage = onMessageLog,
+            )
+            return@Column
+        }
 
         // Conversation List
         val rows = if (state.selectedTab == ChatInboxTab.MESSAGES) state.messageRows else state.peopleRows

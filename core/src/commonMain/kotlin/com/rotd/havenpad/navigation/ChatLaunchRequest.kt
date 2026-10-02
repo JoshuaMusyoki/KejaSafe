@@ -16,3 +16,17 @@ object ChatLaunchRequest {
         _pending.value = null
     }
 }
+
+/** Set from a full-screen house-tour ring so the open app joins that call. */
+object TourLaunchRequest {
+    private val _pending = MutableStateFlow<String?>(null)
+    val pending = _pending.asStateFlow()
+
+    fun request(sessionId: String) {
+        _pending.value = sessionId
+    }
+
+    fun consume() {
+        _pending.value = null
+    }
+}

@@ -31,7 +31,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,11 +68,7 @@ fun InvoicePreviewScreen(
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var showPdfDocument by remember { mutableStateOf(false) }
-
-    LaunchedEffect(pdfBytes) {
-        if (pdfBytes != null) showPdfDocument = true
-    }
+    var showPdfDocument by remember(bill.id) { mutableStateOf(false) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -108,22 +103,21 @@ fun InvoicePreviewScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (pdfBytes != null) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilterChip(
-                                selected = !showPdfDocument,
-                                onClick = { showPdfDocument = false },
-                                label = { Text("Summary") }
-                            )
-                            FilterChip(
-                                selected = showPdfDocument,
-                                onClick = { showPdfDocument = true },
-                                label = { Text("PDF") }
-                            )
-                        }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = !showPdfDocument,
+                            onClick = { showPdfDocument = false },
+                            label = { Text("Summary") }
+                        )
+                        FilterChip(
+                            selected = showPdfDocument,
+                            onClick = { showPdfDocument = true },
+                            enabled = pdfBytes != null || isLoadingPdf,
+                            label = { Text(if (isLoadingPdf && pdfBytes == null) "PDF…" else "PDF") }
+                        )
                     }
 
                     val receipt = bill.mpesaReceiptCode?.takeIf { it.isNotBlank() }
@@ -202,6 +196,14 @@ fun InvoicePreviewScreen(
                     bytes = pdfBytes,
                     modifier = Modifier.fillMaxSize()
                 )
+            } else if (showPdfDocument && isLoadingPdf) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Preparing PDF…")
+                    }
+                }
             } else {
                 InvoiceSummaryPreview(
                     bill = bill,
@@ -212,7 +214,7 @@ fun InvoicePreviewScreen(
                 )
             }
 
-            if (isLoadingPdf && pdfBytes == null) {
+            if (!showPdfDocument && isLoadingPdf && pdfBytes == null) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopCenter)

@@ -18,6 +18,21 @@ actual fun showIncomingChatNotification(
     peerIsLandlord: Boolean,
 ) = Unit
 
+actual fun showIncomingHouseTourRing(
+    callerName: String,
+    listingTitle: String,
+    sessionId: String,
+    peerUserId: String,
+    listingId: String,
+    peerIsLandlord: Boolean,
+) = Unit
+
+actual fun cancelHouseTourRing(sessionId: String) = Unit
+
+actual fun startHouseTourRingSound() = Unit
+
+actual fun stopHouseTourRingSound() = Unit
+
 actual fun onSessionSaved() = Unit
 
 actual fun onSessionCleared() = Unit

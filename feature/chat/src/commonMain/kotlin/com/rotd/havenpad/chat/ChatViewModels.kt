@@ -2,6 +2,7 @@ package com.rotd.havenpad.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rotd.havenpad.CallLogEntry
 import com.rotd.havenpad.domain.chat.ApartmentChatMessage
 import com.rotd.havenpad.domain.chat.ApartmentChatPeer
 import com.rotd.havenpad.domain.chat.Connection
@@ -12,6 +13,7 @@ import com.rotd.havenpad.domain.repository.ApartmentChatRepository
 import com.rotd.havenpad.error.userMessage
 import com.rotd.havenpad.error.authUserMessage
 import com.rotd.havenpad.PickedImage
+import com.rotd.havenpad.network.CallLogBus
 import com.rotd.havenpad.network.LiveTourClient
 import com.rotd.havenpad.network.SessionManager
 import kotlinx.coroutines.Job
@@ -24,7 +26,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class ChatInboxTab { MESSAGES, PEOPLE }
+enum class ChatInboxTab { MESSAGES, PEOPLE, CALLS }
 
 enum class PeerConnectAction {
     NONE,
@@ -67,6 +69,7 @@ data class ChatInboxUiState(
         "Connected chats appear here. Your landlord is ready to message; connect with other tenants from People.",
     val emptyPeopleHint: String =
         "Confirmed stays appear here. Your landlord is connected automatically — other tenants need a connect request.",
+    val callRows: List<CallLogEntry> = emptyList(),
     val callBusy: Boolean = false,
     val callError: String? = null,
     /** When set, UI navigates to LiveTourCall. */
@@ -132,6 +135,37 @@ class ChatInboxViewModel(
                         error = null,
                     )
                 }
+            }
+        }
+        viewModelScope.launch {
+            CallLogBus.tick.collect {
+                if (CallLogBus.consumeFocus()) {
+                    _state.update { it.copy(selectedTab = ChatInboxTab.CALLS) }
+                }
+                loadCallHistory()
+            }
+        }
+    }
+
+    fun loadCallHistory() {
+        viewModelScope.launch {
+            LiveTourClient.callHistory()
+                .onSuccess { rows -> _state.update { it.copy(callRows = rows) } }
+        }
+    }
+
+    fun callLogPeer(entry: CallLogEntry) {
+        viewModelScope.launch {
+            _state.update { it.copy(callBusy = true, callError = null) }
+            LiveTourClient.startDirectTour(
+                listingId = entry.listingId,
+                peerUserId = entry.peerUserId,
+            ).onSuccess { session ->
+                _state.update {
+                    it.copy(callBusy = false, navigateToLiveTourId = session.id)
+                }
+            }.onFailure { e ->
+                _state.update { it.copy(callBusy = false, callError = e.userMessage()) }
             }
         }
     }
@@ -210,6 +244,7 @@ class ChatInboxViewModel(
     }
 
     fun refresh() {
+        loadCallHistory()
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             chatRepository.refreshEligiblePeers()

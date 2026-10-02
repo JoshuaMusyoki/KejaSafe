@@ -283,7 +283,6 @@ fun RentScreen(
                                     canPay = !isLandlord && unpaid,
                                     paying = s.payingBillId == bill.id,
                                     requesting = s.requestingBillId == bill.id,
-                                    loadingPdf = s.isLoadingPreviewPdf && s.previewBill?.id == bill.id,
                                     onPay = {
                                         payPhone = viewModel.defaultPayPhone()
                                         payAmountText = bill.remainingAmount.toLong()
@@ -444,7 +443,6 @@ private fun BillCard(
     canPay: Boolean,
     paying: Boolean,
     requesting: Boolean,
-    loadingPdf: Boolean,
     onPay: () -> Unit,
     onRequestPayment: () -> Unit,
     onEdit: () -> Unit,
@@ -531,9 +529,8 @@ private fun BillCard(
 
             Spacer(modifier = Modifier.height(12.dp))
             HavenPadOutlinedButton(
-                text = if (loadingPdf) "Opening…" else "Preview invoice",
+                text = "Preview invoice",
                 onClick = onViewInvoice,
-                enabled = !loadingPdf,
                 modifier = Modifier.fillMaxWidth()
             )
 

@@ -12,6 +12,10 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         openChatFromNotification(intent)
+        openTourFromNotification(intent)
+        if (SessionManager.isLogged()) {
+            ChatBackgroundSync.startAlerts(this)
+        }
 
         setContent {
             App()
@@ -22,11 +26,15 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         openChatFromNotification(intent)
+        openTourFromNotification(intent)
     }
 
     override fun onResume() {
         super.onResume()
         AndroidActivityHolder.current = this
+        if (SessionManager.isLogged()) {
+            ChatBackgroundSync.startAlerts(this)
+        }
     }
 
     override fun onPause() {

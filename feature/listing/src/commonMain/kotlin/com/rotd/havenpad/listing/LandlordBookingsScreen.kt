@@ -136,6 +136,20 @@ fun LandlordBookingsScreen(
                     }
                 }
 
+                if (!state.tourMessage.isNullOrBlank() && state.rescheduleTourId == null) {
+                    item {
+                        Text(
+                            text = state.tourMessage.orEmpty(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (state.tourMessageIsError) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            }
+                        )
+                    }
+                }
+
                 when (selectedTab) {
                     BookingsTab.REQUESTS -> {
                         if (showShimmer) {
@@ -143,8 +157,12 @@ fun LandlordBookingsScreen(
                             item { ListingMetricShimmer() }
                         } else {
                             items(state.requests, key = { it.id }) { request ->
+                                val readyToJoin = request.type == RequestType.LIVE_INSPECTION &&
+                                    (request.timeLabel == "Ready to join" || request.timeLabel == "In progress")
+                                val confirming = state.actingTourId == request.id && state.tourActing
                                 val (primary, secondary) = when (request.type) {
-                                    RequestType.LIVE_INSPECTION -> "Confirm" to "Reschedule"
+                                    RequestType.LIVE_INSPECTION ->
+                                        (if (confirming) "Confirming…" else if (readyToJoin) "Join" else "Confirm") to "Reschedule"
                                     RequestType.ROOMMATE_SPLIT -> "View Profiles" to "Decline"
                                     RequestType.BOOKING -> "Accept" to "Decline"
                                     RequestType.GENERAL -> "Respond" to "Dismiss"
@@ -153,11 +171,14 @@ fun LandlordBookingsScreen(
                                     request = request,
                                     primaryActionLabel = primary,
                                     secondaryActionLabel = secondary,
+                                    actionsEnabled = !confirming,
                                     onPrimaryAction = {
                                         when (request.type) {
                                             RequestType.BOOKING -> viewModel.approveRequest(request.id)
                                             RequestType.ROOMMATE_SPLIT -> viewModel.openRoommateMatch(request.id)
-                                            RequestType.LIVE_INSPECTION -> viewModel.confirmLiveTour(request.id)
+                                            RequestType.LIVE_INSPECTION ->
+                                                if (readyToJoin) onOpenLiveTour(request.id)
+                                                else viewModel.confirmLiveTour(request.id)
                                             else -> Unit
                                         }
                                     },

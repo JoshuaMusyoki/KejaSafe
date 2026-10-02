@@ -3,9 +3,9 @@ package com.rotd.havenpad.profile
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -16,11 +16,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Apartment
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CheckCircle
@@ -89,6 +93,10 @@ fun ProfileScreen(
     onTabSelected: (HavenPadNavTab) -> Unit,
     onEditProfile: () -> Unit,
     onOpenNotifications: () -> Unit = {},
+    onOpenHome: () -> Unit = {},
+    onOpenChat: () -> Unit = {},
+    onOpenBills: () -> Unit = {},
+    onOpenBookings: () -> Unit = {},
     onLogout: () -> Unit,
     onCreateListingClick: (() -> Unit)? = null,
     viewModel: ProfileViewModel = koinViewModel()
@@ -136,14 +144,7 @@ fun ProfileScreen(
 
     Scaffold(
         topBar = {
-            HavenPadHeader(
-                title = "Profile",
-                actions = {
-                    IconButton(onClick = { /* Settings */ }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                }
-            )
+            HavenPadHeader(title = "Profile")
         },
         bottomBar = {
             HavenPadFloatingNavBar(
@@ -173,10 +174,16 @@ fun ProfileScreen(
                         user = state.user!!,
                         onEditProfile = onEditProfile,
                         onOpenNotifications = onOpenNotifications,
+                        onOpenHome = onOpenHome,
+                        onOpenChat = onOpenChat,
+                        onOpenBills = onOpenBills,
+                        onOpenBookings = onOpenBookings,
+                        onResetPassword = { viewModel.sendPasswordReset() },
                         onLogout = onLogout,
                         biometricAvailable = state.biometricAvailable,
                         biometricEnabled = state.biometricEnabled,
                         biometricMessage = state.biometricMessage,
+                        accountMessage = state.accountMessage,
                         onBiometricToggle = { viewModel.onBiometricToggle(it) },
                     )
                 }
@@ -191,212 +198,433 @@ private fun ProfileContent(
     user: User,
     onEditProfile: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onOpenHome: () -> Unit,
+    onOpenChat: () -> Unit,
+    onOpenBills: () -> Unit,
+    onOpenBookings: () -> Unit,
+    onResetPassword: () -> Unit,
     onLogout: () -> Unit,
     biometricAvailable: Boolean,
     biometricEnabled: Boolean,
     biometricMessage: String?,
+    accountMessage: String?,
     onBiometricToggle: (Boolean) -> Unit,
 ) {
     val isStudent = user.role == UserRole.STUDENT
     val isLandlord = user.role == UserRole.LANDLORD || user.role == UserRole.ADMIN
+    val actions = profileActions(
+        isStudent = isStudent,
+        isLandlord = isLandlord,
+        onOpenHome = onOpenHome,
+        onOpenChat = onOpenChat,
+        onOpenBills = onOpenBills,
+        onOpenBookings = onOpenBookings,
+        onEditProfile = onEditProfile,
+        onOpenNotifications = onOpenNotifications,
+    )
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = HavenPadTheme.spacing.containerMarginMobile),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                modifier = Modifier
-                    .size(120.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val wide = maxWidth >= 720.dp
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .widthIn(max = 680.dp)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = HavenPadTheme.spacing.containerMarginMobile),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                text = user.fullName,
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = roleSubtitle(user),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            RoleBadge(user = user)
-            Spacer(modifier = Modifier.height(24.dp))
-            HavenPadPrimaryButton(
-                text = "Edit Profile",
-                onClick = onEditProfile,
-                modifier = Modifier.fillMaxWidth(0.6f)
-            )
-        }
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            SectionHeader(title = "Verification Status", icon = Icons.Default.Shield)
-            Spacer(modifier = Modifier.height(12.dp))
-
-            if (isStudent) {
-                VerificationItem(
-                    title = "University ID",
-                    subtitle = kycSubtitle(user.kycStatus, "Submit student ID for verification"),
-                    status = kycStatusLabel(user.kycStatus),
-                    statusPositive = user.kycStatus == KycStatus.VERIFIED,
-                    icon = Icons.Default.Badge
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                VerificationItem(
-                    title = "Student Email",
-                    subtitle = user.email,
-                    status = if (user.kycStatus == KycStatus.VERIFIED) "Verified" else "Linked",
-                    statusPositive = true,
-                    icon = Icons.Default.Email
-                )
-            } else {
-                VerificationItem(
-                    title = "Landlord Account",
-                    subtitle = user.businessName?.takeIf { it.isNotBlank() }
-                        ?: "Property owner on HavenPad",
-                    status = kycStatusLabel(user.kycStatus),
-                    statusPositive = user.kycStatus == KycStatus.VERIFIED ||
-                        user.kycStatus == KycStatus.NOT_SUBMITTED,
-                    icon = Icons.Default.HomeWork
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                VerificationItem(
-                    title = "Business Email",
-                    subtitle = user.email,
-                    status = "Linked",
-                    statusPositive = true,
-                    icon = Icons.Default.Email
-                )
-                if (!user.phone.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    VerificationItem(
-                        title = "Phone",
-                        subtitle = user.phone.orEmpty(),
-                        status = "On file",
-                        statusPositive = true,
-                        icon = Icons.Default.Phone
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            }
-        }
 
-        if (isStudent) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SectionHeader(title = "Roommate Preferences", icon = Icons.Default.Group)
-                    IconButton(onClick = onEditProfile) {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = "Edit Preferences",
-                            modifier = Modifier.size(20.dp)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = user.fullName,
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = roleSubtitle(user),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                RoleBadge(user = user)
+                Spacer(modifier = Modifier.height(24.dp))
+                HavenPadPrimaryButton(
+                    text = "Edit Profile",
+                    onClick = onEditProfile,
+                    modifier = Modifier.widthIn(max = 280.dp).fillMaxWidth()
+                )
+            }
+
+            if (isStudent || isLandlord) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SectionHeader(title = "Verification Status", icon = Icons.Default.Shield)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (isStudent) {
+                        TwoUp(
+                            wide = wide,
+                            first = {
+                                VerificationItem(
+                                    title = "University ID",
+                                    subtitle = kycSubtitle(user.kycStatus, "Submit student ID for verification"),
+                                    status = kycStatusLabel(user.kycStatus),
+                                    statusPositive = user.kycStatus == KycStatus.VERIFIED,
+                                    icon = Icons.Default.Badge
+                                )
+                            },
+                            second = {
+                                VerificationItem(
+                                    title = "Student Email",
+                                    subtitle = user.email,
+                                    status = if (user.kycStatus == KycStatus.VERIFIED) "Verified" else "Linked",
+                                    statusPositive = true,
+                                    icon = Icons.Default.Email
+                                )
+                            }
+                        )
+                    } else {
+                        TwoUp(
+                            wide = wide,
+                            first = {
+                                VerificationItem(
+                                    title = "Landlord Account",
+                                    subtitle = user.businessName?.takeIf { it.isNotBlank() }
+                                        ?: "Property owner on HavenPad",
+                                    status = kycStatusLabel(user.kycStatus),
+                                    statusPositive = user.kycStatus == KycStatus.VERIFIED,
+                                    icon = Icons.Default.HomeWork
+                                )
+                            },
+                            second = {
+                                VerificationItem(
+                                    title = "Business Email",
+                                    subtitle = user.email,
+                                    status = "Linked",
+                                    statusPositive = true,
+                                    icon = Icons.Default.Email
+                                )
+                            },
+                            third = if (user.phone.isNullOrBlank()) {
+                                null
+                            } else {
+                                {
+                                    VerificationItem(
+                                        title = "Phone",
+                                        subtitle = user.phone.orEmpty(),
+                                        status = "On file",
+                                        statusPositive = true,
+                                        icon = Icons.Default.Phone
+                                    )
+                                }
+                            }
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                if (user.roommatePreferences.isEmpty()) {
-                    HavenPadBody(
-                        text = "No preferences set yet. Edit profile to add them.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            }
+
+            if (actions.isNotEmpty()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SectionHeader(
+                        title = if (isLandlord) "Landlord tools" else "Student tools",
+                        icon = if (isLandlord) Icons.Default.Business else Icons.Default.Badge
                     )
-                } else {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    ProfileActionSection(actions = actions, wide = wide)
+                }
+            }
+
+            if (isStudent) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        user.roommatePreferences.forEach { tag ->
-                            SuggestionChip(
-                                onClick = { },
-                                label = { Text(tag) },
-                                shape = CircleShape
+                        SectionHeader(title = "Student details", icon = Icons.Default.Badge)
+                        IconButton(onClick = onEditProfile) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit student details",
+                                modifier = Modifier.size(20.dp)
                             )
+                        }
+                    }
+                    AccountOptionItem(
+                        title = user.major?.takeIf { it.isNotBlank() } ?: "Add major",
+                        subtitle = "Course of study",
+                        icon = Icons.Default.Badge,
+                        onClick = onEditProfile
+                    )
+                    AccountOptionItem(
+                        title = user.yearOfStudy?.let { "Year $it" } ?: "Add year of study",
+                        subtitle = "Current year",
+                        icon = Icons.Default.Event,
+                        onClick = onEditProfile
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SectionHeader(title = "Roommate preferences", icon = Icons.Default.Group)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (user.roommatePreferences.isEmpty()) {
+                        HavenPadBody(
+                            text = "No preferences set yet. Edit profile to add them.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            user.roommatePreferences.forEach { tag ->
+                                SuggestionChip(
+                                    onClick = onEditProfile,
+                                    label = { Text(tag) },
+                                    shape = CircleShape
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
 
-        if (isLandlord) {
+            if (isLandlord) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SectionHeader(title = "Landlord details", icon = Icons.Default.Business)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    AccountOptionItem(
+                        title = user.businessName?.takeIf { it.isNotBlank() } ?: "Add business name",
+                        subtitle = "Shown on your listings",
+                        icon = Icons.Default.Apartment,
+                        onClick = onEditProfile
+                    )
+                    AccountOptionItem(
+                        title = user.phone?.takeIf { it.isNotBlank() } ?: "Add phone number",
+                        subtitle = "How tenants can reach you",
+                        icon = Icons.Default.Phone,
+                        onClick = onEditProfile
+                    )
+                }
+            }
+
             Column(modifier = Modifier.fillMaxWidth()) {
-                SectionHeader(title = "Landlord Details", icon = Icons.Default.Business)
+                SectionHeader(title = "Appearance", icon = Icons.Default.Settings)
                 Spacer(modifier = Modifier.height(12.dp))
+                ThemeModeRow()
+            }
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                SectionHeader(title = "Security & account", icon = Icons.Default.Lock)
+                Spacer(modifier = Modifier.height(12.dp))
+                if (biometricAvailable) {
+                    BiometricLoginRow(
+                        enabled = biometricEnabled,
+                        onToggle = onBiometricToggle,
+                    )
+                }
+                if (!biometricMessage.isNullOrBlank()) {
+                    Text(
+                        text = biometricMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    )
+                }
                 AccountOptionItem(
-                    title = user.businessName?.takeIf { it.isNotBlank() } ?: "Add business name",
-                    icon = Icons.Default.Apartment
+                    title = "Password reset",
+                    subtitle = "Email a link to ${user.email}",
+                    icon = Icons.Default.VpnKey,
+                    onClick = onResetPassword,
                 )
-                AccountOptionItem(
-                    title = user.phone?.takeIf { it.isNotBlank() } ?: "Add phone number",
-                    icon = Icons.Default.Phone
-                )
+                if (!accountMessage.isNullOrBlank()) {
+                    Text(
+                        text = accountMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                TextButton(
+                    onClick = onLogout,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Log Out", fontWeight = FontWeight.Bold)
+                }
             }
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+}
 
-        Column(modifier = Modifier.fillMaxWidth()) {
-            SectionHeader(title = "Appearance", icon = Icons.Default.Settings)
-            Spacer(modifier = Modifier.height(12.dp))
-            ThemeModeRow()
+private data class ProfileAction(
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val onClick: () -> Unit,
+)
+
+private fun profileActions(
+    isStudent: Boolean,
+    isLandlord: Boolean,
+    onOpenHome: () -> Unit,
+    onOpenChat: () -> Unit,
+    onOpenBills: () -> Unit,
+    onOpenBookings: () -> Unit,
+    onEditProfile: () -> Unit,
+    onOpenNotifications: () -> Unit,
+): List<ProfileAction> = buildList {
+    if (isLandlord) {
+        add(ProfileAction("My listings", "Houses you have published", Icons.Default.HomeWork, onOpenHome))
+        add(ProfileAction("Booking requests", "Review stays and requests", Icons.Default.Event, onOpenBookings))
+        add(ProfileAction("Messages", "Chat with tenants", Icons.AutoMirrored.Filled.Chat, onOpenChat))
+        add(ProfileAction("Bills", "Rent and payments", Icons.Default.Payment, onOpenBills))
+    }
+    if (isStudent) {
+        add(ProfileAction("Browse houses", "Find a place near campus", Icons.Default.Home, onOpenHome))
+        add(ProfileAction("Rent and bills", "Payments and stays", Icons.Default.Payment, onOpenBills))
+        add(ProfileAction("Messages", "Chat with landlords", Icons.AutoMirrored.Filled.Chat, onOpenChat))
+        add(ProfileAction("Roommate preferences", "Who you want to live with", Icons.Default.Group, onEditProfile))
+    }
+    add(ProfileAction("Notifications", "Message alerts", Icons.Default.Notifications, onOpenNotifications))
+}
+
+@Composable
+private fun TwoUp(
+    wide: Boolean,
+    first: @Composable () -> Unit,
+    second: @Composable () -> Unit,
+    third: (@Composable () -> Unit)? = null,
+) {
+    if (!wide) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            first()
+            second()
+            third?.invoke()
         }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            SectionHeader(title = "Security & Account", icon = Icons.Default.Lock)
-            Spacer(modifier = Modifier.height(12.dp))
-            if (biometricAvailable) {
-                BiometricLoginRow(
-                    enabled = biometricEnabled,
-                    onToggle = onBiometricToggle,
-                )
-            }
-            if (!biometricMessage.isNullOrBlank()) {
-                Text(
-                    text = biometricMessage,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                )
-            }
-            AccountOptionItem(title = "Password & Security", icon = Icons.Default.VpnKey)
-            AccountOptionItem(title = "Payment Methods", icon = Icons.Default.Payment)
-            AccountOptionItem(
-                title = "Notifications",
-                icon = Icons.Default.Notifications,
-                onClick = onOpenNotifications,
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            TextButton(
-                onClick = onLogout,
+    } else {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Log Out", fontWeight = FontWeight.Bold)
+                Box(modifier = Modifier.weight(1f)) { first() }
+                Box(modifier = Modifier.weight(1f)) { second() }
+            }
+            third?.invoke()
+        }
+    }
+}
+
+@Composable
+private fun ProfileActionSection(
+    actions: List<ProfileAction>,
+    wide: Boolean,
+) {
+    if (!wide) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            actions.forEach { action ->
+                AccountOptionItem(
+                    title = action.title,
+                    subtitle = action.subtitle,
+                    icon = action.icon,
+                    onClick = action.onClick,
+                )
             }
         }
+    } else {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            actions.chunked(2).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    row.forEach { action ->
+                        Box(modifier = Modifier.weight(1f)) {
+                            ProfileActionCard(action)
+                        }
+                    }
+                    if (row.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
 
-        Spacer(modifier = Modifier.height(32.dp))
+@Composable
+private fun ProfileActionCard(action: ProfileAction) {
+    HavenPadCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = action.onClick,
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    action.icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = action.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = action.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline
+            )
+        }
     }
 }
 
@@ -619,6 +847,7 @@ private fun BiometricLoginRow(
 private fun AccountOptionItem(
     title: String,
     icon: ImageVector,
+    subtitle: String? = null,
     onClick: (() -> Unit)? = null,
 ) {
     Row(
@@ -630,11 +859,22 @@ private fun AccountOptionItem(
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Icon(
-            Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.outline
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (onClick != null) {
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline
+            )
+        }
     }
 }

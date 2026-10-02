@@ -1,5 +1,6 @@
 package com.rotd.havenpad.listing
 
+import com.rotd.havenpad.CallLogEntry
 import com.rotd.havenpad.CreateLiveTourRequest
 import com.rotd.havenpad.IncomingRequest
 import com.rotd.havenpad.LiveKitConnectionDetails
@@ -8,8 +9,13 @@ import com.rotd.havenpad.LiveTourSession
 import com.rotd.havenpad.LiveTourStatus
 import com.rotd.havenpad.RequestType
 import com.rotd.havenpad.RescheduleLiveTourRequest
+import com.rotd.havenpad.RtcIceCandidate
+import com.rotd.havenpad.RtcRoomSnapshot
+import com.rotd.havenpad.RtcSessionDescription
 import com.rotd.havenpad.db.ListingsTable
 import com.rotd.havenpad.db.ListingRequestsTable
+import com.rotd.havenpad.db.LiveTourIceTable
+import com.rotd.havenpad.db.LiveTourRtcTable
 import com.rotd.havenpad.db.LiveTourSessionsTable
 import com.rotd.havenpad.db.UsersTable
 import com.rotd.havenpad.livekit.LiveKitTokenService
@@ -17,6 +23,10 @@ import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.isNull
+import org.jetbrains.exposed.v1.core.neq
+import org.jetbrains.exposed.v1.core.or
+import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -75,8 +85,7 @@ object LiveTourService {
     }
 
     /**
-     * Instant call from chat: reuses an open tour between these two on the listing,
-     * or creates a READY room immediately (requires LiveKit env).
+     * Instant call from chat. The other person is rung until they answer or someone hangs up.
      */
     fun startDirectTour(
         listingId: String,
@@ -99,8 +108,6 @@ object LiveTourService {
         }
         if (tenantId == landlordId) error("Invalid call participants")
 
-        LiveKitTokenService.requireConfig()
-
         val existing = LiveTourSessionsTable.selectAll()
             .where {
                 (LiveTourSessionsTable.listingId eq listingId) and
@@ -116,23 +123,23 @@ object LiveTourService {
 
         if (existing != null) {
             val sessionId = existing[LiveTourSessionsTable.id]
-            if (existing[LiveTourSessionsTable.status] == LiveTourStatus.SCHEDULED ||
-                existing[LiveTourSessionsTable.roomName].isBlank()
-            ) {
-                val roomName = "tour-${sessionId.take(8)}"
-                val now = System.currentTimeMillis()
-                LiveTourSessionsTable.update({ LiveTourSessionsTable.id eq sessionId }) {
-                    it[LiveTourSessionsTable.roomName] = roomName
-                    it[status] = LiveTourStatus.READY
-                    it[startedAt] = existing[LiveTourSessionsTable.startedAt] ?: now
-                    it[LiveTourSessionsTable.mediaType] = mediaType
-                }
-                ListingRequestsTable.update({
-                    ListingRequestsTable.id eq existing[LiveTourSessionsTable.requestId]
-                }) {
-                    it[timeLabel] = "Ready to join"
-                    it[detail] = "Direct call from chat"
-                }
+            val now = System.currentTimeMillis()
+            clearRtc(sessionId)
+            LiveTourSessionsTable.update({ LiveTourSessionsTable.id eq sessionId }) {
+                it[LiveTourSessionsTable.roomName] = "webrtc-${sessionId.take(8)}"
+                it[status] = LiveTourStatus.READY
+                it[startedAt] = now
+                it[LiveTourSessionsTable.mediaType] = mediaType
+                it[LiveTourSessionsTable.callerId] = callerId
+                it[answeredAt] = null
+                it[missed] = false
+                it[endedAt] = null
+            }
+            ListingRequestsTable.update({
+                ListingRequestsTable.id eq existing[LiveTourSessionsTable.requestId]
+            }) {
+                it[timeLabel] = "Ready to join"
+                it[detail] = "Direct call from chat"
             }
             return@transaction loadSession(sessionId) ?: error("Tour disappeared")
         }
@@ -169,6 +176,9 @@ object LiveTourService {
             it[createdAt] = now
             it[startedAt] = now
             it[endedAt] = null
+            it[LiveTourSessionsTable.callerId] = callerId
+            it[answeredAt] = null
+            it[missed] = false
         }
 
         loadSession(sessionId) ?: error("Failed to start live call")
@@ -182,18 +192,30 @@ object LiveTourService {
         if (row[LiveTourSessionsTable.landlordId] != landlordId) {
             error("Not your listing tour")
         }
-        if (row[LiveTourSessionsTable.status] !in listOf(LiveTourStatus.SCHEDULED, LiveTourStatus.READY)) {
-            error("Tour cannot be confirmed in status ${row[LiveTourSessionsTable.status]}")
+        val current = row[LiveTourSessionsTable.status]
+        if (current == LiveTourStatus.READY || current == LiveTourStatus.ACTIVE) {
+            if (row[LiveTourSessionsTable.callerId].isBlank()) {
+                LiveTourSessionsTable.update({ LiveTourSessionsTable.id eq sessionId }) {
+                    it[LiveTourSessionsTable.callerId] = landlordId
+                    it[answeredAt] = null
+                    it[missed] = false
+                }
+            }
+            return@transaction loadSession(sessionId) ?: error("Live tour not found")
         }
-        // Validate LiveKit config early so Confirm fails clearly.
-        LiveKitTokenService.requireConfig()
+        if (current != LiveTourStatus.SCHEDULED) {
+            error("This tour can no longer be confirmed")
+        }
 
-        val roomName = "tour-${sessionId.take(8)}"
+        val roomName = "webrtc-${sessionId.take(8)}"
         val now = System.currentTimeMillis()
         LiveTourSessionsTable.update({ LiveTourSessionsTable.id eq sessionId }) {
             it[LiveTourSessionsTable.roomName] = roomName
             it[status] = LiveTourStatus.READY
             it[startedAt] = now
+            it[LiveTourSessionsTable.callerId] = landlordId
+            it[answeredAt] = null
+            it[missed] = false
         }
         ListingRequestsTable.update({ ListingRequestsTable.id eq row[LiveTourSessionsTable.requestId] }) {
             it[timeLabel] = "Ready to join"
@@ -278,10 +300,13 @@ object LiveTourService {
             error("Not a participant of this tour")
         }
         val now = System.currentTimeMillis()
+        val unanswered = session.answeredAt == null && session.callerId.isNotBlank()
         LiveTourSessionsTable.update({ LiveTourSessionsTable.id eq sessionId }) {
             it[status] = LiveTourStatus.ENDED
             it[endedAt] = now
+            it[missed] = unanswered
         }
+        clearRtc(sessionId)
         ListingRequestsTable.update({ ListingRequestsTable.id eq session.requestId }) {
             it[timeLabel] = "Ended"
         }
@@ -336,6 +361,159 @@ object LiveTourService {
             .sortedByDescending { it.createdAt }
     }
 
+    /** Call the signed-in user has not answered. Scheduled tours do not ring. */
+    fun incomingRing(userId: String): CallLogEntry? = transaction {
+        if (userId.isBlank()) return@transaction null
+        LiveTourSessionsTable.selectAll()
+            .where {
+                ((LiveTourSessionsTable.landlordId eq userId) or (LiveTourSessionsTable.tenantId eq userId)) and
+                    (LiveTourSessionsTable.status inList listOf(LiveTourStatus.READY, LiveTourStatus.ACTIVE)) and
+                    (LiveTourSessionsTable.callerId neq "") and
+                    (LiveTourSessionsTable.callerId neq userId) and
+                    LiveTourSessionsTable.answeredAt.isNull()
+            }
+            .maxByOrNull { it[LiveTourSessionsTable.startedAt] ?: it[LiveTourSessionsTable.createdAt] }
+            ?.toSession()
+            ?.toLog(userId)
+    }
+
+    fun callHistory(userId: String): List<CallLogEntry> = transaction {
+        if (userId.isBlank()) return@transaction emptyList()
+        LiveTourSessionsTable.selectAll()
+            .where {
+                ((LiveTourSessionsTable.landlordId eq userId) or (LiveTourSessionsTable.tenantId eq userId)) and
+                    (LiveTourSessionsTable.status eq LiveTourStatus.ENDED)
+            }
+            .map { it.toSession().toLog(userId) }
+            .sortedByDescending { it.endedAt ?: it.createdAt }
+            .take(40)
+    }
+
+    /** The person who tapped Call or Join. The other participant is rung until they answer. */
+    fun ring(sessionId: String, userId: String): LiveTourSession = transaction {
+        val session = participantSession(sessionId, userId)
+        if (session.answeredAt != null && session.callerId.isNotBlank() && session.callerId != userId) {
+            return@transaction session
+        }
+        val now = System.currentTimeMillis()
+        LiveTourSessionsTable.update({ LiveTourSessionsTable.id eq sessionId }) {
+            it[LiveTourSessionsTable.callerId] = userId
+            it[answeredAt] = null
+            it[missed] = false
+            it[startedAt] = now
+            if (session.status == LiveTourStatus.SCHEDULED || session.status == LiveTourStatus.ENDED) {
+                it[status] = LiveTourStatus.READY
+            }
+        }
+        loadSession(sessionId) ?: error("Live tour not found")
+    }
+
+    /** Callee opened the call. Until this is set, hanging up counts as missed. */
+    fun markJoined(sessionId: String, userId: String): LiveTourSession = transaction {
+        val session = participantSession(sessionId, userId)
+        if (session.callerId.isNotBlank() && session.callerId != userId && session.answeredAt == null) {
+            LiveTourSessionsTable.update({ LiveTourSessionsTable.id eq sessionId }) {
+                it[answeredAt] = System.currentTimeMillis()
+                if (session.status == LiveTourStatus.READY) {
+                    it[status] = LiveTourStatus.ACTIVE
+                }
+            }
+        }
+        loadSession(sessionId) ?: error("Live tour not found")
+    }
+
+    fun rtcRoom(sessionId: String, userId: String): RtcRoomSnapshot = transaction {
+        val session = participantSession(sessionId, userId)
+        val row = LiveTourRtcTable.selectAll()
+            .where { LiveTourRtcTable.sessionId eq sessionId }
+            .singleOrNull()
+        val ice = LiveTourIceTable.selectAll()
+            .where { LiveTourIceTable.sessionId eq sessionId }
+            .map { it.toIce() }
+        RtcRoomSnapshot(
+            role = if (session.landlordId == userId) "caller" else "callee",
+            mediaType = session.mediaType,
+            offer = row?.get(LiveTourRtcTable.offerSdp)?.let { RtcSessionDescription("offer", it) },
+            answer = row?.get(LiveTourRtcTable.answerSdp)?.let { RtcSessionDescription("answer", it) },
+            callerCandidates = ice.filter { it.first }.map { it.second },
+            calleeCandidates = ice.filter { !it.first }.map { it.second },
+        )
+    }
+
+    fun saveOffer(sessionId: String, userId: String, description: RtcSessionDescription) = transaction {
+        val session = participantSession(sessionId, userId)
+        if (session.landlordId != userId) error("Only the landlord starts the WebRTC offer")
+        if (session.status !in listOf(LiveTourStatus.READY, LiveTourStatus.ACTIVE)) {
+            error("Tour is not ready yet")
+        }
+        val existing = LiveTourRtcTable.selectAll()
+            .where { LiveTourRtcTable.sessionId eq sessionId }
+            .singleOrNull()
+        if (existing == null) {
+            LiveTourRtcTable.insert {
+                it[LiveTourRtcTable.sessionId] = sessionId
+                it[offerSdp] = description.sdp
+                it[answerSdp] = null
+            }
+        } else if (existing[LiveTourRtcTable.offerSdp].isNullOrBlank()) {
+            LiveTourRtcTable.update({ LiveTourRtcTable.sessionId eq sessionId }) {
+                it[offerSdp] = description.sdp
+            }
+        }
+        if (session.status == LiveTourStatus.READY) {
+            LiveTourSessionsTable.update({ LiveTourSessionsTable.id eq sessionId }) {
+                it[status] = LiveTourStatus.ACTIVE
+            }
+        }
+    }
+
+    fun saveAnswer(sessionId: String, userId: String, description: RtcSessionDescription) = transaction {
+        val session = participantSession(sessionId, userId)
+        if (session.tenantId != userId) error("Only the tenant sends the WebRTC answer")
+        val existing = LiveTourRtcTable.selectAll()
+            .where { LiveTourRtcTable.sessionId eq sessionId }
+            .singleOrNull()
+            ?: error("Waiting for the landlord offer")
+        if (existing[LiveTourRtcTable.answerSdp].isNullOrBlank()) {
+            LiveTourRtcTable.update({ LiveTourRtcTable.sessionId eq sessionId }) {
+                it[answerSdp] = description.sdp
+            }
+        }
+    }
+
+    fun addIce(sessionId: String, userId: String, candidate: RtcIceCandidate) = transaction {
+        val session = participantSession(sessionId, userId)
+        if (candidate.candidate.isBlank()) return@transaction
+        LiveTourIceTable.insert {
+            it[id] = UUID.randomUUID().toString()
+            it[LiveTourIceTable.sessionId] = sessionId
+            it[fromCaller] = session.landlordId == userId
+            it[LiveTourIceTable.candidate] = candidate.candidate
+            it[sdpMid] = candidate.sdpMid
+            it[sdpMLineIndex] = candidate.sdpMLineIndex
+        }
+    }
+
+    private fun participantSession(sessionId: String, userId: String): LiveTourSession {
+        val session = loadSession(sessionId) ?: error("Live tour not found")
+        if (session.landlordId != userId && session.tenantId != userId) {
+            error("Not a participant of this tour")
+        }
+        return session
+    }
+
+    private fun clearRtc(sessionId: String) {
+        LiveTourIceTable.deleteWhere { LiveTourIceTable.sessionId eq sessionId }
+        LiveTourRtcTable.deleteWhere { LiveTourRtcTable.sessionId eq sessionId }
+    }
+
+    private fun ResultRow.toIce(): Pair<Boolean, RtcIceCandidate> =
+        this[LiveTourIceTable.fromCaller] to RtcIceCandidate(
+            candidate = this[LiveTourIceTable.candidate],
+            sdpMid = this[LiveTourIceTable.sdpMid],
+            sdpMLineIndex = this[LiveTourIceTable.sdpMLineIndex],
+        )
+
     private fun loadSession(sessionId: String): LiveTourSession? {
         val row = LiveTourSessionsTable.selectAll()
             .where { LiveTourSessionsTable.id eq sessionId }
@@ -367,6 +545,27 @@ object LiveTourService {
             createdAt = this[LiveTourSessionsTable.createdAt],
             startedAt = this[LiveTourSessionsTable.startedAt],
             endedAt = this[LiveTourSessionsTable.endedAt],
+            callerId = this[LiveTourSessionsTable.callerId],
+            answeredAt = this[LiveTourSessionsTable.answeredAt],
+            missed = this[LiveTourSessionsTable.missed],
+        )
+    }
+
+    private fun LiveTourSession.toLog(userId: String): CallLogEntry {
+        val peerIsTenant = userId == landlordId
+        return CallLogEntry(
+            sessionId = id,
+            listingId = listingId,
+            listingTitle = listingTitle,
+            peerUserId = if (peerIsTenant) tenantId else landlordId,
+            peerName = if (peerIsTenant) tenantName else landlordName,
+            peerIsLandlord = !peerIsTenant,
+            mediaType = mediaType,
+            missed = missed,
+            outgoing = callerId == userId,
+            status = status,
+            createdAt = createdAt,
+            endedAt = endedAt,
         )
     }
 

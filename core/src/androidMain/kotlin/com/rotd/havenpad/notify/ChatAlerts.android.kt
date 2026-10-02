@@ -9,6 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import android.media.Ringtone
+import android.media.RingtoneManager
 import com.rotd.havenpad.storage.AndroidAppContext
 
 actual fun requestChatNotificationPermission() = Unit
@@ -46,6 +48,50 @@ actual fun showIncomingChatNotification(
             peerIsLandlord = peerIsLandlord,
         )
     )
+}
+
+actual fun showIncomingHouseTourRing(
+    callerName: String,
+    listingTitle: String,
+    sessionId: String,
+    peerUserId: String,
+    listingId: String,
+    peerIsLandlord: Boolean,
+) {
+    startHouseTourRingSound()
+    AndroidChatBridge.showHouseTour?.invoke(
+        HouseTourNotify(
+            callerName = callerName,
+            listingTitle = listingTitle,
+            sessionId = sessionId,
+            peerUserId = peerUserId,
+            listingId = listingId,
+            peerIsLandlord = peerIsLandlord,
+        )
+    )
+}
+
+actual fun cancelHouseTourRing(sessionId: String) {
+    stopHouseTourRingSound()
+    AndroidChatBridge.cancelHouseTour?.invoke(sessionId)
+}
+
+private var houseTourRingtone: Ringtone? = null
+
+actual fun startHouseTourRingSound() {
+    val context = runCatching { AndroidAppContext.require() }.getOrNull() ?: return
+    val playing = houseTourRingtone
+    if (playing?.isPlaying == true) return
+    val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+    val tone = RingtoneManager.getRingtone(context, uri) ?: return
+    if (Build.VERSION.SDK_INT >= 28) tone.isLooping = true
+    houseTourRingtone = tone
+    tone.play()
+}
+
+actual fun stopHouseTourRingSound() {
+    houseTourRingtone?.stop()
+    houseTourRingtone = null
 }
 
 actual fun onSessionSaved() {

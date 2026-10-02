@@ -6,9 +6,20 @@ package com.rotd.havenpad.notify
  */
 object AndroidChatBridge {
     var showNotification: ((ChatNotifyRequest) -> Unit)? = null
+    var showHouseTour: ((HouseTourNotify) -> Unit)? = null
+    var cancelHouseTour: ((String) -> Unit)? = null
     var onSessionSaved: (() -> Unit)? = null
     var onSessionCleared: (() -> Unit)? = null
 }
+
+data class HouseTourNotify(
+    val callerName: String,
+    val listingTitle: String,
+    val sessionId: String,
+    val peerUserId: String,
+    val listingId: String,
+    val peerIsLandlord: Boolean,
+)
 
 data class ChatNotifyRequest(
     val title: String,

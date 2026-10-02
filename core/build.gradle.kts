@@ -7,6 +7,7 @@ plugins {
 kotlin {
     android {
         namespace = "com.rotd.havenpad.core"
+        androidResources.enable = true
     }
 
     sourceSets {

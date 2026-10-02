@@ -39,16 +39,15 @@ class StubLiveTourMediaSession(
     override val cameraEnabled: StateFlow<Boolean> = _cameraEnabled.asStateFlow()
 
     override suspend fun connect(
-        serverUrl: String,
-        token: String,
+        sessionId: String,
+        asCaller: Boolean,
         enableCamera: Boolean,
         enableMic: Boolean,
     ) {
         _micEnabled.value = enableMic
         _cameraEnabled.value = enableCamera
-        _connectionState.value = LiveTourConnectionState.Connecting
-        _statusMessage.value = "Token received — wire LiveKit on $platformLabel to publish media"
-        _connectionState.value = LiveTourConnectionState.Connected
+        _connectionState.value = LiveTourConnectionState.Failed
+        _statusMessage.value = "Video calls on $platformLabel are not available yet. Use the phone app."
         _hasRemoteVideo.value = false
     }
 

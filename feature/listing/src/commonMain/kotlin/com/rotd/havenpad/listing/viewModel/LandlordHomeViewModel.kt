@@ -206,14 +206,22 @@ class LandlordHomeViewModel(
 
     fun confirmLiveTour(sessionId: String) {
         viewModelScope.launch {
-            _state.update { it.copy(tourActing = true, tourMessage = null) }
+            _state.update {
+                it.copy(
+                    tourActing = true,
+                    actingTourId = sessionId,
+                    tourMessage = null,
+                    tourMessageIsError = false
+                )
+            }
             LiveTourClient.confirmTour(sessionId)
                 .onSuccess {
                     _state.update {
                         it.copy(
                             tourActing = false,
-                            navigateToLiveTourId = sessionId,
-                            tourMessage = "Tour confirmed — joining…"
+                            actingTourId = null,
+                            tourMessage = "Tour confirmed. Tap Join when you're ready.",
+                            tourMessageIsError = false
                         )
                     }
                     ListingDataBus.notifyListingsChanged()
@@ -221,15 +229,26 @@ class LandlordHomeViewModel(
                 }
                 .onFailure { e ->
                     _state.update {
-                        it.copy(tourActing = false, tourMessage = e.userMessage())
+                        it.copy(
+                            tourActing = false,
+                            actingTourId = null,
+                            tourMessage = e.userMessage(),
+                            tourMessageIsError = true
+                        )
                     }
+                    refresh(showLoading = false)
                 }
         }
     }
 
     fun openRescheduleLiveTour(sessionId: String) {
         _state.update {
-            it.copy(rescheduleTourId = sessionId, rescheduleNote = "", tourMessage = null)
+            it.copy(
+                rescheduleTourId = sessionId,
+                rescheduleNote = "",
+                tourMessage = null,
+                tourMessageIsError = false
+            )
         }
     }
 
@@ -245,11 +264,11 @@ class LandlordHomeViewModel(
         val id = _state.value.rescheduleTourId ?: return
         val note = _state.value.rescheduleNote.trim()
         if (note.isBlank()) {
-            _state.update { it.copy(tourMessage = "Enter a new preferred time") }
+            _state.update { it.copy(tourMessage = "Enter a new preferred time", tourMessageIsError = true) }
             return
         }
         viewModelScope.launch {
-            _state.update { it.copy(tourActing = true, tourMessage = null) }
+            _state.update { it.copy(tourActing = true, tourMessage = null, tourMessageIsError = false) }
             LiveTourClient.rescheduleTour(id, note)
                 .onSuccess {
                     _state.update {
@@ -257,7 +276,8 @@ class LandlordHomeViewModel(
                             tourActing = false,
                             rescheduleTourId = null,
                             rescheduleNote = "",
-                            tourMessage = "Reschedule sent to tenant"
+                            tourMessage = "Reschedule sent to tenant",
+                            tourMessageIsError = false
                         )
                     }
                     ListingDataBus.notifyListingsChanged()
@@ -265,7 +285,11 @@ class LandlordHomeViewModel(
                 }
                 .onFailure { e ->
                     _state.update {
-                        it.copy(tourActing = false, tourMessage = e.userMessage())
+                        it.copy(
+                            tourActing = false,
+                            tourMessage = e.userMessage(),
+                            tourMessageIsError = true
+                        )
                     }
                 }
         }

@@ -33,7 +33,9 @@ data class LandlordHomeState(
     val rescheduleTourId: String? = null,
     val rescheduleNote: String = "",
     val tourActing: Boolean = false,
+    val actingTourId: String? = null,
     val tourMessage: String? = null,
+    val tourMessageIsError: Boolean = false,
     /** When set, UI should navigate to the live tour call screen. */
     val navigateToLiveTourId: String? = null,
     val showEscrowDetails: Boolean = false,
