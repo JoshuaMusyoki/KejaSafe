@@ -3,26 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="KejaSafe — the reliable sanctuary for Kenyan housing. Verified listings, M-Pesa rent, and landlord compliance for tenants, students, and property owners.">
-    <title>KejaSafe — Kenyan Housing Sanctuary</title>
+    <meta name="description" content="HavenPad — the reliable sanctuary for Kenyan housing. Verified listings, M-Pesa rent, and landlord compliance for tenants, students, and property owners.">
+    <title>HavenPad — Student-First PropTech</title>
+
+    <!-- 1. Browser Tab Favicon -->
+    <link rel="icon" type="image/png" href="assets/haven_pad_logo.png">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
     <link type="text/css" rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="compose-target">
-        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 50 50" role="presentation" style="margin-top: 20vh">
-            <circle cx="25" cy="25" r="20" stroke="#ccc" stroke-width="4" fill="none"/>
-            <circle cx="25" cy="25" r="20" stroke="#006948" stroke-width="4" fill="none" stroke-linecap="round"
-                    stroke-dasharray="90 125">
-                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s"
-                                  repeatCount="indefinite"/>
-            </circle>
-        </svg>
-    </div>
-    <!-- Sets window.KEJASAFE_API_BASE_URL. Must load before the app reads it. -->
-    <script type="application/javascript" src="config.js"></script>
-    <script type="application/javascript" src="webApp.js"></script>
+<div id="compose-target" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+
+    <!-- 2. Brand Logo above Loading Spinner -->
+    <img src="assets/haven_pad_logo.png" alt="HavenPad Logo" style="width: 80px; height: 80px; margin-bottom: 20px; object-fit: contain;">
+
+    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 50 50" role="presentation">
+        <circle cx="25" cy="25" r="20" stroke="#ccc" stroke-width="4" fill="none"/>
+        <circle cx="25" cy="25" r="20" stroke="#006948" stroke-width="4" fill="none" stroke-linecap="round"
+                stroke-dasharray="90 125">
+            <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s"
+                              repeatCount="indefinite"/>
+        </circle>
+    </svg>
+</div>
+
+<!-- Sets window.HAVENPAD_API_BASE_URL. Must load before the app reads it. -->
+<script type="application/javascript" src="config.js"></script>
+<script type="application/javascript" src="webApp.js"></script>
 </body>
 </html>

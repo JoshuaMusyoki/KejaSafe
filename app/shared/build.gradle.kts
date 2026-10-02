@@ -15,7 +15,7 @@ kotlin {
     }
     
     androidLibrary {
-        namespace = "com.rotd.kejasafe.app.shared"
+        namespace = "com.rotd.havenpad.app.shared"
     }
     
     sourceSets {

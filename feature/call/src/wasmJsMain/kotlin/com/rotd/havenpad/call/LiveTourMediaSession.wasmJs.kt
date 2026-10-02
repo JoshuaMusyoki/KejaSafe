@@ -1,0 +1,17 @@
+package com.rotd.havenpad.call
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+
+@Composable
+actual fun rememberLiveTourMediaSession(): LiveTourMediaSession =
+    rememberStubLiveTourMediaSession("Wasm")
+
+@Composable
+actual fun LiveTourVideoPane(
+    session: LiveTourMediaSession,
+    showRemote: Boolean,
+    modifier: Modifier,
+) {
+    StubLiveTourVideoPane(showRemote = showRemote, modifier = modifier)
+}

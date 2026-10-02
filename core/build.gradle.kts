@@ -6,7 +6,7 @@ plugins {
 
 kotlin {
     android {
-        namespace = "com.rotd.kejasafe.core"
+        namespace = "com.rotd.havenpad.core"
     }
 
     sourceSets {

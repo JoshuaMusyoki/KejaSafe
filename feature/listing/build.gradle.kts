@@ -5,7 +5,7 @@ plugins {
 
 kotlin {
     android {
-        namespace = "com.rotd.kejasafe.feature.listing"
+        namespace = "com.rotd.havenpad.feature.listing"
     }
 
     sourceSets {

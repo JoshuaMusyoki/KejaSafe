@@ -1,15 +1,15 @@
 {
   "project_info": {
     "project_number": "661471410260",
-    "project_id": "kejasafe",
-    "storage_bucket": "kejasafe.firebasestorage.app"
+    "project_id": "havenpad",
+    "storage_bucket": "havenpad.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
         "mobilesdk_app_id": "1:661471410260:android:e2727247e79c841f5195c1",
         "android_client_info": {
-          "package_name": "com.rotd.kejasafe"
+          "package_name": "com.rotd.havenpad"
         }
       },
       "oauth_client": [],
