@@ -45,3 +45,6 @@ expect fun onSessionCleared()
 /** Android 13+ permission dialog. Other platforms do nothing. */
 @Composable
 expect fun ChatNotificationPermissionEffect()
+
+/** Message id from a system notification the user just clicked. Empty when nothing is waiting. */
+expect fun consumeClickedChatNotification(): String

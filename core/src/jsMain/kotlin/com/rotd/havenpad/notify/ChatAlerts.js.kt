@@ -3,7 +3,11 @@ package com.rotd.havenpad.notify
 import androidx.compose.runtime.Composable
 
 private val showBrowserNotification: (String, String, String) -> Unit = js(
-    "function(title, body, tag) { if (typeof Notification !== 'undefined' && Notification.permission === 'granted') { new Notification(title, { body: body, tag: tag }); } }"
+    "function(title, body, tag) { if (typeof Notification !== 'undefined' && Notification.permission === 'granted') { var n = new Notification(title, { body: body, tag: tag }); n.onclick = function () { globalThis.__havenNoticeOpen = tag; n.close(); if (window.focus) window.focus(); }; } }"
+)
+
+private val takeClickedNotification: () -> String = js(
+    "function() { var id = globalThis.__havenNoticeOpen || ''; globalThis.__havenNoticeOpen = ''; return id; }"
 )
 
 private val notificationsGranted: () -> Boolean = js(
@@ -61,3 +65,5 @@ actual fun onSessionCleared() = Unit
 
 @Composable
 actual fun ChatNotificationPermissionEffect() = Unit
+
+actual fun consumeClickedChatNotification(): String = takeClickedNotification()

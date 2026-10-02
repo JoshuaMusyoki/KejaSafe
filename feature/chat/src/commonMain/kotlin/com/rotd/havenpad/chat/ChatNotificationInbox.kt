@@ -24,6 +24,15 @@ data class ChatNotice(
     val read: Boolean = false,
 )
 
+fun ChatNotice.toPeer(): ApartmentChatPeer = ApartmentChatPeer(
+    userId = peerUserId,
+    displayName = displayName.ifBlank { title },
+    listingId = listingId,
+    listingTitle = listingTitle,
+    bookingId = bookingId,
+    peerIsLandlord = peerIsLandlord,
+)
+
 object ChatNotificationInbox {
     private const val INBOX_KEY = "chat_notification_inbox"
     private const val SEEN_KEY = "chat_notification_seen"

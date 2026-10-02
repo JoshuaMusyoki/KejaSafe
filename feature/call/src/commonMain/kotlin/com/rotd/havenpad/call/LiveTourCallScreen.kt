@@ -165,8 +165,8 @@ fun LiveTourCallScreen(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
-                                .background(Color.Black.copy(alpha = 0.45f))
-                                .padding(16.dp),
+                                .background(Color.Black.copy(alpha = 0.92f))
+                                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(

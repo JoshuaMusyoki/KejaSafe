@@ -28,6 +28,30 @@ import kotlinx.coroutines.launch
 
 enum class ChatInboxTab { MESSAGES, PEOPLE, CALLS }
 
+/** Opens a conversation inside the web chat panel instead of a full-screen thread. */
+object ChatPanelLaunch {
+    private val _pending = MutableStateFlow<ApartmentChatPeer?>(null)
+    val pending = _pending.asStateFlow()
+
+    fun open(peer: ApartmentChatPeer) {
+        _pending.value = peer
+    }
+
+    fun consume() {
+        _pending.value = null
+    }
+}
+
+/** Sidebar clicks and the chat tabs share this so the web panel highlights the open section. */
+object ChatSidebarRequest {
+    private val _tab = MutableStateFlow(ChatInboxTab.MESSAGES)
+    val tab = _tab.asStateFlow()
+
+    fun select(tab: ChatInboxTab) {
+        _tab.value = tab
+    }
+}
+
 enum class PeerConnectAction {
     NONE,
     CONNECT,
@@ -140,7 +164,7 @@ class ChatInboxViewModel(
         viewModelScope.launch {
             CallLogBus.tick.collect {
                 if (CallLogBus.consumeFocus()) {
-                    _state.update { it.copy(selectedTab = ChatInboxTab.CALLS) }
+                    selectTab(ChatInboxTab.CALLS)
                 }
                 loadCallHistory()
             }
@@ -172,6 +196,7 @@ class ChatInboxViewModel(
 
     fun selectTab(tab: ChatInboxTab) {
         _state.update { it.copy(selectedTab = tab) }
+        ChatSidebarRequest.select(tab)
     }
 
     fun updateSearch(query: String) {

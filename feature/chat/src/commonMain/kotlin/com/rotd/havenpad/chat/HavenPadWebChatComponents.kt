@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.Event
@@ -67,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -267,6 +269,9 @@ fun HavenPadWebDashboardShell(
     currentChatTab: ChatInboxTab = ChatInboxTab.MESSAGES,
     onTabSelected: (HavenPadNavTab) -> Unit,
     onChatTabSelected: (ChatInboxTab) -> Unit = {},
+    onOpenBookings: () -> Unit = {},
+    bookingsSelected: Boolean = false,
+    toursSelected: Boolean = false,
     onLogout: () -> Unit,
     content: @Composable () -> Unit
 ) {
@@ -291,16 +296,20 @@ fun HavenPadWebDashboardShell(
                 onChatTabSelected(ChatInboxTab.PEOPLE)
             },
             onNavigateBrowseListings = { onTabSelected(HavenPadNavTab.HOME) },
+            onNavigateBookings = onOpenBookings,
             onNavigateRent = { onTabSelected(HavenPadNavTab.BILLS) },
             onNavigateLiveTours = { onTabSelected(HavenPadNavTab.BILLS) },
             onNavigateProfile = { onTabSelected(HavenPadNavTab.PROFILE) },
             onNavigateBadges = { onTabSelected(HavenPadNavTab.PROFILE) },
+            bookingsSelected = bookingsSelected,
+            toursSelected = toursSelected,
             onLogout = onLogout
         )
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
+                .clipToBounds()
                 .background(HavenPadWebChatColors.ThreadBg)
         ) {
             content()
@@ -317,10 +326,13 @@ fun HavenPadWebSidebar(
     onNavigateChat: () -> Unit = {},
     onNavigateTenants: () -> Unit = {},
     onNavigateBrowseListings: () -> Unit = {},
+    onNavigateBookings: () -> Unit = {},
     onNavigateRent: () -> Unit = {},
     onNavigateLiveTours: () -> Unit = {},
     onNavigateProfile: () -> Unit = {},
     onNavigateBadges: () -> Unit = {},
+    bookingsSelected: Boolean = false,
+    toursSelected: Boolean = false,
     onLogout: () -> Unit = {}
 ) {
     val user = SessionManager.currentUser.value
@@ -415,7 +427,7 @@ fun HavenPadWebSidebar(
                 HavenPadNavItem(
                     label = "Home",
                     icon = Icons.Default.Home,
-                    isSelected = currentTab == HavenPadNavTab.HOME,
+                    isSelected = currentTab == HavenPadNavTab.HOME && !bookingsSelected && !toursSelected,
                     onClick = onNavigateHome
                 )
             }
@@ -428,7 +440,10 @@ fun HavenPadWebSidebar(
                 HavenPadNavItem(
                     label = "Apartment Chat",
                     icon = Icons.AutoMirrored.Filled.Chat,
-                    isSelected = currentTab == HavenPadNavTab.CHAT && currentChatTab == ChatInboxTab.MESSAGES,
+                    isSelected = currentTab == HavenPadNavTab.CHAT &&
+                        currentChatTab != ChatInboxTab.PEOPLE &&
+                        !bookingsSelected &&
+                        !toursSelected,
                     onClick = onNavigateChat
                 )
             }
@@ -437,7 +452,10 @@ fun HavenPadWebSidebar(
                 HavenPadNavItem(
                     label = "Tenants & Landlords",
                     icon = Icons.Default.People,
-                    isSelected = currentTab == HavenPadNavTab.CHAT && currentChatTab == ChatInboxTab.PEOPLE,
+                    isSelected = currentTab == HavenPadNavTab.CHAT &&
+                        currentChatTab == ChatInboxTab.PEOPLE &&
+                        !bookingsSelected &&
+                        !toursSelected,
                     onClick = onNavigateTenants
                 )
             }
@@ -450,15 +468,23 @@ fun HavenPadWebSidebar(
                 HavenPadNavItem(
                     label = "Browse Listings",
                     icon = Icons.Default.House,
-                    isSelected = currentTab == HavenPadNavTab.HOME,
+                    isSelected = false,
                     onClick = onNavigateBrowseListings
+                )
+            }
+            item {
+                HavenPadNavItem(
+                    label = "Bookings",
+                    icon = Icons.Default.DateRange,
+                    isSelected = bookingsSelected,
+                    onClick = onNavigateBookings
                 )
             }
             item {
                 HavenPadNavItem(
                     label = "Rent & Escrow",
                     icon = Icons.Default.ReceiptLong,
-                    isSelected = currentTab == HavenPadNavTab.BILLS,
+                    isSelected = currentTab == HavenPadNavTab.BILLS && !toursSelected,
                     onClick = onNavigateRent
                 )
             }
@@ -466,7 +492,7 @@ fun HavenPadWebSidebar(
                 HavenPadNavItem(
                     label = "Live Tours",
                     icon = Icons.Default.Event,
-                    isSelected = currentTab == HavenPadNavTab.BILLS,
+                    isSelected = toursSelected,
                     onClick = onNavigateLiveTours
                 )
             }
@@ -479,7 +505,7 @@ fun HavenPadWebSidebar(
                 HavenPadNavItem(
                     label = "My Profile",
                     icon = Icons.Default.Person,
-                    isSelected = currentTab == HavenPadNavTab.PROFILE,
+                    isSelected = currentTab == HavenPadNavTab.PROFILE && !bookingsSelected,
                     onClick = onNavigateProfile
                 )
             }
@@ -487,7 +513,7 @@ fun HavenPadWebSidebar(
                 HavenPadNavItem(
                     label = "Verified Badges",
                     icon = Icons.Default.CheckCircle,
-                    isSelected = currentTab == HavenPadNavTab.PROFILE,
+                    isSelected = false,
                     onClick = onNavigateBadges
                 )
             }

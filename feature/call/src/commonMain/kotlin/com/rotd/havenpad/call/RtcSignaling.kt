@@ -60,18 +60,46 @@ internal const val HAVEN_RTC_INSTALL = """
     error: "",
     remote: false
   };
+  function layoutStage() {
+    var stage = document.getElementById("haven-stage");
+    if (!stage) return;
+    var side = 246;
+    var top = 120;
+    var bottomGap = 220;
+    stage.style.cssText = "position:fixed;left:" + side + "px;top:" + top + "px;width:" + Math.max(160, window.innerWidth - side - 16) + "px;height:" + Math.max(120, window.innerHeight - top - bottomGap) + "px;overflow:hidden;z-index:20;background:#111;border-radius:16px;pointer-events:none;";
+  }
+  function ensureStage() {
+    var stage = document.getElementById("haven-stage");
+    if (!stage) {
+      stage = document.createElement("div");
+      stage.id = "haven-stage";
+      document.body.appendChild(stage);
+    }
+    layoutStage();
+    return stage;
+  }
   function ensureVideo(id, style) {
+    var stage = ensureStage();
     var el = document.getElementById(id);
     if (!el) {
       el = document.createElement("video");
       el.id = id;
       el.autoplay = true;
       el.playsInline = true;
+      el.controls = false;
       el.setAttribute("playsinline", "true");
-      el.style.cssText = style;
-      document.body.appendChild(el);
+      el.setAttribute("webkit-playsinline", "true");
+      stage.appendChild(el);
+    } else if (el.parentNode !== stage) {
+      stage.appendChild(el);
     }
+    el.controls = false;
+    el.style.cssText = style;
     return el;
+  }
+  if (!globalThis.__havenLayoutBound) {
+    globalThis.__havenLayoutBound = true;
+    window.addEventListener("resize", function () { layoutStage(); });
   }
   globalThis.__haven = {
     state: state,
@@ -79,8 +107,8 @@ internal const val HAVEN_RTC_INSTALL = """
       state.phase = "starting";
       state.error = "";
       state.remote = false;
-      var remoteEl = ensureVideo("haven-remote-video", "position:fixed;left:0;right:0;top:64px;bottom:210px;width:100%;height:auto;object-fit:cover;z-index:20;background:#111;pointer-events:none;");
-      var localEl = ensureVideo("haven-local-video", "position:fixed;top:76px;right:12px;width:120px;height:160px;object-fit:cover;z-index:21;border-radius:12px;pointer-events:none;background:#222;");
+      var remoteEl = ensureVideo("haven-remote-video", "position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;background:#111;");
+      var localEl = ensureVideo("haven-local-video", "position:absolute;top:12px;right:12px;width:120px;height:160px;object-fit:cover;border-radius:12px;background:#222;");
       localEl.muted = true;
       navigator.mediaDevices.getUserMedia({ audio: !!audio, video: !!video }).then(function (stream) {
         state.local = stream;
@@ -165,7 +193,7 @@ internal const val HAVEN_RTC_INSTALL = """
     hangup: function () {
       if (state.pc) state.pc.close();
       if (state.local) state.local.getTracks().forEach(function (track) { track.stop(); });
-      ["haven-remote-video", "haven-local-video"].forEach(function (id) {
+      ["haven-remote-video", "haven-local-video", "haven-stage"].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.remove();
       });

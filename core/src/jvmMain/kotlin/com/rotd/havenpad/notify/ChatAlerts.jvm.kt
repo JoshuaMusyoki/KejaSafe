@@ -37,5 +37,7 @@ actual fun onSessionSaved() = Unit
 
 actual fun onSessionCleared() = Unit
 
+actual fun consumeClickedChatNotification(): String = ""
+
 @Composable
 actual fun ChatNotificationPermissionEffect() = Unit

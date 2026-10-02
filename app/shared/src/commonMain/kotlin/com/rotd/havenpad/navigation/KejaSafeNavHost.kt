@@ -10,6 +10,10 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import com.rotd.havenpad.chat.ChatNotificationInbox
+import com.rotd.havenpad.chat.ChatPanelLaunch
+import com.rotd.havenpad.notify.consumeClickedChatNotification
+import kotlinx.coroutines.delay
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
 import com.rotd.havenpad.UserRole
@@ -17,12 +21,16 @@ import com.rotd.havenpad.auth.LoginScreen
 import com.rotd.havenpad.auth.RegisterScreen
 import com.rotd.havenpad.chat.ChatIncomingNotifications
 import com.rotd.havenpad.chat.ChatInboxScreen
+import com.rotd.havenpad.chat.ChatInboxTab
 import com.rotd.havenpad.chat.ChatNotice
+import com.rotd.havenpad.chat.ChatSidebarRequest
+import com.rotd.havenpad.chat.toPeer
 import com.rotd.havenpad.chat.NotificationsScreen
 import com.rotd.havenpad.chat.ChatThreadScreen
 import com.rotd.havenpad.chat.HavenPadWebDashboardShell
 import com.rotd.havenpad.components.HavenPadNavTab
 import com.rotd.havenpad.components.destinationForTab
+import com.rotd.havenpad.components.tabForDestination
 import com.rotd.havenpad.components.homeDestinationForRole
 import com.rotd.havenpad.domain.chat.ApartmentChatPeer
 import com.rotd.havenpad.getPlatform
@@ -100,16 +108,7 @@ fun HavenPadNavHost(
 
     @Composable
     fun webDashboard(tab: HavenPadNavTab, content: @Composable () -> Unit) {
-        if (isWeb) {
-            HavenPadWebDashboardShell(
-                currentTab = tab,
-                onTabSelected = ::switchMainTab,
-                onLogout = ::navigateToLogin,
-                content = content
-            )
-        } else {
-            content()
-        }
+        content()
     }
 
     fun navigateHomeForRole() {
@@ -130,6 +129,13 @@ fun HavenPadNavHost(
     }
 
     fun openChatFromNotice(notice: ChatNotice) {
+        ChatNotificationInbox.markRead(notice.id)
+        if (isWeb) {
+            ChatPanelLaunch.open(notice.toPeer())
+            ChatSidebarRequest.select(ChatInboxTab.MESSAGES)
+            replaceRoot(HavenPadDestination.Chat)
+            return
+        }
         openDetail(
             HavenPadDestination.ChatThread(
                 peerUserId = notice.peerUserId,
@@ -152,8 +158,40 @@ fun HavenPadNavHost(
     LaunchedEffect(pendingChat) {
         val thread = pendingChat ?: return@LaunchedEffect
         if (!SessionManager.isLogged()) return@LaunchedEffect
-        openDetail(thread)
         ChatLaunchRequest.consume()
+        if (isWeb) {
+            ChatPanelLaunch.open(
+                ApartmentChatPeer(
+                    userId = thread.peerUserId,
+                    displayName = thread.displayName.ifBlank { "HavenPad" },
+                    listingId = thread.listingId,
+                    listingTitle = thread.listingTitle,
+                    bookingId = thread.bookingId,
+                    peerIsLandlord = thread.peerIsLandlord,
+                )
+            )
+            ChatSidebarRequest.select(ChatInboxTab.MESSAGES)
+            replaceRoot(HavenPadDestination.Chat)
+        } else {
+            openDetail(thread)
+        }
+    }
+
+    if (isWeb && signedInUser != null) {
+        LaunchedEffect(signedInUser?.id) {
+            while (true) {
+                val id = consumeClickedChatNotification()
+                if (id.isNotBlank()) {
+                    val notice = ChatNotificationInbox.items.value.firstOrNull { it.id == id }
+                    if (notice != null) {
+                        openChatFromNotice(notice)
+                    } else {
+                        ChatNotificationInbox.markRead(id)
+                    }
+                }
+                delay(400)
+            }
+        }
     }
 
     val pendingTour by TourLaunchRequest.pending.collectAsState()
@@ -316,19 +354,23 @@ fun HavenPadNavHost(
         }
 
         entry<HavenPadDestination.LandlordBookings> {
-            LandlordBookingsScreen(
-                onBack = ::goBack,
-                onOpenLiveTour = { sessionId ->
-                    openDetail(HavenPadDestination.LiveTourCall(sessionId))
-                }
-            )
+            webDashboard(HavenPadNavTab.HOME) {
+                LandlordBookingsScreen(
+                    onBack = ::goBack,
+                    onOpenLiveTour = { sessionId ->
+                        openDetail(HavenPadDestination.LiveTourCall(sessionId))
+                    }
+                )
+            }
         }
 
         entry<HavenPadDestination.LiveTourCall> { destination ->
-            com.rotd.havenpad.call.LiveTourCallScreen(
-                sessionId = destination.sessionId,
-                onBack = ::goBack
-            )
+            webDashboard(HavenPadNavTab.CHAT) {
+                com.rotd.havenpad.call.LiveTourCallScreen(
+                    sessionId = destination.sessionId,
+                    onBack = ::goBack
+                )
+            }
         }
 
         entry<HavenPadDestination.PropertyDetails> { destination ->
@@ -411,6 +453,8 @@ fun HavenPadNavHost(
             ChatInboxScreen(
                 selectedTab = HavenPadNavTab.CHAT,
                 onTabSelected = ::switchMainTab,
+                embedInDashboard = isWeb,
+                onOpenBookings = { replaceRoot(HavenPadDestination.LandlordBookings) },
                 onOpenThread = { peer ->
                     openDetail(
                         HavenPadDestination.ChatThread(
@@ -448,10 +492,12 @@ fun HavenPadNavHost(
         }
 
         entry<HavenPadDestination.Notifications> {
-            NotificationsScreen(
-                onBack = ::goBack,
-                onOpenNotice = { notice -> openChatFromNotice(notice) },
-            )
+            webDashboard(HavenPadNavTab.CHAT) {
+                NotificationsScreen(
+                    onBack = ::goBack,
+                    onOpenNotice = { notice -> openChatFromNotice(notice) },
+                )
+            }
         }
 
         entry<HavenPadDestination.CreateListing> { destination ->
@@ -470,7 +516,20 @@ fun HavenPadNavHost(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    val topDestination = backStack.lastOrNull()
+    val showWebPanel = isWeb && signedInUser != null && when (topDestination) {
+        null,
+        HavenPadDestination.Landing,
+        HavenPadDestination.Features,
+        HavenPadDestination.Policy,
+        HavenPadDestination.Login,
+        HavenPadDestination.Register -> false
+        else -> true
+    }
+    val sidebarChatTab by ChatSidebarRequest.tab.collectAsState()
+
+    @Composable
+    fun AppNavigation() {
         NavDisplay(
             modifier = Modifier.fillMaxSize(),
             backStack = backStack,
@@ -481,6 +540,38 @@ fun HavenPadNavHost(
             },
             entryProvider = entryProvider
         )
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        if (showWebPanel) {
+            val panelTab = when (topDestination) {
+                HavenPadDestination.Chat,
+                is HavenPadDestination.ChatThread,
+                HavenPadDestination.Notifications,
+                is HavenPadDestination.LiveTourCall -> HavenPadNavTab.CHAT
+                HavenPadDestination.Rent -> HavenPadNavTab.BILLS
+                HavenPadDestination.Profile,
+                HavenPadDestination.EditProfile -> HavenPadNavTab.PROFILE
+                else -> tabForDestination(topDestination ?: HavenPadDestination.Home) ?: HavenPadNavTab.HOME
+            }
+            HavenPadWebDashboardShell(
+                currentTab = panelTab,
+                currentChatTab = sidebarChatTab,
+                onTabSelected = ::switchMainTab,
+                onChatTabSelected = { tab ->
+                    ChatSidebarRequest.select(tab)
+                    switchMainTab(HavenPadNavTab.CHAT)
+                },
+                onOpenBookings = { replaceRoot(HavenPadDestination.LandlordBookings) },
+                bookingsSelected = topDestination is HavenPadDestination.LandlordBookings,
+                toursSelected = topDestination is HavenPadDestination.LiveTourCall,
+                onLogout = ::navigateToLogin,
+            ) {
+                AppNavigation()
+            }
+        } else {
+            AppNavigation()
+        }
         if (signedInUser != null) {
             com.rotd.havenpad.call.IncomingCallOverlay { sessionId ->
                 openDetail(HavenPadDestination.LiveTourCall(sessionId))

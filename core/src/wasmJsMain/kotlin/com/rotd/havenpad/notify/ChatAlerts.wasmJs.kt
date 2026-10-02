@@ -5,9 +5,12 @@ import kotlin.js.ExperimentalWasmJsInterop
 
 @OptIn(ExperimentalWasmJsInterop::class)
 @JsFun(
-    "(title, body, tag) => { if (typeof Notification !== 'undefined' && Notification.permission === 'granted') { new Notification(title, { body: body, tag: tag }); } }"
+    "(title, body, tag) => { if (typeof Notification !== 'undefined' && Notification.permission === 'granted') { var n = new Notification(title, { body: body, tag: tag }); n.onclick = function () { globalThis.__havenNoticeOpen = tag; n.close(); if (window.focus) window.focus(); }; } }"
 )
 private external fun showBrowserNotification(title: String, body: String, tag: String)
+
+@JsFun("() => { var id = globalThis.__havenNoticeOpen || ''; globalThis.__havenNoticeOpen = ''; return id; }")
+private external fun takeClickedNotification(): String
 
 @OptIn(ExperimentalWasmJsInterop::class)
 @JsFun("() => (typeof Notification !== 'undefined' && Notification.permission === 'granted')")
@@ -66,3 +69,5 @@ actual fun onSessionCleared() = Unit
 
 @Composable
 actual fun ChatNotificationPermissionEffect() = Unit
+
+actual fun consumeClickedChatNotification(): String = takeClickedNotification()

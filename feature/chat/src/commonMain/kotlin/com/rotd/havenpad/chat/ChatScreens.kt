@@ -130,6 +130,8 @@ fun ChatInboxScreen(
     onOpenLiveTour: (sessionId: String) -> Unit = {},
     onCreateListingClick: (() -> Unit)? = null,
     onOpenNotifications: () -> Unit = {},
+    onOpenBookings: () -> Unit = {},
+    embedInDashboard: Boolean = false,
     viewModel: ChatInboxViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -141,6 +143,14 @@ fun ChatInboxScreen(
 
     LaunchedEffect(SessionManager.currentUser.value?.id) {
         viewModel.refresh()
+    }
+
+    LaunchedEffect(Unit) {
+        ChatSidebarRequest.tab.collect { tab ->
+            if (viewModel.state.value.selectedTab != tab) {
+                viewModel.selectTab(tab)
+            }
+        }
     }
 
     LaunchedEffect(state.navigateToLiveTourId) {
@@ -182,6 +192,13 @@ fun ChatInboxScreen(
     }
 
     var selectedPeer by remember { mutableStateOf<ApartmentChatPeer?>(null) }
+    val panelPeer by ChatPanelLaunch.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(panelPeer) {
+        val peer = panelPeer ?: return@LaunchedEffect
+        selectedPeer = peer
+        viewModel.selectTab(ChatInboxTab.MESSAGES)
+        ChatPanelLaunch.consume()
+    }
     val currentPeer = selectedPeer
 
     val threadViewModel: ChatThreadViewModel? = if (currentPeer != null) {
@@ -206,13 +223,8 @@ fun ChatInboxScreen(
             val threadState = threadViewModel?.state?.collectAsStateWithLifecycle()?.value
             var threadDraft by remember(currentPeer) { mutableStateOf("") }
 
-            HavenPadWebDashboardShell(
-                currentTab = HavenPadNavTab.CHAT,
-                currentChatTab = state.selectedTab,
-                onTabSelected = onTabSelected,
-                onChatTabSelected = { tab -> viewModel.selectTab(tab) },
-                onLogout = { SessionManager.clearSession() }
-            ) {
+            @Composable
+            fun WebInbox() {
                 HavenPadWebChatLayout(
                     inboxState = state,
                     onOpenThread = { peer ->
@@ -270,6 +282,20 @@ fun ChatInboxScreen(
                         onDelete = { threadViewModel?.deleteSelectedMessage() },
                     )
                 }
+                }
+            }
+            if (embedInDashboard) {
+                WebInbox()
+            } else {
+                HavenPadWebDashboardShell(
+                    currentTab = HavenPadNavTab.CHAT,
+                    currentChatTab = state.selectedTab,
+                    onTabSelected = onTabSelected,
+                    onChatTabSelected = { tab -> viewModel.selectTab(tab) },
+                    onOpenBookings = onOpenBookings,
+                    onLogout = { SessionManager.clearSession() },
+                ) {
+                    WebInbox()
                 }
             }
         } else {

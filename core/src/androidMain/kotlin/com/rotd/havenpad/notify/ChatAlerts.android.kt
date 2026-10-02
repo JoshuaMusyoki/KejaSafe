@@ -102,6 +102,8 @@ actual fun onSessionCleared() {
     AndroidChatBridge.onSessionCleared?.invoke()
 }
 
+actual fun consumeClickedChatNotification(): String = ""
+
 @Composable
 actual fun ChatNotificationPermissionEffect() {
     if (Build.VERSION.SDK_INT < 33) return
