@@ -58,8 +58,34 @@ internal const val HAVEN_RTC_INSTALL = """
     offer: "",
     answer: "",
     error: "",
-    remote: false
+    remote: false,
+    videoSender: null,
+    blackTimer: 0,
+    blackTrack: null
   };
+  function stopBlack() {
+    if (state.blackTimer) { clearInterval(state.blackTimer); state.blackTimer = 0; }
+    if (state.blackTrack) { state.blackTrack.stop(); state.blackTrack = null; }
+  }
+  function blackVideoTrack() {
+    stopBlack();
+    var canvas = document.createElement("canvas");
+    canvas.width = 160;
+    canvas.height = 120;
+    var ctx = canvas.getContext("2d");
+    function paint() { ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+    paint();
+    var stream = canvas.captureStream(5);
+    state.blackTimer = setInterval(paint, 200);
+    state.blackTrack = stream.getVideoTracks()[0];
+    return state.blackTrack;
+  }
+  function blankVideo(el) {
+    if (!el) return;
+    el.pause();
+    el.srcObject = null;
+    el.load();
+  }
   function layoutStage() {
     var stage = document.getElementById("haven-stage");
     if (!stage) return;
@@ -117,14 +143,24 @@ internal const val HAVEN_RTC_INSTALL = """
           iceServers: [{ urls: ["stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] }]
         });
         state.pc = pc;
-        stream.getTracks().forEach(function (track) { pc.addTrack(track, stream); });
+        stream.getTracks().forEach(function (track) {
+          var sender = pc.addTrack(track, stream);
+          if (track.kind === "video") state.videoSender = sender;
+        });
         pc.onicecandidate = function (event) {
           if (event.candidate) state.localIce.push(event.candidate.toJSON());
         };
         pc.ontrack = function (event) {
-          remoteEl.srcObject = event.streams[0];
+          var stream = event.streams[0];
+          remoteEl.srcObject = stream;
           state.remote = true;
           state.phase = "remote";
+          var videos = stream.getVideoTracks();
+          for (var i = 0; i < videos.length; i++) {
+            videos[i].onmute = function () { blankVideo(remoteEl); };
+            videos[i].onended = function () { blankVideo(remoteEl); };
+            videos[i].onunmute = function () { remoteEl.srcObject = stream; };
+          }
         };
         state.phase = "ready";
       }).catch(function (err) {
@@ -188,9 +224,24 @@ internal const val HAVEN_RTC_INSTALL = """
     },
     setCam: function (on) {
       if (!state.local) return;
-      state.local.getVideoTracks().forEach(function (track) { track.enabled = !!on; });
+      var localEl = document.getElementById("haven-local-video");
+      var tracks = state.local.getVideoTracks();
+      var real = tracks.length ? tracks[0] : null;
+      if (on) {
+        stopBlack();
+        if (real) {
+          real.enabled = true;
+          if (state.videoSender) state.videoSender.replaceTrack(real);
+          if (localEl) localEl.srcObject = state.local;
+        }
+      } else {
+        if (real) real.enabled = false;
+        blankVideo(localEl);
+        if (state.videoSender) state.videoSender.replaceTrack(blackVideoTrack());
+      }
     },
     hangup: function () {
+      stopBlack();
       if (state.pc) state.pc.close();
       if (state.local) state.local.getTracks().forEach(function (track) { track.stop(); });
       ["haven-remote-video", "haven-local-video", "haven-stage"].forEach(function (id) {

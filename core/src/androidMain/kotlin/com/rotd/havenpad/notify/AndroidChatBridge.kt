@@ -9,6 +9,7 @@ object AndroidChatBridge {
     var showHouseTour: ((HouseTourNotify) -> Unit)? = null
     var cancelHouseTour: ((String) -> Unit)? = null
     var onSessionSaved: (() -> Unit)? = null
+    var onSessionClearing: (() -> Unit)? = null
     var onSessionCleared: (() -> Unit)? = null
 }
 

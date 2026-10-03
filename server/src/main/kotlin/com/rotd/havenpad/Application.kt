@@ -2,7 +2,10 @@ package com.rotd.havenpad
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
+import com.rotd.havenpad.admin.adminRoutes
+import com.rotd.havenpad.auth.AccountRemovedException
 import com.rotd.havenpad.auth.AuthService
+import com.rotd.havenpad.auth.DeviceSignInService
 import com.rotd.havenpad.chat.ApartmentChatService
 import com.rotd.havenpad.community.PlatformStatsService
 import com.rotd.havenpad.config.ServerConfig
@@ -14,6 +17,7 @@ import com.rotd.havenpad.listing.StoryService
 import com.rotd.havenpad.listing.propertyRequestRoutes
 import com.rotd.havenpad.payment.mpesaCallbackRoutes
 import com.rotd.havenpad.places.placesRoutes
+import com.rotd.havenpad.push.PushService
 import com.rotd.havenpad.rent.RentService
 import com.rotd.havenpad.rent.escrowRoutes
 import io.ktor.http.ContentType
@@ -57,6 +61,7 @@ import kotlinx.serialization.json.Json
 
 fun main() {
     initDatabase()
+    AuthService.ensureBootstrapAdmin()
     ListingService.purgeSyntheticBookings()
     embeddedServer(
         Netty,
@@ -114,7 +119,8 @@ fun Application.module() {
                     .build()
             )
             validate { credential ->
-                if (credential.payload.getClaim("userId").asString() != "") {
+                val userId = credential.payload.getClaim("userId").asString().orEmpty()
+                if (userId.isNotEmpty() && AuthService.isActive(userId)) {
                     JWTPrincipal(credential.payload)
                 } else null
             }
@@ -149,9 +155,25 @@ fun Application.module() {
         mpesaCallbackRoutes()
 
         route("/auth") {
+            get("/google-client") {
+                call.respond(GoogleClientConfig(clientId = ServerConfig.googleClientId))
+            }
+
             post("/register") {
                 val request = call.receive<RegistrationRequest>()
-                val user = AuthService.registerUser(request)
+                if (request.role == UserRole.ADMIN) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        "Choose Student or Landlord. Admin accounts are issued by the HavenPad team."
+                    )
+                    return@post
+                }
+                val user = try {
+                    AuthService.registerUser(request)
+                } catch (e: IllegalArgumentException) {
+                    call.respond(HttpStatusCode.BadRequest, e.message ?: "Check the form and try again")
+                    return@post
+                }
                 if (user != null) {
                     val token = AuthService.generateToken(user)
                     call.respond(AuthResponse(token, user))
@@ -162,27 +184,52 @@ fun Application.module() {
 
             post("/login") {
                 val request = call.receive<LoginRequest>()
-                val user = AuthService.loginUser(request.identifier, request.password)
-                if (user != null) {
-                    val token = AuthService.generateToken(user)
-                    call.respond(AuthResponse(token, user))
-                } else {
-                    call.respond(
-                        HttpStatusCode.Unauthorized,
-                        "Wrong username/email or password. If you only had a Firebase account, register again on this server."
-                    )
+                try {
+                    val user = AuthService.loginUser(request.identifier, request.password)
+                    if (user != null) {
+                        call.respond(
+                            DeviceSignInService.begin(
+                                user,
+                                request.deviceId,
+                                request.deviceName,
+                                request.platform,
+                            )
+                        )
+                    } else {
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            "Wrong username/email or password. If you only had a Firebase account, register again on this server."
+                        )
+                    }
+                } catch (e: AccountRemovedException) {
+                    call.respond(HttpStatusCode.Forbidden, e.message ?: "Account removed")
                 }
             }
 
             post("/google") {
                 val request = call.receive<GoogleAuthRequest>()
-                val user = AuthService.authenticateWithGoogle(request.idToken, request.role)
-                if (user != null) {
-                    val token = AuthService.generateToken(user)
-                    call.respond(AuthResponse(token, user))
-                } else {
-                    call.respond(HttpStatusCode.Unauthorized, "Google authentication failed")
+                try {
+                    val user = AuthService.authenticateWithGoogle(request.idToken, request.role)
+                    if (user != null) {
+                        call.respond(
+                            DeviceSignInService.begin(
+                                user,
+                                request.deviceId,
+                                request.deviceName,
+                                request.platform,
+                            )
+                        )
+                    } else {
+                        call.respond(HttpStatusCode.Unauthorized, "Google authentication failed")
+                    }
+                } catch (e: AccountRemovedException) {
+                    call.respond(HttpStatusCode.Forbidden, e.message ?: "Account removed")
                 }
+            }
+
+            get("/sign-in/{id}") {
+                val id = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                call.respond(DeviceSignInService.poll(id))
             }
         }
 
@@ -213,6 +260,59 @@ fun Application.module() {
                     call.respond(HttpStatusCode.OK, "KYC submitted successfully")
                 }
 
+                post("/landlord") {
+                    val userId = call.principal<JWTPrincipal>()
+                        ?.payload?.getClaim("userId")?.asString().orEmpty()
+                    if (userId.isBlank()) {
+                        call.respond(HttpStatusCode.Unauthorized, "Sign in first")
+                        return@post
+                    }
+                    val request = call.receive<LandlordKycRequest>()
+                    try {
+                        call.respond(KycService.submitLandlordKyc(userId, request))
+                    } catch (e: IllegalArgumentException) {
+                        call.respondText(
+                            text = e.message ?: "Could not save documents",
+                            contentType = ContentType.Text.Plain,
+                            status = HttpStatusCode.BadRequest,
+                        )
+                    }
+                }
+
+                post("/student") {
+                    val userId = call.principal<JWTPrincipal>()
+                        ?.payload?.getClaim("userId")?.asString().orEmpty()
+                    if (userId.isBlank()) {
+                        call.respond(HttpStatusCode.Unauthorized, "Sign in first")
+                        return@post
+                    }
+                    val request = call.receive<StudentKycRequest>()
+                    try {
+                        call.respond(KycService.submitStudentKyc(userId, request))
+                    } catch (e: IllegalArgumentException) {
+                        call.respondText(
+                            text = e.message ?: "Could not save the student ID",
+                            contentType = ContentType.Text.Plain,
+                            status = HttpStatusCode.BadRequest,
+                        )
+                    }
+                }
+
+                get("/mine") {
+                    val userId = call.principal<JWTPrincipal>()
+                        ?.payload?.getClaim("userId")?.asString().orEmpty()
+                    call.respond(KycService.getMine(userId))
+                }
+
+                get("/file/{kind}") {
+                    val userId = call.principal<JWTPrincipal>()
+                        ?.payload?.getClaim("userId")?.asString().orEmpty()
+                    val kind = call.parameters["kind"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val file = KycService.readFile(userId, kind)
+                    if (file == null) call.respond(HttpStatusCode.NotFound, "Document not found")
+                    else call.respondBytes(file.first, ContentType.parse(file.second))
+                }
+
                 get("/status") {
                     val principal = call.principal<JWTPrincipal>()
                     val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
@@ -220,6 +320,8 @@ fun Application.module() {
                     call.respond(mapOf("status" to status))
                 }
             }
+
+            adminRoutes()
 
             route("/stories") {
                 post {
@@ -393,8 +495,12 @@ fun Application.module() {
                         call.respond(HttpStatusCode.BadRequest, "Title and address are required")
                         return@post
                     }
-                    val listing = ListingService.createListing(userId, request)
-                    call.respond(HttpStatusCode.Created, listing)
+                    try {
+                        val listing = ListingService.createListing(userId, request)
+                        call.respond(HttpStatusCode.Created, listing)
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.Forbidden, e.message ?: "You cannot post a house yet")
+                    }
                 }
 
                 put("/{id}") {
@@ -519,15 +625,14 @@ fun Application.module() {
                     val listingId = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
                     val body = call.receive<DirectLiveTourRequest>()
                     try {
-                        call.respond(
-                            HttpStatusCode.Created,
-                            LiveTourService.startDirectTour(
-                                listingId = listingId,
-                                callerId = userId,
-                                peerUserId = body.peerUserId,
-                                mediaType = body.mediaType,
-                            )
+                        val session = LiveTourService.startDirectTour(
+                            listingId = listingId,
+                            callerId = userId,
+                            peerUserId = body.peerUserId,
+                            mediaType = body.mediaType,
                         )
+                        PushService.notifyTour(session)
+                        call.respond(HttpStatusCode.Created, session)
                     } catch (e: Exception) {
                         call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not start live call")
                     }
@@ -633,6 +738,19 @@ fun Application.module() {
                     val principal = call.principal<JWTPrincipal>()
                     val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
                     call.respond(LiveTourService.callHistory(userId))
+                }
+
+                post("/{sessionId}/hide") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        LiveTourService.hideCall(userId, sessionId)
+                        call.respond(mapOf("ok" to true))
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.NotFound, e.message ?: "Call not found")
+                    }
                 }
 
                 get("/{sessionId}") {
@@ -785,6 +903,70 @@ fun Application.module() {
             escrowRoutes()
             propertyRequestRoutes()
 
+            get("/sign-in/incoming") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                call.respond(DeviceSignInService.incoming(userId) ?: SignInPrompt(challengeId = ""))
+            }
+
+            post("/sign-in/{id}/approve") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val id = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                try {
+                    DeviceSignInService.approve(userId, id)
+                    call.respond(mapOf("ok" to true))
+                } catch (e: IllegalStateException) {
+                    call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not allow that sign-in")
+                }
+            }
+
+            post("/sign-in/{id}/deny") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val id = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                try {
+                    DeviceSignInService.deny(userId, id)
+                    call.respond(mapOf("ok" to true))
+                } catch (e: IllegalStateException) {
+                    call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not block that sign-in")
+                }
+            }
+
+            post("/devices/hello") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val body = call.receive<com.rotd.havenpad.DeviceHelloRequest>()
+                DeviceSignInService.remember(userId, body.deviceId, body.deviceName, body.platform)
+                call.respond(mapOf("ok" to true))
+            }
+
+            get("/devices/mine") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val current = call.request.queryParameters["deviceId"].orEmpty()
+                call.respond(DeviceSignInService.list(userId, current))
+            }
+
+            post("/devices") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val body = call.receive<RegisterDeviceRequest>()
+                if (body.token.isBlank()) {
+                    return@post call.respond(HttpStatusCode.BadRequest, "Missing token")
+                }
+                PushService.register(userId, body)
+                call.respond(mapOf("ok" to true))
+            }
+
+            post("/devices/remove") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val body = call.receive<RegisterDeviceRequest>()
+                PushService.unregister(userId, body.token)
+                call.respond(mapOf("ok" to true))
+            }
+
             route("/chat") {
                 get("/connections") {
                     val principal = call.principal<JWTPrincipal>()
@@ -803,6 +985,12 @@ fun Application.module() {
                     } catch (e: IllegalStateException) {
                         call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid connection")
                     }
+                }
+
+                get("/inquiries") {
+                    val userId = call.principal<JWTPrincipal>()
+                        ?.payload?.getClaim("userId")?.asString().orEmpty()
+                    call.respond(ApartmentChatService.inquiryPeers(userId))
                 }
 
                 get("/messages") {
@@ -831,10 +1019,9 @@ fun Application.module() {
                     val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
                     val body = call.receive<SendApartmentChatMessageRequest>()
                     try {
-                        call.respond(
-                            HttpStatusCode.Created,
-                            ApartmentChatService.sendMessage(userId, body)
-                        )
+                        val saved = ApartmentChatService.sendMessage(userId, body)
+                        PushService.notifyChat(saved)
+                        call.respond(HttpStatusCode.Created, saved)
                     } catch (e: IllegalArgumentException) {
                         call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not send")
                     } catch (e: IllegalStateException) {
@@ -901,8 +1088,9 @@ fun Application.module() {
                     val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
                     val messageId = call.parameters["messageId"]
                         ?: return@delete call.respond(HttpStatusCode.BadRequest)
-                    if (ApartmentChatService.deleteMessage(userId, messageId)) {
-                        call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                    val deleted = ApartmentChatService.deleteMessage(userId, messageId)
+                    if (deleted != null) {
+                        call.respond(deleted)
                     } else {
                         call.respond(HttpStatusCode.NotFound, "Message not found")
                     }

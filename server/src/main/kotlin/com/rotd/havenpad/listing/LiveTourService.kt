@@ -16,6 +16,7 @@ import com.rotd.havenpad.db.ListingsTable
 import com.rotd.havenpad.db.ListingRequestsTable
 import com.rotd.havenpad.db.LiveTourIceTable
 import com.rotd.havenpad.db.LiveTourRtcTable
+import com.rotd.havenpad.db.HiddenCallLogsTable
 import com.rotd.havenpad.db.LiveTourSessionsTable
 import com.rotd.havenpad.db.UsersTable
 import com.rotd.havenpad.livekit.LiveKitTokenService
@@ -379,14 +380,38 @@ object LiveTourService {
 
     fun callHistory(userId: String): List<CallLogEntry> = transaction {
         if (userId.isBlank()) return@transaction emptyList()
+        val hidden = HiddenCallLogsTable.selectAll()
+            .where { HiddenCallLogsTable.userId eq userId }
+            .map { it[HiddenCallLogsTable.sessionId] }
+            .toSet()
         LiveTourSessionsTable.selectAll()
             .where {
                 ((LiveTourSessionsTable.landlordId eq userId) or (LiveTourSessionsTable.tenantId eq userId)) and
                     (LiveTourSessionsTable.status eq LiveTourStatus.ENDED)
             }
             .map { it.toSession().toLog(userId) }
+            .filter { it.sessionId !in hidden }
             .sortedByDescending { it.endedAt ?: it.createdAt }
             .take(40)
+    }
+
+    /** Removes one call from this person's list only. */
+    fun hideCall(userId: String, sessionId: String) {
+        transaction {
+            participantSession(sessionId, userId)
+            val already = HiddenCallLogsTable.selectAll()
+                .where {
+                    (HiddenCallLogsTable.userId eq userId) and (HiddenCallLogsTable.sessionId eq sessionId)
+                }
+                .count() > 0
+            if (!already) {
+                HiddenCallLogsTable.insert {
+                    it[HiddenCallLogsTable.userId] = userId
+                    it[HiddenCallLogsTable.sessionId] = sessionId
+                    it[hiddenAt] = System.currentTimeMillis()
+                }
+            }
+        }
     }
 
     /** The person who tapped Call or Join. The other participant is rung until they answer. */

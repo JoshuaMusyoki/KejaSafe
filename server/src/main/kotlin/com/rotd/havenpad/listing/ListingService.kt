@@ -8,6 +8,8 @@ import com.rotd.havenpad.config.ServerConfig
 import com.rotd.havenpad.ElectricityBilling
 import com.rotd.havenpad.ExtraCharge
 import com.rotd.havenpad.IncomingRequest
+import com.rotd.havenpad.KycStatus
+import com.rotd.havenpad.UserRole
 import com.rotd.havenpad.ListingAnalytics
 import com.rotd.havenpad.ListingBooking
 import com.rotd.havenpad.ListingCalendar
@@ -92,6 +94,14 @@ object ListingService {
     }
 
     fun createListing(landlordId: String, request: CreateListingRequest): PropertyListing = transaction {
+        val landlord = UsersTable.selectAll().where { UsersTable.id eq landlordId }.singleOrNull()
+            ?: error("Sign in again before posting a house.")
+        if (landlord[UsersTable.role] != UserRole.LANDLORD) {
+            error("Only a landlord account can post a house.")
+        }
+        if (landlord[UsersTable.kycStatus] != KycStatus.VERIFIED) {
+            error("HavenPad has to verify your ID and address before you can post a house.")
+        }
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
         val units = (request.unitsCount ?: 1).coerceAtLeast(1)

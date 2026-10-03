@@ -12,6 +12,7 @@ import com.rotd.havenpad.ElectricityBilling
 import com.rotd.havenpad.ExtraCharge
 import com.rotd.havenpad.GenerateBillRequest
 import com.rotd.havenpad.IncomingRequest
+import com.rotd.havenpad.KycStatus
 import com.rotd.havenpad.ListingAnalytics
 import com.rotd.havenpad.ListingBooking
 import com.rotd.havenpad.ListingCalendar
@@ -116,7 +117,8 @@ class CreateListingViewModel(
     private val _state = MutableStateFlow(
         CreateListingUiState(
             listingId = editingListingId,
-            isLoading = !editingListingId.isNullOrBlank()
+            isLoading = !editingListingId.isNullOrBlank(),
+            checkingVerification = editingListingId.isNullOrBlank()
         )
     )
     val state: StateFlow<CreateListingUiState> = _state.asStateFlow()
@@ -127,6 +129,8 @@ class CreateListingViewModel(
     init {
         if (!editingListingId.isNullOrBlank()) {
             loadListing(editingListingId)
+        } else {
+            refreshPostingGate()
         }
         viewModelScope.launch {
             ConnectivityMonitor.becameOnline.collect {
@@ -150,8 +154,22 @@ class CreateListingViewModel(
         // Always re-fetch when editing so home→edit shows latest title/photos after saves.
         if (!editingListingId.isNullOrBlank()) {
             loadListing(editingListingId)
-        } else if (!editingListingId.isNullOrBlank()) {
-            loadListing(editingListingId)
+        } else {
+            refreshPostingGate()
+        }
+    }
+
+    private fun refreshPostingGate() {
+        viewModelScope.launch {
+            _state.update { it.copy(checkingVerification = true) }
+            val status = com.rotd.havenpad.network.AuthClient.myKyc().getOrNull()?.status
+                ?: com.rotd.havenpad.network.SessionManager.currentUser.value?.kycStatus
+                ?: KycStatus.NOT_SUBMITTED
+            val user = com.rotd.havenpad.network.SessionManager.currentUser.value
+            if (user != null && user.kycStatus != status) {
+                com.rotd.havenpad.network.SessionManager.updateUser(user.copy(kycStatus = status))
+            }
+            _state.update { it.copy(checkingVerification = false, kycStatus = status) }
         }
     }
 

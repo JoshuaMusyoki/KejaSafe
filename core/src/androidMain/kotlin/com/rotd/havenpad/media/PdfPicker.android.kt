@@ -7,40 +7,60 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import com.rotd.havenpad.PickedImage
+import java.io.FileInputStream
 
 @Composable
 actual fun rememberPdfPickerLauncher(
     onPdfsPicked: (List<PickedImage>) -> Unit,
+    onError: (String) -> Unit,
 ): () -> Unit {
     val context = LocalContext.current
+    val onPicked = rememberUpdatedState(onPdfsPicked)
+    val onFailed = rememberUpdatedState(onError)
     val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
+        contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val file = runCatching {
-            val resolver = context.contentResolver
-            val bytes = resolver.readBytesFully(uri) ?: return@runCatching null
-            val fileName = resolver.displayName(uri)
-                ?: "havenpad-${System.currentTimeMillis()}.pdf"
-            val mimeType = resolver.getType(uri) ?: "application/pdf"
-            PickedImage(
-                fileName = if (fileName.endsWith(".pdf", ignoreCase = true)) fileName else "$fileName.pdf",
-                bytes = bytes,
-                mimeType = mimeType,
-            )
-        }.getOrNull()
-        if (file != null) onPdfsPicked(listOf(file))
+        val resolver = context.contentResolver
+        val bytes = runCatching { resolver.readPdfBytes(uri) }.getOrNull()
+        if (bytes == null || bytes.isEmpty()) {
+            onFailed.value("Couldn't open that PDF. Try another file.")
+            return@rememberLauncherForActivityResult
+        }
+        if (bytes.size > MAX_CHAT_ATTACHMENT_BYTES) {
+            onFailed.value("That PDF is too large. Choose one under $MAX_CHAT_ATTACHMENT_MB MB.")
+            return@rememberLauncherForActivityResult
+        }
+        if (!bytes.looksLikePdf()) {
+            onFailed.value("That file is not a readable PDF. Try another file.")
+            return@rememberLauncherForActivityResult
+        }
+        val fileName = resolver.displayName(uri)
+            ?: "havenpad-${System.currentTimeMillis()}.pdf"
+        onPicked.value(
+            listOf(
+                PickedImage(
+                    fileName = if (fileName.endsWith(".pdf", ignoreCase = true)) fileName else "$fileName.pdf",
+                    bytes = bytes,
+                    mimeType = "application/pdf",
+                ),
+            ),
+        )
     }
     return remember(launcher) {
-        { launcher.launch(arrayOf("application/pdf", "application/x-pdf")) }
+        { launcher.launch("application/pdf") }
     }
 }
 
-private fun ContentResolver.readBytesFully(uri: Uri): ByteArray? {
+private fun ContentResolver.readPdfBytes(uri: Uri): ByteArray? {
     openInputStream(uri)?.use { input ->
-        return input.readBytes()
+        return input.readBytes().takeIf { it.isNotEmpty() }
+    }
+    openFileDescriptor(uri, "r")?.use { descriptor ->
+        return FileInputStream(descriptor.fileDescriptor).use { it.readBytes() }.takeIf { it.isNotEmpty() }
     }
     return null
 }

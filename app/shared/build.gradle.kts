@@ -21,6 +21,9 @@ kotlin {
     sourceSets {
         androidMain.dependencies {
             implementation(libs.composeUiTooling)
+            implementation(libs.androidxCredentials)
+            implementation(libs.androidxCredentialsPlayServicesAuth)
+            implementation(libs.googleid)
         }
         commonMain.dependencies {
             api(project(":core"))

@@ -156,7 +156,7 @@ private fun RegisterScreenContent(
             HavenPadTextField(
                 value = password,
                 onValueChange = onPasswordChange,
-                label = "Password",
+                label = "Password (8+ characters)",
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {

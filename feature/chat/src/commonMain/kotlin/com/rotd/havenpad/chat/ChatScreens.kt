@@ -4,6 +4,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,7 +40,12 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.SentimentSatisfied
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -52,8 +59,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -62,7 +72,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -74,6 +83,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -111,8 +121,9 @@ import com.rotd.havenpad.media.PdfReaderScreen
 import com.rotd.havenpad.media.decodeToImageBitmap
 import com.rotd.havenpad.media.rememberImagePickerLauncher
 import com.rotd.havenpad.media.rememberPdfPickerLauncher
-import com.rotd.havenpad.media.rememberPdfShareHandler
+import com.rotd.havenpad.media.rememberMediaExport
 import com.rotd.havenpad.media.renderPdfFirstPage
+import com.rotd.havenpad.media.renderPdfPageForPreview
 import com.rotd.havenpad.network.SessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -208,11 +219,14 @@ fun ChatInboxScreen(
     } else null
 
     val pickImages = rememberImagePickerLauncher { files ->
-        threadViewModel?.sendAttachments(files, ApartmentChatMessage.TYPE_IMAGE)
+        threadViewModel?.stageAttachments(files, ApartmentChatMessage.TYPE_IMAGE)
     }
-    val pickPdfs = rememberPdfPickerLauncher { files ->
-        threadViewModel?.sendAttachments(files, ApartmentChatMessage.TYPE_PDF)
-    }
+    val pickPdfs = rememberPdfPickerLauncher(
+        onPdfsPicked = { files ->
+            threadViewModel?.stageAttachments(files, ApartmentChatMessage.TYPE_PDF)
+        },
+        onError = { message -> threadViewModel?.reportAttachError(message) },
+    )
 
     TrackOpenChat(currentPeer?.listingId, currentPeer?.userId)
 
@@ -240,7 +254,8 @@ fun ChatInboxScreen(
                     threadDraft = threadDraft,
                     onThreadDraftChange = { threadDraft = it },
                     onSendThreadMessage = {
-                        if (threadDraft.isNotBlank()) {
+                        val hasPending = threadState?.pendingFiles?.isNotEmpty() == true
+                        if (threadDraft.isNotBlank() || hasPending) {
                             threadViewModel?.updateDraft(threadDraft)
                             threadViewModel?.send()
                             threadDraft = ""
@@ -248,6 +263,7 @@ fun ChatInboxScreen(
                     },
                     onPickImages = pickImages,
                     onPickPdfs = pickPdfs,
+                    onRemovePending = { index -> threadViewModel?.removePendingFile(index) },
                     onMessageLongPress = { message -> threadViewModel?.selectMessage(message) },
                     onMessageReply = { message -> threadViewModel?.startReply(message) },
                     onCancelReply = { threadViewModel?.cancelReply() },
@@ -258,6 +274,7 @@ fun ChatInboxScreen(
                     onOpenNotifications = onOpenNotifications,
                     onCallLog = viewModel::callLogPeer,
                     onMessageLog = { entry -> selectedPeer = entry.toPeer() },
+                    onDeleteCall = viewModel::deleteCall,
                 )
                 val webThread = threadState
                 if (webThread?.showForwardPicker == true) {
@@ -270,7 +287,7 @@ fun ChatInboxScreen(
                 webThread?.selectedMessage?.let { selected ->
                     ApartmentMessageActionSheet(
                         message = selected,
-                        isMine = selected.senderId == webThread.myUserId,
+                        isMine = selected.senderId == (webThread.myUserId ?: SessionManager.currentUser.value?.id),
                         onDismiss = { threadViewModel?.selectMessage(null) },
                         onReply = { threadViewModel?.startReply(selected) },
                         onReact = { emoji -> threadViewModel?.reactToSelected(emoji) },
@@ -398,6 +415,7 @@ fun ChatInboxScreen(
                                     error = state.callError,
                                     onCall = viewModel::callLogPeer,
                                     onMessage = { entry -> onOpenThread(entry.toPeer()) },
+                                    onDelete = viewModel::deleteCall,
                                 )
                             }
                             ChatInboxTab.PEOPLE -> {
@@ -432,6 +450,13 @@ fun ChatInboxScreen(
     }
 }
 
+private data class OpenChatImage(
+    val bitmap: ImageBitmap,
+    val fileName: String,
+    val mimeType: String,
+    val bytes: ByteArray,
+)
+
 fun CallLogEntry.toPeer(): ApartmentChatPeer = ApartmentChatPeer(
     userId = peerUserId,
     displayName = peerName.ifBlank { "HavenPad" },
@@ -448,6 +473,7 @@ fun CallHistoryList(
     error: String?,
     onCall: (CallLogEntry) -> Unit,
     onMessage: (CallLogEntry) -> Unit,
+    onDelete: (CallLogEntry) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -482,6 +508,32 @@ fun CallHistoryList(
                 else -> "Call"
             }
             val whenLabel = callAgeLabel(entry.endedAt ?: entry.createdAt)
+            val dismissState = rememberSwipeToDismissBoxState()
+            LaunchedEffect(dismissState.currentValue) {
+                if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+                    onDelete(entry)
+                }
+            }
+            SwipeToDismissBox(
+                state = dismissState,
+                enableDismissFromStartToEnd = false,
+                backgroundContent = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.error),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete call",
+                            tint = Color.White,
+                            modifier = Modifier.padding(end = 20.dp),
+                        )
+                    }
+                },
+            ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -524,6 +576,7 @@ fun CallHistoryList(
                         Text(if (busy) "Calling…" else "Call")
                     }
                 }
+            }
             }
         }
     }
@@ -723,17 +776,21 @@ fun ChatThreadScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val clipboard = LocalClipboardManager.current
-    val scope = rememberCoroutineScope()
     var attachMenuOpen by remember { mutableStateOf(false) }
+    var emojiMenuOpen by remember { mutableStateOf(false) }
     var openPdf by remember { mutableStateOf<Pair<String, ByteArray>?>(null) }
-    var openImage by remember { mutableStateOf<ImageBitmap?>(null) }
-    val sharePdf = rememberPdfShareHandler()
+    var openImage by remember { mutableStateOf<OpenChatImage?>(null) }
+    var imageNote by remember { mutableStateOf<String?>(null) }
+    val mediaExport = rememberMediaExport()
     val pickImages = rememberImagePickerLauncher { files ->
-        viewModel.sendAttachments(files, ApartmentChatMessage.TYPE_IMAGE)
+        viewModel.stageAttachments(files, ApartmentChatMessage.TYPE_IMAGE)
     }
-    val pickPdfs = rememberPdfPickerLauncher { files ->
-        viewModel.sendAttachments(files, ApartmentChatMessage.TYPE_PDF)
-    }
+    val pickPdfs = rememberPdfPickerLauncher(
+        onPdfsPicked = { files ->
+            viewModel.stageAttachments(files, ApartmentChatMessage.TYPE_PDF)
+        },
+        onError = viewModel::reportAttachError,
+    )
     val timeline = remember(state.messages) {
         buildChatTimeline(state.messages, nowMillis = platformEpochMillis())
     }
@@ -806,12 +863,13 @@ fun ChatThreadScreen(
             fileName = name,
             bytes = bytes,
             onBack = { openPdf = null },
-            onShare = sharePdf,
+            onDownload = { fileName, pdf -> mediaExport.download(fileName, "application/pdf", pdf) },
+            onShare = { fileName, pdf -> mediaExport.share(fileName, "application/pdf", pdf) },
         )
         return
     }
 
-    openImage?.let { bitmap ->
+    openImage?.let { photo ->
         Dialog(
             onDismissRequest = { openImage = null },
             properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -819,18 +877,46 @@ fun ChatThreadScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.92f))
-                    .clickable { openImage = null },
-                contentAlignment = Alignment.Center,
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.92f)),
             ) {
                 Image(
-                    bitmap = bitmap,
+                    bitmap = photo.bitmap,
                     contentDescription = "Shared photo",
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
+                        .fillMaxSize()
+                        .padding(16.dp)
+                        .clickable { openImage = null },
                     contentScale = ContentScale.Fit,
                 )
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp),
+                ) {
+                    IconButton(onClick = {
+                        imageNote = runCatching {
+                            mediaExport.download(photo.fileName, photo.mimeType, photo.bytes)
+                        }.getOrElse { it.message ?: "Could not save the photo" }
+                    }) {
+                        Icon(Icons.Default.Download, contentDescription = "Download", tint = Color.White)
+                    }
+                    IconButton(onClick = {
+                        imageNote = runCatching {
+                            mediaExport.share(photo.fileName, photo.mimeType, photo.bytes)
+                        }.getOrElse { it.message ?: "Could not share the photo" }
+                    }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
+                    }
+                }
+                if (!imageNote.isNullOrBlank()) {
+                    Text(
+                        text = imageNote.orEmpty(),
+                        color = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp),
+                    )
+                }
             }
         }
     }
@@ -845,7 +931,7 @@ fun ChatThreadScreen(
         state.selectedMessage?.let { selected ->
         ApartmentMessageActionSheet(
             message = selected,
-            isMine = selected.senderId == state.myUserId,
+            isMine = selected.senderId == (state.myUserId ?: SessionManager.currentUser.value?.id),
             onDismiss = { viewModel.selectMessage(null) },
             onReply = { viewModel.startReply(selected) },
             onReact = { emoji -> viewModel.reactToSelected(emoji) },
@@ -854,9 +940,7 @@ fun ChatThreadScreen(
                 clipboard.setText(AnnotatedString(selected.previewText()))
             },
             onPin = { viewModel.pinSelectedMessage() },
-            onDelete = {
-                scope.launch { viewModel.deleteSelectedMessage() }
-            },
+            onDelete = { viewModel.deleteSelectedMessage() },
             onOpen = selected.attachmentId?.takeIf { selected.isPdf() }?.let { attachmentId ->
                 {
                     val bytes = viewModel.loadAttachment(attachmentId)
@@ -909,6 +993,13 @@ fun ChatThreadScreen(
                         modifier = Modifier.padding(bottom = 6.dp),
                     )
                 }
+                if (state.pendingFiles.isNotEmpty()) {
+                    PendingAttachmentRow(
+                        files = state.pendingFiles,
+                        onRemove = viewModel::removePendingFile,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -954,7 +1045,7 @@ fun ChatThreadScreen(
                             .heightIn(max = 96.dp),
                         placeholder = {
                             Text(
-                                text = "Message…",
+                                text = if (state.pendingFiles.isEmpty()) "Message…" else "Add a caption…",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodyMedium
@@ -966,9 +1057,8 @@ fun ChatThreadScreen(
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(
                             onSend = {
-                                if (state.draft.isNotBlank() && !state.isSending) {
-                                    viewModel.send()
-                                }
+                                val ready = state.draft.isNotBlank() || state.pendingFiles.isNotEmpty()
+                                if (ready && !state.isSending) viewModel.send()
                             }
                         ),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -978,9 +1068,24 @@ fun ChatThreadScreen(
                             unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                         )
                     )
+                    Box {
+                        IconButton(onClick = { emojiMenuOpen = true }) {
+                            Icon(Icons.Default.SentimentSatisfied, contentDescription = "Emoji")
+                        }
+                        DropdownMenu(
+                            expanded = emojiMenuOpen,
+                            onDismissRequest = { emojiMenuOpen = false },
+                        ) {
+                            ChatEmojiPicker { emoji ->
+                                emojiMenuOpen = false
+                                viewModel.updateDraft(state.draft + emoji)
+                            }
+                        }
+                    }
                     IconButton(
                         onClick = viewModel::send,
-                        enabled = state.draft.isNotBlank() && !state.isSending
+                        enabled = !state.isSending &&
+                            (state.draft.isNotBlank() || state.pendingFiles.isNotEmpty())
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                     }
@@ -1053,7 +1158,10 @@ fun ChatThreadScreen(
                                 loadAttachment = viewModel::loadAttachment,
                                 onLongPress = { viewModel.selectMessage(item.message) },
                                 onReply = { viewModel.startReply(item.message) },
-                                onOpenImage = { openImage = it },
+                                onOpenImage = { bitmap, fileName, mime, bytes ->
+                                    imageNote = null
+                                    openImage = OpenChatImage(bitmap, fileName, mime, bytes)
+                                },
                                 onOpenPdf = { name, bytes -> openPdf = name to bytes },
                             )
                         }
@@ -1072,7 +1180,7 @@ private fun MessageBubble(
     loadAttachment: (String) -> ByteArray?,
     onLongPress: () -> Unit,
     onReply: () -> Unit,
-    onOpenImage: (ImageBitmap) -> Unit,
+    onOpenImage: (ImageBitmap, String, String, ByteArray) -> Unit,
     onOpenPdf: (String, ByteArray) -> Unit,
 ) {
     val bubbleColor = if (isMine) {
@@ -1108,7 +1216,11 @@ private fun MessageBubble(
                         val bytes = loadAttachment(id) ?: return@combinedClickable
                         when {
                             message.isImage() -> {
-                                bytes.decodeToImageBitmap()?.let(onOpenImage)
+                                bytes.decodeToImageBitmap()?.let { bitmap ->
+                                    val name = message.fileName?.takeIf { it.isNotBlank() } ?: "photo.jpg"
+                                    val mime = message.mimeType?.takeIf { it.isNotBlank() } ?: "image/jpeg"
+                                    onOpenImage(bitmap, name, mime, bytes)
+                                }
                             }
                             message.isPdf() -> {
                                 onOpenPdf(message.fileName ?: "document.pdf", bytes)
@@ -1119,10 +1231,17 @@ private fun MessageBubble(
                 )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            if (message.forwarded) {
+            if (message.deleted) {
+                Text(
+                    text = message.deletedLabel(isMine),
+                    color = textColor.copy(alpha = 0.75f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontStyle = FontStyle.Italic,
+                )
+            } else if (message.forwarded) {
                 ForwardedLabel(color = textColor.copy(alpha = 0.8f))
             }
-            if (message.replyToPreview.isNotBlank()) {
+            if (!message.deleted && message.replyToPreview.isNotBlank()) {
                 ReplyQuote(
                     preview = message.replyToPreview,
                     color = textColor,
@@ -1130,6 +1249,7 @@ private fun MessageBubble(
                 )
             }
             when {
+                message.deleted -> Unit
                 message.isImage() -> {
                     ChatImageThumb(
                         attachmentId = message.attachmentId,
@@ -1172,10 +1292,12 @@ private fun MessageBubble(
             }
         }
         }
-        MessageReactionChips(
-            reactions = message.reactions,
-            modifier = Modifier.padding(top = 2.dp),
-        )
+        if (!message.deleted) {
+            MessageReactionChips(
+                reactions = message.reactions,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
         Row(
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1213,7 +1335,7 @@ private fun DateHeaderChip(label: String) {
 }
 
 @Composable
-private fun ChatPdfThumb(
+internal fun ChatPdfThumb(
     attachmentId: String?,
     fileName: String,
     textColor: Color,
@@ -1237,6 +1359,10 @@ private fun ChatPdfThumb(
             withContext(Dispatchers.Default) {
                 renderPdfFirstPage(it, maxWidthPx = 720, maxHeightPx = 960)
             }
+        } ?: bytes?.let {
+            runCatching {
+                renderPdfPageForPreview(it, pageIndex = 0, maxWidthPx = 720)?.bitmap
+            }.getOrNull()
         }
         if (decoded != null && cacheKey != null) {
             ImageBitmapCache.put(cacheKey, decoded)
@@ -1347,6 +1473,104 @@ internal fun ChatImageThumb(
                 modifier = Modifier.fillMaxWidth().height(160.dp),
                 brush = brush,
                 shape = RoundedCornerShape(8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+internal fun PendingAttachmentRow(
+    files: List<PendingChatFile>,
+    onRemove: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    chipColor: Color = MaterialTheme.colorScheme.surfaceVariant,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        files.forEachIndexed { index, file ->
+            PendingFileChip(
+                file = file,
+                contentColor = contentColor,
+                chipColor = chipColor,
+                onRemove = { onRemove(index) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PendingFileChip(
+    file: PendingChatFile,
+    contentColor: Color,
+    chipColor: Color,
+    onRemove: () -> Unit,
+) {
+    var bitmap by remember(file.fileName, file.bytes.size, file.type) {
+        mutableStateOf<ImageBitmap?>(null)
+    }
+    LaunchedEffect(file.fileName, file.bytes.size, file.type) {
+        bitmap = if (file.type == ApartmentChatMessage.TYPE_IMAGE) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                file.bytes.decodeToImageBitmap()
+            }
+        } else {
+            null
+        }
+    }
+    val preview = bitmap
+    Box {
+        Column(
+            modifier = Modifier
+                .width(92.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(chipColor)
+                .padding(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (preview != null) {
+                Image(
+                    bitmap = preview,
+                    contentDescription = file.fileName,
+                    modifier = Modifier
+                        .size(76.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.PictureAsPdf,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .size(36.dp),
+                )
+            }
+            Text(
+                text = file.fileName,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelSmall,
+                color = contentColor,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(28.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Remove",
+                tint = contentColor,
+                modifier = Modifier.size(16.dp),
             )
         }
     }

@@ -1,8 +1,12 @@
 package com.rotd.havenpad.data.repoImpl
 
 import com.rotd.havenpad.AuthResponse
+import com.rotd.havenpad.LoginResponse
+import com.rotd.havenpad.auth.SignInAwaitingApproval
 import com.rotd.havenpad.GoogleAuthRequest
 import com.rotd.havenpad.KycStatus
+import com.rotd.havenpad.LandlordKycRequest
+import com.rotd.havenpad.StudentKycRequest
 import com.rotd.havenpad.LoginRequest
 import com.rotd.havenpad.RegistrationRequest
 import com.rotd.havenpad.UpdateProfileRequest
@@ -39,13 +43,13 @@ class KtorBridgeAuthRepository(
     ).mapSession()
 
     override suspend fun signInWithEmail(email: String, password: String): Result<User> =
-        AuthClient.login(LoginRequest(email, password)).mapSession()
+        AuthClient.login(LoginRequest(email, password)).mapLogin()
 
     override suspend fun signInWithIdentifier(identifier: String, password: String): Result<User> =
-        AuthClient.login(LoginRequest(identifier, password)).mapSession()
+        AuthClient.login(LoginRequest(identifier, password)).mapLogin()
 
     override suspend fun signInWithGoogle(idToken: String, role: UserRole): Result<User> =
-        AuthClient.googleAuth(GoogleAuthRequest(idToken, role)).mapSession()
+        AuthClient.googleAuth(GoogleAuthRequest(idToken, role)).mapLogin()
 
     override suspend fun sendPasswordResetEmail(email: String): Result<Unit> =
         Result.failure(UnsupportedOperationException("Password reset requires Firebase Auth (Android)."))
@@ -67,6 +71,12 @@ class KtorBridgeAuthRepository(
         selfieImageUrl: String,
     ): Result<KycStatus> =
         Result.failure(UnsupportedOperationException("KYC submit not wired on this target."))
+
+    override suspend fun submitLandlordKyc(request: LandlordKycRequest): Result<User> =
+        AuthClient.submitLandlordKyc(request).onSuccess { SessionManager.updateUser(it) }
+
+    override suspend fun submitStudentKyc(request: StudentKycRequest): Result<User> =
+        AuthClient.submitStudentKyc(request).onSuccess { SessionManager.updateUser(it) }
 
     override suspend fun signOut() {
         SessionManager.clearSession()
@@ -94,4 +104,21 @@ class KtorBridgeAuthRepository(
         SessionManager.saveSession(it.token, it.user)
         it.user
     }
+
+    private fun Result<LoginResponse>.mapLogin(): Result<User> = fold(
+        onSuccess = { body ->
+            when {
+                body.pending -> Result.failure(
+                    SignInAwaitingApproval(body.challengeId, body.deviceName.ifBlank { "Another device" })
+                )
+                body.denied || body.user == null || body.token.isBlank() ->
+                    Result.failure(IllegalStateException("This sign-in was blocked."))
+                else -> {
+                    SessionManager.saveSession(body.token, body.user)
+                    Result.success(body.user)
+                }
+            }
+        },
+        onFailure = { Result.failure(it) },
+    )
 }

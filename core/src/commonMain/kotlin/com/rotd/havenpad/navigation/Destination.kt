@@ -27,6 +27,18 @@ sealed interface HavenPadDestination : NavKey {
     @Serializable
     data object EditProfile : HavenPadDestination
 
+    /** Landlord ID and residential-address documents. [allowSkip] is used right after signup. */
+    @Serializable
+    data class LandlordKyc(val allowSkip: Boolean = false) : HavenPadDestination
+
+    /** Student university ID. [allowSkip] is used right after signup. */
+    @Serializable
+    data class StudentKyc(val allowSkip: Boolean = false) : HavenPadDestination
+
+    /** HavenPad team: people, verification, and account actions. */
+    @Serializable
+    data object Admin : HavenPadDestination
+
     /** Web marketing entry — not used as mobile start destination. */
     @Serializable
     data object Landing : HavenPadDestination

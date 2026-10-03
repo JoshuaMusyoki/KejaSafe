@@ -52,7 +52,8 @@ val DefaultHavenPadNavItems = listOf(
 )
 
 fun homeDestinationForRole(role: UserRole?): HavenPadDestination = when (role) {
-    UserRole.LANDLORD, UserRole.ADMIN -> HavenPadDestination.LandlordHome
+    UserRole.ADMIN -> HavenPadDestination.Admin
+    UserRole.LANDLORD -> HavenPadDestination.LandlordHome
     else -> HavenPadDestination.TenantHome
 }
 

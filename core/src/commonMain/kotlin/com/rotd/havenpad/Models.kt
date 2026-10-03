@@ -49,6 +49,93 @@ data class KycSubmission(
     val selfieImageUrl: String
 )
 
+/** Landlord identity and home-address documents. Images are base64, without a data-url prefix. */
+@Serializable
+data class LandlordKycRequest(
+    val documentType: String,
+    val documentNumber: String,
+    val residentialAddress: String,
+    val idImageBase64: String,
+    val idImageName: String,
+    val addressProofBase64: String,
+    val addressProofName: String,
+)
+
+/** Student identity document. The image is base64, without a data-url prefix. */
+@Serializable
+data class StudentKycRequest(
+    val university: String,
+    val studentNumber: String,
+    val idImageBase64: String,
+    val idImageName: String,
+)
+
+@Serializable
+data class LandlordKycRecord(
+    val status: KycStatus = KycStatus.NOT_SUBMITTED,
+    val documentType: String = "",
+    val documentNumber: String = "",
+    val residentialAddress: String = "",
+    val hasIdCopy: Boolean = false,
+    val hasAddressProof: Boolean = false,
+    val reviewNote: String? = null,
+)
+
+@Serializable
+data class AdminUserSummary(
+    val id: String,
+    val fullName: String,
+    val username: String,
+    val email: String,
+    val role: UserRole,
+    val kycStatus: KycStatus = KycStatus.NOT_SUBMITTED,
+    val active: Boolean = true,
+    val createdAt: Long = 0L,
+    val phone: String? = null,
+    val businessName: String? = null,
+)
+
+@Serializable
+data class AdminActivity(
+    val at: Long,
+    val title: String,
+    val detail: String,
+)
+
+@Serializable
+data class DocumentCheck(
+    val score: Int,
+    val decision: String,
+    val findings: List<String> = emptyList(),
+)
+
+@Serializable
+data class AdminUserDetail(
+    val user: AdminUserSummary,
+    val residentialAddress: String = "",
+    val documentType: String = "",
+    val documentNumber: String = "",
+    val hasIdCopy: Boolean = false,
+    val hasAddressProof: Boolean = false,
+    val reviewNote: String? = null,
+    val activities: List<AdminActivity> = emptyList(),
+    val documentCheck: DocumentCheck? = null,
+    val signedInDevices: List<String> = emptyList(),
+)
+
+@Serializable
+data class CreateLandlordRequest(
+    val fullName: String,
+    val username: String,
+    val email: String,
+    val password: String,
+)
+
+@Serializable
+data class RejectKycRequest(
+    val note: String = "",
+)
+
 @Serializable
 data class AuthResponse(
     val token: String,
@@ -56,9 +143,50 @@ data class AuthResponse(
 )
 
 @Serializable
+data class LoginResponse(
+    val token: String = "",
+    val user: User? = null,
+    val pending: Boolean = false,
+    val denied: Boolean = false,
+    val challengeId: String = "",
+    val deviceName: String = "",
+)
+
+@Serializable
+data class SignedInDevice(
+    val id: String,
+    val name: String,
+    val platform: String = "",
+    val lastSeenAt: Long = 0L,
+    val thisDevice: Boolean = false,
+)
+
+@Serializable
+data class SignInPrompt(
+    val challengeId: String,
+    val deviceName: String = "",
+    val createdAt: Long = 0L,
+)
+
+@Serializable
+data class DeviceHelloRequest(
+    val deviceId: String = "",
+    val deviceName: String = "",
+    val platform: String = "",
+)
+
+@Serializable
+data class GoogleClientConfig(
+    val clientId: String = "",
+)
+
+@Serializable
 data class GoogleAuthRequest(
     val idToken: String,
-    val role: UserRole
+    val role: UserRole,
+    val deviceId: String = "",
+    val deviceName: String = "",
+    val platform: String = "",
 )
 
 @Serializable
@@ -73,7 +201,10 @@ data class RegistrationRequest(
 @Serializable
 data class LoginRequest(
     val identifier: String, // email or username
-    val password: String
+    val password: String,
+    val deviceId: String = "",
+    val deviceName: String = "",
+    val platform: String = "",
 )
 
 @Serializable
@@ -666,6 +797,13 @@ data class PlatformStats(
     val protectedInEscrow: Double = 0.0,
     val stories: Int = 0,
     val averageRating: Double = 0.0
+)
+
+/** Phone push token so the server can show a message after the app is closed. */
+@Serializable
+data class RegisterDeviceRequest(
+    val token: String,
+    val platform: String = "android",
 )
 
 /** Client → server apartment chat message (text or attachment metadata + optional bytes). */

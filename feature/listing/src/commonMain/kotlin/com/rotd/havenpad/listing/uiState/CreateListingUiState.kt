@@ -1,6 +1,7 @@
 package com.rotd.havenpad.listing.uiState
 
 import com.rotd.havenpad.CreateListingDraft
+import com.rotd.havenpad.KycStatus
 import com.rotd.havenpad.LandmarkSuggestion
 import com.rotd.havenpad.ListingPhotoResponse
 import com.rotd.havenpad.PendingListingPhoto
@@ -17,5 +18,8 @@ data class CreateListingUiState(
     /** Soft note when save was queued for later sync. */
     val syncNote: String? = null,
     val placeSuggestions: List<LandmarkSuggestion> = emptyList(),
-    val isSearchingPlaces: Boolean = false
+    val isSearchingPlaces: Boolean = false,
+    /** Fresh status from the server. New posts stay closed until this is VERIFIED. */
+    val kycStatus: KycStatus = KycStatus.NOT_SUBMITTED,
+    val checkingVerification: Boolean = false
 )

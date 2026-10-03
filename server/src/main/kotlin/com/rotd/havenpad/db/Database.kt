@@ -34,6 +34,8 @@ object UsersTable : Table("users") {
     val roommatePreferences = varchar("roommate_preferences", 500).nullable()
     val phone = varchar("phone", 40).nullable()
     val businessName = varchar("business_name", 150).nullable()
+    val active = bool("is_active").default(true)
+    val createdAt = long("created_at").default(0L)
 
     override val primaryKey = PrimaryKey(id)
 }
@@ -46,7 +48,55 @@ object KycTable : Table("kyc_submissions") {
     val documentFrontImageUrl = varchar("document_front_image_url", 255)
     val documentBackImageUrl = varchar("document_back_image_url", 255).nullable()
     val selfieImageUrl = varchar("selfie_image_url", 255)
+    val residentialAddress = varchar("residential_address", 300).default("")
+    val addressProofImageUrl = varchar("address_proof_image_url", 255).default("")
+    val reviewNote = varchar("review_note", 400).nullable()
+    val reviewedAt = long("reviewed_at").nullable()
     val submittedAt = long("submitted_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object DeviceTokensTable : Table("device_tokens") {
+    val token = varchar("token", 512)
+    val userId = varchar("user_id", 50).references(UsersTable.id)
+    val platform = varchar("platform", 20).default("android")
+    val updatedAt = long("updated_at")
+
+    override val primaryKey = PrimaryKey(token)
+}
+
+/** Account facts an admin may see. Chat content is never written here. */
+object AccountEventsTable : Table("account_events") {
+    val id = varchar("id", 50)
+    val userId = varchar("user_id", 50).references(UsersTable.id)
+    val title = varchar("title", 80)
+    val detail = varchar("detail", 200)
+    val createdAt = long("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object UserDevicesTable : Table("user_devices") {
+    val id = varchar("id", 64)
+    val userId = varchar("user_id", 50).references(UsersTable.id)
+    val name = varchar("name", 120)
+    val platform = varchar("platform", 20).default("")
+    val trusted = bool("trusted").default(true)
+    val lastSeenAt = long("last_seen_at")
+    val createdAt = long("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object SignInChallengesTable : Table("sign_in_challenges") {
+    val id = varchar("id", 50)
+    val userId = varchar("user_id", 50).references(UsersTable.id)
+    val deviceId = varchar("device_id", 64)
+    val deviceName = varchar("device_name", 120)
+    val platform = varchar("platform", 20).default("")
+    val status = varchar("status", 20)
+    val createdAt = long("created_at")
 
     override val primaryKey = PrimaryKey(id)
 }
@@ -264,8 +314,17 @@ object ChatMessagesTable : Table("chat_messages") {
     val pinnedAt = long("pinned_at").default(0L)
     val forwarded = bool("forwarded").default(false)
     val updatedAt = long("updated_at").default(0L)
+    val deleted = bool("deleted").default(false)
 
     override val primaryKey = PrimaryKey(id)
+}
+
+object HiddenCallLogsTable : Table("hidden_call_logs") {
+    val userId = varchar("user_id", 50)
+    val sessionId = varchar("session_id", 50)
+    val hiddenAt = long("hidden_at")
+
+    override val primaryKey = PrimaryKey(userId, sessionId)
 }
 
 fun initDatabase() {
@@ -273,6 +332,10 @@ fun initDatabase() {
     transaction {
         SchemaUtils.create(
             UsersTable,
+            DeviceTokensTable,
+            AccountEventsTable,
+            UserDevicesTable,
+            SignInChallengesTable,
             KycTable,
             BillsTable,
             BillItemsTable,
@@ -288,12 +351,17 @@ fun initDatabase() {
             CommunityStoriesTable,
             ChatConnectionsTable,
             ChatMessagesTable,
+            HiddenCallLogsTable,
             EscrowTransactionsTable,
             EscrowAuditLogTable,
             PropertyRequestsTable
         )
         SchemaUtils.createMissingTablesAndColumns(
             UsersTable,
+            DeviceTokensTable,
+            AccountEventsTable,
+            UserDevicesTable,
+            SignInChallengesTable,
             KycTable,
             BillsTable,
             BillItemsTable,
@@ -309,6 +377,7 @@ fun initDatabase() {
             CommunityStoriesTable,
             ChatConnectionsTable,
             ChatMessagesTable,
+            HiddenCallLogsTable,
             EscrowTransactionsTable,
             EscrowAuditLogTable,
             PropertyRequestsTable

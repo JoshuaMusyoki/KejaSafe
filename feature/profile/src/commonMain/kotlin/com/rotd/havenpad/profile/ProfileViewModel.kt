@@ -3,12 +3,14 @@ package com.rotd.havenpad.profile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rotd.havenpad.RoommatePreferences
+import com.rotd.havenpad.SignedInDevice
 import com.rotd.havenpad.UpdateProfileRequest
 import com.rotd.havenpad.User
 import com.rotd.havenpad.UserRole
 import com.rotd.havenpad.data.ProfileRepository
 import com.rotd.havenpad.error.ErrorMessages
 import com.rotd.havenpad.error.userMessage
+import com.rotd.havenpad.network.AuthClient
 import com.rotd.havenpad.network.ConnectivityMonitor
 import com.rotd.havenpad.network.SessionManager
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -39,6 +41,7 @@ data class ProfileUiState(
     val biometricMessage: String? = null,
     val accountMessage: String? = null,
     val showBiometricPasswordPrompt: Boolean = false,
+    val devices: List<SignedInDevice> = emptyList(),
 )
 
 data class EditProfileUiState(
@@ -86,6 +89,9 @@ class ProfileViewModel(
                 _state.update { it.copy(isLoading = true, error = null, syncWarning = null) }
             }
 
+            AuthClient.signedInDevices().onSuccess { devices ->
+                _state.update { it.copy(devices = devices) }
+            }
             profileRepository.getProfile(
                 onCacheHit = { cached ->
                     SessionManager.updateUser(cached)

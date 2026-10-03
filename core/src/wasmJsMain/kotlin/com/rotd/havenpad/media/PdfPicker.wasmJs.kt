@@ -8,12 +8,15 @@ import com.rotd.havenpad.PickedImage
 @Composable
 actual fun rememberPdfPickerLauncher(
     onPdfsPicked: (List<PickedImage>) -> Unit,
+    onError: (String) -> Unit,
 ): () -> Unit {
     val onPicked = rememberUpdatedState(onPdfsPicked)
+    val onFailed = rememberUpdatedState(onError)
     return remember {
         {
             openBrowserFilePicker(accept = "application/pdf,.pdf") { files ->
-                onPicked.value(files)
+                if (files.isEmpty()) onFailed.value("Couldn't open that PDF. Try another file.")
+                else onPicked.value(files)
             }
         }
     }

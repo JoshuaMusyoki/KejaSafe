@@ -105,7 +105,8 @@ class ApartmentChatRepositoryImpl(
             emptyList()
         }
 
-        val eligible = (bookingPeers + matePeers)
+        val inquiryPeers = ChatClient.inquiryPeers().getOrElse { emptyList() }
+        val eligible = (bookingPeers + matePeers + inquiryPeers)
             .distinctBy { "${it.listingId}_${it.userId}" }
 
         peers.value = eligible
@@ -312,17 +313,15 @@ class ApartmentChatRepositoryImpl(
             return Result.failure(IllegalStateException("Not allowed for this apartment chat"))
         }
         val remote = ChatClient.deleteMessage(messageId)
-        if (remote.isFailure) return remote
+        val tombstone = remote.getOrElse { return Result.failure(it) }
 
         val key = apartmentConversationKey(listingId, me, peerUserId)
         ensureMessagesLoaded(key)
-        val existing = messagesByKey.value[key].orEmpty()
-        val target = existing.firstOrNull { it.id == messageId }
-        target?.attachmentId?.let { attachments.delete(it) }
-        val next = existing.filterNot { it.id == messageId }
-        persistMessages(key, next)
-        messagesByKey.update { it + (key to next) }
-        bumpMessageEpoch()
+        messagesByKey.value[key].orEmpty()
+            .firstOrNull { it.id == messageId }
+            ?.attachmentId
+            ?.let { attachments.delete(it) }
+        mergeRemoteMessages(listingId, peerUserId, listOf(tombstone))
         return Result.success(Unit)
     }
 

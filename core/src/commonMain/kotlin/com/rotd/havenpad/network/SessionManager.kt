@@ -5,6 +5,7 @@ import com.rotd.havenpad.storage.CacheKeys
 import com.rotd.havenpad.storage.JsonCache
 import com.rotd.havenpad.storage.LocalSettings
 import com.rotd.havenpad.notify.onSessionCleared
+import com.rotd.havenpad.notify.onSessionClearing
 import com.rotd.havenpad.notify.onSessionSaved
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,6 +63,7 @@ object SessionManager {
     }
 
     fun clearSession() {
+        onSessionClearing()
         val userId = _currentUser.value?.id
         _token.value = null
         _currentUser.value = null

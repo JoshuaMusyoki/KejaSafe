@@ -32,6 +32,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rotd.havenpad.UserRole
 import com.rotd.havenpad.components.HavenPadBody
 import com.rotd.havenpad.components.HavenPadHeader
 import com.rotd.havenpad.components.HavenPadHeadline
@@ -48,6 +49,7 @@ import org.koin.compose.viewmodel.koinViewModel
 fun LoginScreen(
     onNavigateToRegister: () -> Unit,
     onLoginSuccess: () -> Unit,
+    onContinueAsGuest: () -> Unit = {},
     onBack: (() -> Unit)? = null,
     viewModel: LoginViewModel = koinViewModel()
 ) {
@@ -57,6 +59,11 @@ fun LoginScreen(
     val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
     val offerEnableBiometric by viewModel.offerEnableBiometric.collectAsStateWithLifecycle()
 
+    val launchGoogle = rememberGoogleIdTokenLauncher(
+        onToken = { token -> viewModel.loginWithGoogle(token, UserRole.STUDENT) },
+        onError = viewModel::reportError,
+    )
+
     LoginScreenContent(
         state = state,
         identifier = identifier,
@@ -64,11 +71,12 @@ fun LoginScreen(
         biometricEnabled = biometricEnabled,
         offerEnableBiometric = offerEnableBiometric,
         onNavigateToRegister = onNavigateToRegister,
+        onContinueAsGuest = onContinueAsGuest,
         onBack = onBack,
         onIdentifierChange = { viewModel.identifier.value = it },
         onPasswordChange = { viewModel.password.value = it },
         onLogin = { viewModel.login() },
-        onLoginWithGoogle = { viewModel.loginWithGoogle() },
+        onLoginWithGoogle = { viewModel.prepareGoogleSignIn(launchGoogle) },
         onLoginWithFingerprint = { viewModel.loginWithFingerprint() },
         onConfirmBiometric = { viewModel.confirmEnableBiometric() },
         onSkipBiometric = { viewModel.skipEnableBiometric() }
@@ -97,6 +105,7 @@ private fun LoginScreenContent(
     biometricEnabled: Boolean,
     offerEnableBiometric: Boolean,
     onNavigateToRegister: () -> Unit,
+    onContinueAsGuest: () -> Unit,
     onBack: (() -> Unit)?,
     onIdentifierChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
@@ -142,6 +151,22 @@ private fun LoginScreenContent(
                 .padding(padding)
         ) {
             Spacer(modifier = Modifier.height(32.dp))
+
+            if (state is LoginState.AwaitingApproval) {
+                HavenPadHeadline(text = "Check your other device")
+                HavenPadBody(
+                    text = "A sign-in from this device is waiting. Open HavenPad on a device that is already signed in and allow it, the same way Google asks before a new device can continue."
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                if (state is LoginState.AwaitingApproval) {
+                    Text(
+                        text = state.deviceName,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                return@AuthFormScaffold
+            }
 
             HavenPadHeadline(text = "Welcome Back")
             HavenPadBody(text = "Enter your username or email to continue.")
@@ -207,7 +232,15 @@ private fun LoginScreenContent(
             HavenPadOutlinedButton(
                 text = "Sign in with Google",
                 onClick = onLoginWithGoogle,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state !is LoginState.Loading
+            )
+
+            HavenPadOutlinedButton(
+                text = "Continue as a guest",
+                onClick = onContinueAsGuest,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state !is LoginState.Loading
             )
 
             if (biometricEnabled) {
@@ -245,6 +278,7 @@ fun LoginScreenPreview() {
             biometricEnabled = true,
             offerEnableBiometric = false,
             onNavigateToRegister = {},
+            onContinueAsGuest = {},
             onBack = {},
             onIdentifierChange = {},
             onPasswordChange = {},

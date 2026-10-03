@@ -1,5 +1,6 @@
 package com.rotd.havenpad.di
 
+import com.rotd.havenpad.admin.AdminViewModel
 import com.rotd.havenpad.auth.LoginViewModel
 import com.rotd.havenpad.auth.RegisterViewModel
 import com.rotd.havenpad.call.di.callModule
@@ -17,6 +18,7 @@ import org.koin.mp.KoinPlatform
 val authModule = module {
     viewModel<LoginViewModel> { LoginViewModel(authRepository = get()) }
     viewModel<RegisterViewModel> { RegisterViewModel(authRepository = get()) }
+    viewModel<AdminViewModel> { AdminViewModel() }
 }
 
 val webModule = module {

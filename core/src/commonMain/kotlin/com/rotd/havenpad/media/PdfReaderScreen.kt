@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -28,6 +29,7 @@ fun PdfReaderScreen(
     bytes: ByteArray,
     onBack: () -> Unit,
     onShare: ((fileName: String, bytes: ByteArray) -> String)? = null,
+    onDownload: ((fileName: String, bytes: ByteArray) -> String)? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -48,6 +50,17 @@ fun PdfReaderScreen(
                     }
                 },
                 actions = {
+                    if (onDownload != null) {
+                        IconButton(
+                            onClick = {
+                                val message = runCatching { onDownload(fileName, bytes) }
+                                    .getOrElse { it.message ?: "Could not save the file" }
+                                scope.launch { snackbar.showSnackbar(message) }
+                            }
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = "Download")
+                        }
+                    }
                     if (onShare != null) {
                         IconButton(
                             onClick = {

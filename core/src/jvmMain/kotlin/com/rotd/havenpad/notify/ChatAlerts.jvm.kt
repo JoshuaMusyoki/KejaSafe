@@ -33,6 +33,8 @@ actual fun startHouseTourRingSound() = Unit
 
 actual fun stopHouseTourRingSound() = Unit
 
+actual fun onSessionClearing() = Unit
+
 actual fun onSessionSaved() = Unit
 
 actual fun onSessionCleared() = Unit

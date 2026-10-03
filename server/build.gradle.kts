@@ -14,6 +14,7 @@ dependencies {
     api(project(":core"))
     implementation(libs.ktorServerWebsockets)
     implementation(libs.ktorClientOkhttp)
+    implementation(libs.googleAuthOauth)
     implementation(libs.ktorClientContentNegotiation)
     implementation(libs.ktorSerializationKotlinxJson)
 }

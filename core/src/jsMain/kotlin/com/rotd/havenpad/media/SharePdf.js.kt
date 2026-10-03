@@ -5,7 +5,8 @@ import androidx.compose.runtime.remember
 
 @Composable
 actual fun rememberPdfShareHandler(): (fileName: String, bytes: ByteArray) -> String {
-    return remember {
-        { _, _ -> "PDF download is available on Android" }
+    val export = rememberMediaExport()
+    return remember(export) {
+        { fileName, bytes -> export.download(fileName, "application/pdf", bytes) }
     }
 }

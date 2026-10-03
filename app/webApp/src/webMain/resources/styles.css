@@ -3,18 +3,23 @@ html, body {
     height: 100%;
     margin: 0;
     padding: 0;
-    overflow: auto;
+    overflow: hidden;
+    overscroll-behavior: none;
     background: #002114;
     font-family: "Inter", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", system-ui, sans-serif;
 }
 
 canvas {
+    display: block;
+    overscroll-behavior: none;
     font-family: "Inter", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", system-ui, sans-serif;
 }
 
 #compose-target {
     width: 100%;
-    min-height: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
     display: flex;
     justify-content: center;
 }

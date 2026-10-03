@@ -10,4 +10,5 @@ import com.rotd.havenpad.PickedImage
 @Composable
 expect fun rememberPdfPickerLauncher(
     onPdfsPicked: (List<PickedImage>) -> Unit,
+    onError: (String) -> Unit,
 ): () -> Unit

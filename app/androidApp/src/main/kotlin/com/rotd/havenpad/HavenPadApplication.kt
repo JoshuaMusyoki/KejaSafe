@@ -26,6 +26,8 @@ class HavenPadApplication : Application() {
         SessionManager.restore()
         if (SessionManager.isLogged()) {
             ChatBackgroundSync.schedule(this)
+            ChatBackgroundSync.startListening()
+            ChatBackgroundSync.registerPushToken()
         }
     }
 }

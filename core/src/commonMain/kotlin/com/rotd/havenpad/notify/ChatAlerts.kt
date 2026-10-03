@@ -39,6 +39,9 @@ expect fun stopHouseTourRingSound()
 /** Start background delivery after login. */
 expect fun onSessionSaved()
 
+/** Drop this phone's push token while the login is still valid. */
+expect fun onSessionClearing()
+
 /** Stop background delivery after logout. */
 expect fun onSessionCleared()
 

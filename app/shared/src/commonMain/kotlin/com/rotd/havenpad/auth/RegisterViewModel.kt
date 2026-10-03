@@ -41,6 +41,11 @@ class RegisterViewModel(
             return
         }
 
+        if (password.value.length < 8) {
+            _state.value = RegisterState.Error("Password must be at least 8 characters.")
+            return
+        }
+
         viewModelScope.launch {
             _state.value = RegisterState.Loading
             authRepository.registerWithEmail(

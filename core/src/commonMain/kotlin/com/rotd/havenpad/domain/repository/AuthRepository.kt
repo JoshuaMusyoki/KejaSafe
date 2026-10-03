@@ -1,6 +1,8 @@
 package com.rotd.havenpad.domain.repository
 
 import com.rotd.havenpad.KycStatus
+import com.rotd.havenpad.LandlordKycRequest
+import com.rotd.havenpad.StudentKycRequest
 import com.rotd.havenpad.UpdateProfileRequest
 import com.rotd.havenpad.User
 import com.rotd.havenpad.UserRole
@@ -43,6 +45,10 @@ interface AuthRepository {
         documentBackImageUrl: String?,
         selfieImageUrl: String,
     ): Result<KycStatus>
+
+    suspend fun submitLandlordKyc(request: LandlordKycRequest): Result<User>
+
+    suspend fun submitStudentKyc(request: StudentKycRequest): Result<User>
 
     suspend fun signOut()
 

@@ -38,6 +38,7 @@ fun LandingScreen(
     onNavigateToFeatures: () -> Unit,
     onNavigateToPolicy: () -> Unit,
     onSignIn: () -> Unit = {},
+    onExploreListings: () -> Unit = onSignIn,
     /** Signing in from the story composer should come back here, not to the dashboard. */
     onSignInToShareStory: () -> Unit = onSignIn,
     wideOverride: Boolean? = null,
@@ -54,6 +55,7 @@ fun LandingScreen(
         onNavigateToFeatures = onNavigateToFeatures,
         onNavigateToPolicy = onNavigateToPolicy,
         onSignIn = onSignIn,
+        onExploreListings = onExploreListings,
         onSignInToShareStory = onSignInToShareStory,
         wideOverride = wideOverride,
         onPostStory = viewModel::postStory,
@@ -70,6 +72,7 @@ private fun LandingScreenContent(
     onNavigateToFeatures: () -> Unit,
     onNavigateToPolicy: () -> Unit,
     onSignIn: () -> Unit,
+    onExploreListings: () -> Unit,
     onSignInToShareStory: () -> Unit,
     wideOverride: Boolean?,
     onPostStory: (String, Int) -> Unit,
@@ -90,7 +93,7 @@ private fun LandingScreenContent(
                     onNavigateToFeatures = onNavigateToFeatures,
                     onNavigateToPolicy = onNavigateToPolicy,
                     onLogoClick = { /* Already here */ },
-                    onExploreListings = onSignIn,
+                    onExploreListings = onExploreListings,
                     signedIn = currentUser != null,
                     selectedTab = LandingTab.HOME,
                     wide = wide
@@ -116,8 +119,8 @@ private fun LandingScreenContent(
                     listings = state.listings,
                     loading = state.loadingListings,
                     error = state.listingsError,
-                    onExploreAll = onSignIn,
-                    onInspect = { _ -> onSignIn() }
+                    onExploreAll = onExploreListings,
+                    onInspect = { _ -> onExploreListings() }
                 )
                 LandingTestimonials(
                     wide = wide,
@@ -158,6 +161,7 @@ fun LandingScreenPreview() {
                 onNavigateToFeatures = {},
                 onNavigateToPolicy = {},
                 onSignIn = {},
+                onExploreListings = {},
                 onSignInToShareStory = {},
                 wideOverride = null,
                 onPostStory = { _, _ -> },

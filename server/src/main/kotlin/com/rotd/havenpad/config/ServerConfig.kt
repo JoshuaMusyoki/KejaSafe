@@ -26,8 +26,18 @@ object ServerConfig {
      */
     val databasePoolSize: Int = env("HAVENPAD_DB_POOL_SIZE")?.toIntOrNull()?.coerceIn(1, 50) ?: 5
 
-    /** Where listing photos and KYC uploads are written. Mount this as a volume in Docker. */
+    /** Where listing photos are written. Mount this as a volume in Docker. Served at /uploads. */
     val uploadDir: String = env("HAVENPAD_UPLOAD_DIR") ?: "build/uploads"
+
+    /** Identity documents. Kept outside [uploadDir] so they are not publicly served. */
+    val kycDir: String = env("HAVENPAD_KYC_DIR") ?: "build/kyc-private"
+
+    /**
+     * First-run admin. Override in production.
+     * Local default: admin@havenpad.app / HavenPadAdmin1
+     */
+    val adminEmail: String = env("HAVENPAD_ADMIN_EMAIL") ?: "admin@havenpad.app"
+    val adminPassword: String = env("HAVENPAD_ADMIN_PASSWORD") ?: "HavenPadAdmin1"
 
     /**
      * Browser origins allowed to call the API (comma separated). Empty means any host,
@@ -46,8 +56,27 @@ object ServerConfig {
     val mpesaCallbackUrl: String = env("MPESA_CALLBACK_URL")
         ?: "https://your-api-domain.com/mpesa/callback"
 
+    /**
+     * OAuth web client id. The Android app and the website both send this id's ID tokens.
+     * Leave empty until Google sign-in is configured; email login and guest browse still work.
+     */
+    val googleClientId: String = env("HAVENPAD_GOOGLE_CLIENT_ID") ?: ""
+
     /** Server-side key for Places Autocomplete. Never shipped to the app. */
     val googlePlacesApiKey: String? = env("GOOGLE_PLACES_API_KEY")
+
+    /** Firebase project that owns the Android app. Used by Cloud Messaging HTTP v1. */
+    val fcmProjectId: String = env("HAVENPAD_FCM_PROJECT_ID") ?: "havenpad"
+
+    /**
+     * Path to a Firebase service-account JSON (Project settings → Service accounts).
+     * Without this file, chat still saves; the phone just cannot be woken after it is closed.
+     */
+    val fcmCredentialsPath: String? = env("HAVENPAD_FCM_CREDENTIALS")
+        ?: listOf(
+            "firebase-service-account.json",
+            "server/firebase-service-account.json",
+        ).firstOrNull { java.io.File(it).isFile }
 
     private fun env(name: String): String? = System.getenv(name)?.trim()?.ifBlank { null }
 }

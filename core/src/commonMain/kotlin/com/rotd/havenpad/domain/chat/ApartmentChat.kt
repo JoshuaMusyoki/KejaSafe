@@ -44,15 +44,21 @@ data class ApartmentChatMessage(
     /** Non-zero when this message is pinned to the top of the thread. */
     val pinnedAt: Long = 0L,
     val forwarded: Boolean = false,
+    /** Cleared for both people. The bubble stays so the other person can see it was removed. */
+    val deleted: Boolean = false,
 ) {
-    fun isImage(): Boolean = type.equals(TYPE_IMAGE, ignoreCase = true)
-    fun isPdf(): Boolean = type.equals(TYPE_PDF, ignoreCase = true)
+    fun isImage(): Boolean = !deleted && type.equals(TYPE_IMAGE, ignoreCase = true)
+    fun isPdf(): Boolean = !deleted && type.equals(TYPE_PDF, ignoreCase = true)
 
     fun previewText(): String = when {
+        deleted -> "Message deleted"
         isImage() -> imagePreviewLabel(fileName)
         isPdf() -> fileName?.takeIf { it.isNotBlank() } ?: "PDF"
         else -> content
     }
+
+    fun deletedLabel(isMine: Boolean): String =
+        if (isMine) "You deleted this message" else "This message was deleted"
 
     companion object {
         const val TYPE_TEXT = "TEXT"

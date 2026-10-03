@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.TextButton
@@ -70,10 +72,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -90,6 +95,9 @@ import com.rotd.havenpad.chat.components.ReplyQuote
 import com.rotd.havenpad.chat.components.SwipeToReplyBox
 import com.rotd.havenpad.domain.chat.ApartmentChatMessage
 import com.rotd.havenpad.domain.chat.ApartmentChatPeer
+import com.rotd.havenpad.media.ExpandedPdfPreview
+import com.rotd.havenpad.media.decodeToImageBitmap
+import com.rotd.havenpad.media.rememberMediaExport
 import com.rotd.havenpad.domain.chat.replySnippet
 import com.rotd.havenpad.domain.chat.ChatTimelineItem
 import com.rotd.havenpad.domain.chat.buildChatTimeline
@@ -119,6 +127,7 @@ fun HavenPadWebChatLayout(
     onSendThreadMessage: () -> Unit,
     onPickImages: () -> Unit,
     onPickPdfs: () -> Unit,
+    onRemovePending: (Int) -> Unit = {},
     onMessageLongPress: (ApartmentChatMessage) -> Unit = {},
     onMessageReply: (ApartmentChatMessage) -> Unit = {},
     onCancelReply: () -> Unit = {},
@@ -129,6 +138,7 @@ fun HavenPadWebChatLayout(
     onOpenNotifications: () -> Unit = {},
     onCallLog: (CallLogEntry) -> Unit = {},
     onMessageLog: (CallLogEntry) -> Unit = {},
+    onDeleteCall: (CallLogEntry) -> Unit = {},
 ) {
     ProvideEmojiFont {
     Row(
@@ -151,6 +161,7 @@ fun HavenPadWebChatLayout(
             onOpenNotifications = onOpenNotifications,
             onCallLog = onCallLog,
             onMessageLog = onMessageLog,
+            onDeleteCall = onDeleteCall,
         )
 
         // Column 3: Right Active Live Chat Thread Panel
@@ -169,6 +180,7 @@ fun HavenPadWebChatLayout(
                     onSend = onSendThreadMessage,
                     onPickImages = onPickImages,
                     onPickPdfs = onPickPdfs,
+                    onRemovePending = onRemovePending,
                     loadAttachment = loadAttachment,
                     onMessageLongPress = onMessageLongPress,
                     onMessageReply = onMessageReply,
@@ -270,8 +282,10 @@ fun HavenPadWebDashboardShell(
     onTabSelected: (HavenPadNavTab) -> Unit,
     onChatTabSelected: (ChatInboxTab) -> Unit = {},
     onOpenBookings: () -> Unit = {},
+    onOpenAdmin: () -> Unit = {},
     bookingsSelected: Boolean = false,
     toursSelected: Boolean = false,
+    adminSelected: Boolean = false,
     onLogout: () -> Unit,
     content: @Composable () -> Unit
 ) {
@@ -301,8 +315,10 @@ fun HavenPadWebDashboardShell(
             onNavigateLiveTours = { onTabSelected(HavenPadNavTab.BILLS) },
             onNavigateProfile = { onTabSelected(HavenPadNavTab.PROFILE) },
             onNavigateBadges = { onTabSelected(HavenPadNavTab.PROFILE) },
+            onNavigateAdmin = onOpenAdmin,
             bookingsSelected = bookingsSelected,
             toursSelected = toursSelected,
+            adminSelected = adminSelected,
             onLogout = onLogout
         )
         Box(
@@ -331,8 +347,10 @@ fun HavenPadWebSidebar(
     onNavigateLiveTours: () -> Unit = {},
     onNavigateProfile: () -> Unit = {},
     onNavigateBadges: () -> Unit = {},
+    onNavigateAdmin: () -> Unit = {},
     bookingsSelected: Boolean = false,
     toursSelected: Boolean = false,
+    adminSelected: Boolean = false,
     onLogout: () -> Unit = {}
 ) {
     val user = SessionManager.currentUser.value
@@ -418,53 +436,67 @@ fun HavenPadWebSidebar(
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        val isAdmin = user?.role == com.rotd.havenpad.UserRole.ADMIN
+
         // Navigation Items
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            item {
+            if (isAdmin) {
+                item {
+                    HavenPadNavItem(
+                        label = "Admin",
+                        icon = Icons.Default.Lock,
+                        isSelected = true,
+                        onClick = onNavigateAdmin
+                    )
+                }
+            }
+            if (!isAdmin) item {
                 HavenPadNavItem(
                     label = "Home",
                     icon = Icons.Default.Home,
-                    isSelected = currentTab == HavenPadNavTab.HOME && !bookingsSelected && !toursSelected,
+                    isSelected = currentTab == HavenPadNavTab.HOME && !bookingsSelected && !toursSelected && !adminSelected,
                     onClick = onNavigateHome
                 )
             }
 
-            item {
+            if (!isAdmin) item {
                 HavenPadNavSectionHeader("COMMUNICATION")
             }
 
-            item {
+            if (!isAdmin) item {
                 HavenPadNavItem(
                     label = "Apartment Chat",
                     icon = Icons.AutoMirrored.Filled.Chat,
                     isSelected = currentTab == HavenPadNavTab.CHAT &&
                         currentChatTab != ChatInboxTab.PEOPLE &&
                         !bookingsSelected &&
-                        !toursSelected,
+                        !toursSelected &&
+                        !adminSelected,
                     onClick = onNavigateChat
                 )
             }
 
-            item {
+            if (!isAdmin) item {
                 HavenPadNavItem(
                     label = "Tenants & Landlords",
                     icon = Icons.Default.People,
                     isSelected = currentTab == HavenPadNavTab.CHAT &&
                         currentChatTab == ChatInboxTab.PEOPLE &&
                         !bookingsSelected &&
-                        !toursSelected,
+                        !toursSelected &&
+                        !adminSelected,
                     onClick = onNavigateTenants
                 )
             }
 
-            item {
+            if (!isAdmin) item {
                 HavenPadNavSectionHeader("PROPERTIES & BOOKINGS")
             }
 
-            item {
+            if (!isAdmin) item {
                 HavenPadNavItem(
                     label = "Browse Listings",
                     icon = Icons.Default.House,
@@ -472,7 +504,7 @@ fun HavenPadWebSidebar(
                     onClick = onNavigateBrowseListings
                 )
             }
-            item {
+            if (!isAdmin) item {
                 HavenPadNavItem(
                     label = "Bookings",
                     icon = Icons.Default.DateRange,
@@ -480,15 +512,15 @@ fun HavenPadWebSidebar(
                     onClick = onNavigateBookings
                 )
             }
-            item {
+            if (!isAdmin) item {
                 HavenPadNavItem(
                     label = "Rent & Escrow",
                     icon = Icons.Default.ReceiptLong,
-                    isSelected = currentTab == HavenPadNavTab.BILLS && !toursSelected,
+                    isSelected = currentTab == HavenPadNavTab.BILLS && !toursSelected && !adminSelected,
                     onClick = onNavigateRent
                 )
             }
-            item {
+            if (!isAdmin) item {
                 HavenPadNavItem(
                     label = "Live Tours",
                     icon = Icons.Default.Event,
@@ -497,19 +529,19 @@ fun HavenPadWebSidebar(
                 )
             }
 
-            item {
+            if (!isAdmin) item {
                 HavenPadNavSectionHeader("ACCOUNT")
             }
 
-            item {
+            if (!isAdmin) item {
                 HavenPadNavItem(
                     label = "My Profile",
                     icon = Icons.Default.Person,
-                    isSelected = currentTab == HavenPadNavTab.PROFILE && !bookingsSelected,
+                    isSelected = currentTab == HavenPadNavTab.PROFILE && !bookingsSelected && !adminSelected,
                     onClick = onNavigateProfile
                 )
             }
-            item {
+            if (!isAdmin) item {
                 HavenPadNavItem(
                     label = "Verified Badges",
                     icon = Icons.Default.CheckCircle,
@@ -607,6 +639,7 @@ fun HavenPadMiddleChatroomsList(
     onOpenNotifications: () -> Unit = {},
     onCallLog: (CallLogEntry) -> Unit = {},
     onMessageLog: (CallLogEntry) -> Unit = {},
+    onDeleteCall: (CallLogEntry) -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -736,6 +769,7 @@ fun HavenPadMiddleChatroomsList(
                 error = state.callError,
                 onCall = onCallLog,
                 onMessage = onMessageLog,
+                onDelete = onDeleteCall,
             )
             return@Column
         }
@@ -865,6 +899,7 @@ fun HavenPadThreadPanel(
     onSend: () -> Unit,
     onPickImages: () -> Unit,
     onPickPdfs: () -> Unit,
+    onRemovePending: (Int) -> Unit = {},
     loadAttachment: (String) -> ByteArray?,
     onMessageLongPress: (ApartmentChatMessage) -> Unit,
     onMessageReply: (ApartmentChatMessage) -> Unit,
@@ -873,6 +908,9 @@ fun HavenPadThreadPanel(
     onClose: () -> Unit,
 ) {
     val listState = rememberLazyListState()
+    val export = rememberMediaExport()
+    var preview by remember { mutableStateOf<ChatMediaPreview?>(null) }
+    var previewNote by remember { mutableStateOf<String?>(null) }
     val timeline = remember(state.messages) {
         buildChatTimeline(state.messages, nowMillis = platformEpochMillis())
     }
@@ -883,6 +921,7 @@ fun HavenPadThreadPanel(
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         // Top Bar
         Row(
@@ -971,6 +1010,13 @@ fun HavenPadThreadPanel(
                             loadAttachment = loadAttachment,
                             onLongPress = { onMessageLongPress(item.message) },
                             onReply = { onMessageReply(item.message) },
+                            onOpenAttachment = {
+                                val opened = item.message.toMediaPreview(loadAttachment)
+                                if (opened != null) {
+                                    previewNote = null
+                                    preview = opened
+                                }
+                            },
                         )
                     }
                 }
@@ -992,8 +1038,135 @@ fun HavenPadThreadPanel(
             onSend = onSend,
             onPickImages = onPickImages,
             onPickPdfs = onPickPdfs,
-            isSending = state.isSending
+            isSending = state.isSending,
+            pendingFiles = state.pendingFiles,
+            onRemovePending = onRemovePending,
         )
+    }
+        preview?.let { item ->
+            ChatAttachmentPreview(
+                preview = item,
+                note = previewNote,
+                onClose = {
+                    preview = null
+                    previewNote = null
+                },
+                onDownload = {
+                    previewNote = runCatching {
+                        export.download(item.fileName, item.mimeType, item.bytes)
+                    }.getOrElse { it.message ?: "Could not save the file" }
+                },
+                onShare = {
+                    previewNote = runCatching {
+                        export.share(item.fileName, item.mimeType, item.bytes)
+                    }.getOrElse { it.message ?: "Could not share the file" }
+                },
+            )
+        }
+    }
+}
+
+private class ChatMediaPreview(
+    val fileName: String,
+    val mimeType: String,
+    val bytes: ByteArray,
+    val image: ImageBitmap?,
+)
+
+private fun ApartmentChatMessage.toMediaPreview(
+    loadAttachment: (String) -> ByteArray?,
+): ChatMediaPreview? {
+    if (!isImage() && !isPdf()) return null
+    val id = attachmentId ?: return null
+    val bytes = loadAttachment(id) ?: return null
+    val name = fileName?.takeIf { it.isNotBlank() } ?: if (isPdf()) "document.pdf" else "photo.jpg"
+    val mime = mimeType?.takeIf { it.isNotBlank() }
+        ?: if (isPdf()) "application/pdf" else mimeForImageName(name)
+    return ChatMediaPreview(
+        fileName = name,
+        mimeType = mime,
+        bytes = bytes,
+        image = if (isImage()) bytes.decodeToImageBitmap() else null,
+    )
+}
+
+private fun mimeForImageName(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+    "png" -> "image/png"
+    "webp" -> "image/webp"
+    "gif" -> "image/gif"
+    else -> "image/jpeg"
+}
+
+@Composable
+private fun ChatAttachmentPreview(
+    preview: ChatMediaPreview,
+    note: String?,
+    onClose: () -> Unit,
+    onDownload: () -> Unit,
+    onShare: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0B1210)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+            }
+            Text(
+                text = preview.fileName,
+                color = Color.White,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onDownload) {
+                Icon(Icons.Default.Download, contentDescription = "Download", tint = Color.White)
+            }
+            IconButton(onClick = onShare) {
+                Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
+            }
+        }
+        val image = preview.image
+        if (image != null) {
+            Image(
+                bitmap = image,
+                contentDescription = preview.fileName,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                contentScale = ContentScale.Fit,
+            )
+        } else if (preview.mimeType == "application/pdf") {
+            ExpandedPdfPreview(
+                bytes = preview.bytes,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            )
+        } else {
+            Text(
+                text = "This file could not be previewed.",
+                color = Color.White,
+                modifier = Modifier.padding(24.dp),
+            )
+        }
+        if (!note.isNullOrBlank()) {
+            Text(
+                text = note,
+                color = Color.White,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+        }
     }
 }
 
@@ -1006,6 +1179,7 @@ fun HavenPadMessageBubbleRow(
     loadAttachment: (String) -> ByteArray?,
     onLongPress: () -> Unit = {},
     onReply: () -> Unit = {},
+    onOpenAttachment: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1068,7 +1242,12 @@ fun HavenPadMessageBubbleRow(
                             bottomEnd = if (isMine) 4.dp else 16.dp
                         )
                     )
-                    .combinedClickable(onClick = {}, onLongClick = onLongPress)
+                    .combinedClickable(
+                        onClick = {
+                            if (message.isImage() || message.isPdf()) onOpenAttachment()
+                        },
+                        onLongClick = onLongPress,
+                    )
                     .pointerInput(onLongPress) {
                         awaitPointerEventScope {
                             while (true) {
@@ -1085,10 +1264,16 @@ fun HavenPadMessageBubbleRow(
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Column {
-                    if (message.forwarded) {
+                    if (message.deleted) {
+                        ChatMessageText(
+                            text = message.deletedLabel(isMine),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
+                            color = HavenPadWebChatColors.TextGrey,
+                        )
+                    } else if (message.forwarded) {
                         ForwardedLabel(color = HavenPadWebChatColors.TextGrey)
                     }
-                    if (message.replyToPreview.isNotBlank()) {
+                    if (!message.deleted && message.replyToPreview.isNotBlank()) {
                         ReplyQuote(
                             preview = message.replyToPreview,
                             color = HavenPadWebChatColors.TextWhite,
@@ -1096,6 +1281,7 @@ fun HavenPadMessageBubbleRow(
                         )
                     }
                     when {
+                    message.deleted -> Unit
                     message.isImage() -> Column {
                         Box(modifier = Modifier.width(240.dp)) {
                             ChatImageThumb(
@@ -1113,10 +1299,11 @@ fun HavenPadMessageBubbleRow(
                             )
                         }
                     }
-                    message.isPdf() -> ChatMessageText(
-                        text = message.fileName?.takeIf { it.isNotBlank() } ?: "PDF",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = HavenPadWebChatColors.TextWhite,
+                    message.isPdf() -> ChatPdfThumb(
+                        attachmentId = message.attachmentId,
+                        fileName = message.fileName?.takeIf { it.isNotBlank() } ?: "PDF",
+                        textColor = HavenPadWebChatColors.TextWhite,
+                        loadAttachment = loadAttachment,
                     )
                     else -> ChatMessageText(
                         text = cleanMessageText(message.content),
@@ -1126,7 +1313,9 @@ fun HavenPadMessageBubbleRow(
                     }
                 }
             }
-            MessageReactionChips(reactions = message.reactions)
+            if (!message.deleted) {
+                MessageReactionChips(reactions = message.reactions)
+            }
         }
         }
     }
@@ -1141,18 +1330,33 @@ fun HavenPadComposerBar(
     onSend: () -> Unit,
     onPickImages: () -> Unit,
     onPickPdfs: () -> Unit,
-    isSending: Boolean
+    isSending: Boolean,
+    pendingFiles: List<PendingChatFile> = emptyList(),
+    onRemovePending: (Int) -> Unit = {},
 ) {
     var attachMenuOpen by remember { mutableStateOf(false) }
     var emojiMenuOpen by remember { mutableStateOf(false) }
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    val canSend = !isSending && (draft.isNotBlank() || pendingFiles.isNotEmpty())
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(HavenPadWebChatColors.SidebarBg)
             .border(BorderStroke(1.dp, HavenPadWebChatColors.CardBorder))
             .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+    if (pendingFiles.isNotEmpty()) {
+        PendingAttachmentRow(
+            files = pendingFiles,
+            onRemove = onRemovePending,
+            contentColor = HavenPadWebChatColors.TextWhite,
+            chipColor = HavenPadWebChatColors.CardBg,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Box {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1200,7 +1404,7 @@ fun HavenPadComposerBar(
             onValueChange = onDraftChange,
             placeholder = {
                 Text(
-                    text = "Say something...",
+                    text = if (pendingFiles.isEmpty()) "Say something..." else "Add a caption...",
                     style = MaterialTheme.typography.bodyMedium,
                     color = HavenPadWebChatColors.TextGrey
                 )
@@ -1209,7 +1413,7 @@ fun HavenPadComposerBar(
             modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(24.dp),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { if (draft.isNotBlank() && !isSending) onSend() }),
+            keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
             visualTransformation = emojiVisualTransformation(LocalEmojiFontFamily.current),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = HavenPadWebChatColors.InputBg,
@@ -1252,21 +1456,22 @@ fun HavenPadComposerBar(
                 .size(44.dp)
                 .clip(CircleShape)
                 .background(HavenPadWebChatColors.EmeraldAccent)
-                .clickable(enabled = draft.isNotBlank() && !isSending, onClick = onSend),
+                .clickable(enabled = canSend, onClick = onSend),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = if (draft.isNotBlank()) Icons.AutoMirrored.Filled.Send else Icons.Default.Mic,
+                imageVector = if (canSend) Icons.AutoMirrored.Filled.Send else Icons.Default.Mic,
                 contentDescription = "Send",
                 tint = Color.White,
                 modifier = Modifier.size(20.dp)
             )
         }
     }
+    }
 }
 
 @Composable
-private fun ChatEmojiPicker(onPick: (String) -> Unit) {
+internal fun ChatEmojiPicker(onPick: (String) -> Unit) {
     val emojiFont = LocalEmojiFontFamily.current
     Column(modifier = Modifier.padding(8.dp)) {
         ChatEmojiChoices.chunked(8).forEach { row ->

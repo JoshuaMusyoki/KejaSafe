@@ -46,6 +46,9 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +60,7 @@ import com.rotd.havenpad.CampusProximity
 import com.rotd.havenpad.PropertyListing
 import com.rotd.havenpad.PropertyType
 import com.rotd.havenpad.components.CompactListingCard
+import com.rotd.havenpad.components.HavenPadDetailPopup
 import com.rotd.havenpad.components.HavenPadBottomSheet
 import com.rotd.havenpad.components.HavenPadErrorState
 import com.rotd.havenpad.components.HavenPadOfflineBanner
@@ -77,6 +81,8 @@ import org.koin.compose.viewmodel.koinViewModel
 fun ListingSearchScreen(
     onBack: () -> Unit,
     onNavigateToProperty: (String) -> Unit,
+    onTextLandlord: (PropertyListing) -> Unit = {},
+    signedIn: Boolean = true,
     initialQuery: String = "",
     initialLatitude: Double? = null,
     initialLongitude: Double? = null,
@@ -93,6 +99,8 @@ fun ListingSearchScreen(
         if (locationPermission.isGranted) viewModel.requestDeviceLocation()
         else locationPermission.launchPermissionRequest()
     }
+    var selectedListing by remember { mutableStateOf<PropertyListing?>(null) }
+    val currentUserId = com.rotd.havenpad.network.SessionManager.currentUser.collectAsStateWithLifecycle().value?.id
 
     LaunchedEffect(initialQuery, initialLatitude, initialLongitude) {
         viewModel.seed(initialQuery, initialLatitude, initialLongitude)
@@ -280,7 +288,7 @@ fun ListingSearchScreen(
                                         state.userLongitude,
                                         state.distancesReady
                                     ),
-                                    onView = { onNavigateToProperty(listing.id) },
+                                    onView = { selectedListing = listing },
                                     fullWidth = true,
                                     modifier = Modifier.fillMaxWidth()
                                 )
@@ -292,6 +300,34 @@ fun ListingSearchScreen(
                 }
             }
         }
+    }
+
+    selectedListing?.let { listing ->
+        HavenPadDetailPopup(
+            title = listing.title,
+            onDismiss = { selectedListing = null },
+            useDialog = false,
+            content = {
+                HousePhotoGallery(listing = listing, heroHeight = 220.dp)
+            },
+            footer = {
+                HouseSheetActions(
+                    signedIn = signedIn,
+                    canMessage = signedIn &&
+                        listing.landlordId.isNotBlank() &&
+                        listing.landlordId != currentUserId,
+                    onTextLandlord = {
+                        selectedListing = null
+                        onTextLandlord(listing)
+                    },
+                    onInspect = {
+                        val id = listing.id
+                        selectedListing = null
+                        onNavigateToProperty(id)
+                    },
+                )
+            },
+        )
     }
 
     if (state.showFilters) {

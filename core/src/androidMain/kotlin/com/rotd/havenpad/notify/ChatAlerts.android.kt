@@ -94,6 +94,10 @@ actual fun stopHouseTourRingSound() {
     houseTourRingtone = null
 }
 
+actual fun onSessionClearing() {
+    AndroidChatBridge.onSessionClearing?.invoke()
+}
+
 actual fun onSessionSaved() {
     AndroidChatBridge.onSessionSaved?.invoke()
 }

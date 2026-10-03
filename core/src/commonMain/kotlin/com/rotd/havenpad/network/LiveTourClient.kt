@@ -128,6 +128,19 @@ object LiveTourClient {
         Result.failure(AppException.from(e))
     }
 
+    suspend fun hideCall(sessionId: String): Result<Unit> = try {
+        val token = authHeader() ?: return notSignedIn()
+        val response = client.post("${AuthClient.BASE_URL}/live-tours/$sessionId/hide") {
+            header(HttpHeaders.Authorization, token)
+        }
+        if (response.status.isSuccess()) Result.success(Unit)
+        else httpFailure(response, "Could not delete that call")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(AppException.from(e))
+    }
+
     suspend fun callHistory(): Result<List<CallLogEntry>> = try {
         val token = authHeader() ?: return notSignedIn()
         val response = client.get("${AuthClient.BASE_URL}/live-tours/history") {

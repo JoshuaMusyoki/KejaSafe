@@ -95,20 +95,23 @@ private external fun bindPickerCallback(callback: (String) -> Unit)
                 var files = input.files ? Array.prototype.slice.call(input.files) : [];
                 for (var i = 0; i < files.length; i++) {
                     var file = files[i];
-                    var buf = new Uint8Array(await file.arrayBuffer());
-                    var binary = '';
-                    var chunk = 0x8000;
-                    for (var offset = 0; offset < buf.length; offset += chunk) {
-                        var slice = buf.subarray(offset, Math.min(offset + chunk, buf.length));
-                        var parts = new Array(slice.length);
-                        for (var j = 0; j < slice.length; j++) parts[j] = slice[j];
-                        binary += String.fromCharCode.apply(null, parts);
+                    try {
+                        var buf = new Uint8Array(await file.arrayBuffer());
+                        var binary = '';
+                        var chunk = 0x2000;
+                        for (var offset = 0; offset < buf.length; offset += chunk) {
+                            var slice = buf.subarray(offset, Math.min(offset + chunk, buf.length));
+                            var parts = new Array(slice.length);
+                            for (var j = 0; j < slice.length; j++) parts[j] = slice[j];
+                            binary += String.fromCharCode.apply(null, parts);
+                        }
+                        deliver(JSON.stringify({
+                            name: file.name || 'file',
+                            type: file.type || '',
+                            data: btoa(binary)
+                        }));
+                    } catch (err) {
                     }
-                    deliver(JSON.stringify({
-                        name: file.name || 'image.jpg',
-                        type: file.type || '',
-                        data: btoa(binary)
-                    }));
                 }
             } finally {
                 deliver('');

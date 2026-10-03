@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.compose.viewmodel.koinViewModel
 import com.rotd.havenpad.KycStatus
+import com.rotd.havenpad.SignedInDevice
 import com.rotd.havenpad.User
 import com.rotd.havenpad.UserRole
 import com.rotd.havenpad.components.HavenPadBody
@@ -97,6 +98,8 @@ fun ProfileScreen(
     onOpenChat: () -> Unit = {},
     onOpenBills: () -> Unit = {},
     onOpenBookings: () -> Unit = {},
+    onOpenKyc: () -> Unit = {},
+    onOpenAdmin: () -> Unit = {},
     onLogout: () -> Unit,
     onCreateListingClick: (() -> Unit)? = null,
     viewModel: ProfileViewModel = koinViewModel()
@@ -178,12 +181,15 @@ fun ProfileScreen(
                         onOpenChat = onOpenChat,
                         onOpenBills = onOpenBills,
                         onOpenBookings = onOpenBookings,
+                        onOpenKyc = onOpenKyc,
+                        onOpenAdmin = onOpenAdmin,
                         onResetPassword = { viewModel.sendPasswordReset() },
                         onLogout = onLogout,
                         biometricAvailable = state.biometricAvailable,
                         biometricEnabled = state.biometricEnabled,
                         biometricMessage = state.biometricMessage,
                         accountMessage = state.accountMessage,
+                        devices = state.devices,
                         onBiometricToggle = { viewModel.onBiometricToggle(it) },
                     )
                 }
@@ -202,25 +208,32 @@ private fun ProfileContent(
     onOpenChat: () -> Unit,
     onOpenBills: () -> Unit,
     onOpenBookings: () -> Unit,
+    onOpenKyc: () -> Unit,
+    onOpenAdmin: () -> Unit,
     onResetPassword: () -> Unit,
     onLogout: () -> Unit,
     biometricAvailable: Boolean,
     biometricEnabled: Boolean,
     biometricMessage: String?,
     accountMessage: String?,
+    devices: List<SignedInDevice> = emptyList(),
     onBiometricToggle: (Boolean) -> Unit,
 ) {
     val isStudent = user.role == UserRole.STUDENT
     val isLandlord = user.role == UserRole.LANDLORD || user.role == UserRole.ADMIN
+    val isAdmin = user.role == UserRole.ADMIN
     val actions = profileActions(
         isStudent = isStudent,
         isLandlord = isLandlord,
+        isAdmin = isAdmin,
         onOpenHome = onOpenHome,
         onOpenChat = onOpenChat,
         onOpenBills = onOpenBills,
         onOpenBookings = onOpenBookings,
         onEditProfile = onEditProfile,
         onOpenNotifications = onOpenNotifications,
+        onOpenKyc = onOpenKyc,
+        onOpenAdmin = onOpenAdmin,
     )
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -289,7 +302,8 @@ private fun ProfileContent(
                                     subtitle = kycSubtitle(user.kycStatus, "Submit student ID for verification"),
                                     status = kycStatusLabel(user.kycStatus),
                                     statusPositive = user.kycStatus == KycStatus.VERIFIED,
-                                    icon = Icons.Default.Badge
+                                    icon = Icons.Default.Badge,
+                                    onClick = onOpenKyc,
                                 )
                             },
                             second = {
@@ -307,12 +321,12 @@ private fun ProfileContent(
                             wide = wide,
                             first = {
                                 VerificationItem(
-                                    title = "Landlord Account",
-                                    subtitle = user.businessName?.takeIf { it.isNotBlank() }
-                                        ?: "Property owner on HavenPad",
+                                    title = "ID and address",
+                                    subtitle = kycSubtitle(user.kycStatus, "Upload your ID and proof of address"),
                                     status = kycStatusLabel(user.kycStatus),
                                     statusPositive = user.kycStatus == KycStatus.VERIFIED,
-                                    icon = Icons.Default.HomeWork
+                                    icon = Icons.Default.Badge,
+                                    onClick = onOpenKyc,
                                 )
                             },
                             second = {
@@ -454,6 +468,27 @@ private fun ProfileContent(
                     icon = Icons.Default.VpnKey,
                     onClick = onResetPassword,
                 )
+                Text(
+                    text = "Signed-in devices",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                )
+                if (devices.isEmpty()) {
+                    Text(
+                        text = "This device will appear here after you sign in.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    devices.forEach { device ->
+                        Text(
+                            text = if (device.thisDevice) "${device.name} · This device" else device.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        )
+                    }
+                }
                 if (!accountMessage.isNullOrBlank()) {
                     Text(
                         text = accountMessage,
@@ -487,13 +522,22 @@ private data class ProfileAction(
 private fun profileActions(
     isStudent: Boolean,
     isLandlord: Boolean,
+    isAdmin: Boolean,
     onOpenHome: () -> Unit,
     onOpenChat: () -> Unit,
     onOpenBills: () -> Unit,
     onOpenBookings: () -> Unit,
     onEditProfile: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onOpenKyc: () -> Unit,
+    onOpenAdmin: () -> Unit,
 ): List<ProfileAction> = buildList {
+    if (isAdmin) {
+        add(ProfileAction("Admin", "Review landlords and students", Icons.Default.Shield, onOpenAdmin))
+    }
+    if (isLandlord && !isAdmin) {
+        add(ProfileAction("Identity and address", "ID copy and where you live", Icons.Default.Badge, onOpenKyc))
+    }
     if (isLandlord) {
         add(ProfileAction("My listings", "Houses you have published", Icons.Default.HomeWork, onOpenHome))
         add(ProfileAction("Booking requests", "Review stays and requests", Icons.Default.Event, onOpenBookings))
@@ -501,6 +545,7 @@ private fun profileActions(
         add(ProfileAction("Bills", "Rent and payments", Icons.Default.Payment, onOpenBills))
     }
     if (isStudent) {
+        add(ProfileAction("Student ID", "University ID for verification", Icons.Default.Badge, onOpenKyc))
         add(ProfileAction("Browse houses", "Find a place near campus", Icons.Default.Home, onOpenHome))
         add(ProfileAction("Rent and bills", "Payments and stays", Icons.Default.Payment, onOpenBills))
         add(ProfileAction("Messages", "Chat with landlords", Icons.AutoMirrored.Filled.Chat, onOpenChat))
@@ -774,10 +819,11 @@ private fun VerificationItem(
     subtitle: String,
     status: String,
     statusPositive: Boolean,
-    icon: ImageVector
+    icon: ImageVector,
+    onClick: (() -> Unit)? = null,
 ) {
     val statusColor = if (statusPositive) Color(0xFF10B981) else Gold600
-    HavenPadCard {
+    HavenPadCard(onClick = onClick) {
         Row(
             modifier = Modifier.padding(16.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,

@@ -11,12 +11,12 @@ import com.rotd.havenpad.domain.chat.connectionIdFor
 import com.rotd.havenpad.domain.chat.replySnippet
 import com.rotd.havenpad.domain.repository.ApartmentChatRepository
 import com.rotd.havenpad.error.userMessage
-import com.rotd.havenpad.error.authUserMessage
 import com.rotd.havenpad.PickedImage
 import com.rotd.havenpad.network.CallLogBus
 import com.rotd.havenpad.network.LiveTourClient
 import com.rotd.havenpad.network.SessionManager
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -100,11 +100,19 @@ data class ChatInboxUiState(
     val navigateToLiveTourId: String? = null,
 )
 
+data class PendingChatFile(
+    val fileName: String,
+    val bytes: ByteArray,
+    val mimeType: String,
+    val type: String,
+)
+
 data class ChatThreadUiState(
     val peer: ApartmentChatPeer? = null,
     val myUserId: String? = null,
     val messages: List<ApartmentChatMessage> = emptyList(),
     val draft: String = "",
+    val pendingFiles: List<PendingChatFile> = emptyList(),
     val isSending: Boolean = false,
     val error: String? = null,
     val selectedMessage: ApartmentChatMessage? = null,
@@ -169,12 +177,31 @@ class ChatInboxViewModel(
                 loadCallHistory()
             }
         }
+        viewModelScope.launch {
+            while (isActive) {
+                kotlinx.coroutines.delay(5_000)
+                if (SessionManager.isLogged() && _state.value.selectedTab == ChatInboxTab.CALLS) {
+                    loadCallHistory()
+                }
+            }
+        }
     }
 
     fun loadCallHistory() {
         viewModelScope.launch {
             LiveTourClient.callHistory()
                 .onSuccess { rows -> _state.update { it.copy(callRows = rows) } }
+        }
+    }
+
+    fun deleteCall(entry: CallLogEntry) {
+        _state.update { state ->
+            state.copy(callRows = state.callRows.filterNot { it.sessionId == entry.sessionId })
+        }
+        viewModelScope.launch {
+            LiveTourClient.hideCall(entry.sessionId).onFailure {
+                loadCallHistory()
+            }
         }
     }
 
@@ -197,6 +224,7 @@ class ChatInboxViewModel(
     fun selectTab(tab: ChatInboxTab) {
         _state.update { it.copy(selectedTab = tab) }
         ChatSidebarRequest.select(tab)
+        if (tab == ChatInboxTab.CALLS) loadCallHistory()
     }
 
     fun updateSearch(query: String) {
@@ -343,6 +371,11 @@ class ChatThreadViewModel(
     private var initialRevealDone: Boolean = false
 
     init {
+        viewModelScope.launch {
+            SessionManager.currentUser.collect { user ->
+                _state.update { it.copy(myUserId = user?.id) }
+            }
+        }
         observeJob = viewModelScope.launch {
             chatRepository.syncConversation(peer.listingId, peer.userId)
             chatRepository.observeMessages(peer.listingId, peer.userId).collect { messages ->
@@ -424,10 +457,12 @@ class ChatThreadViewModel(
     }
 
     fun selectMessage(message: ApartmentChatMessage?) {
+        if (message?.deleted == true) return
         _state.update { it.copy(selectedMessage = message, showForwardPicker = false) }
     }
 
     fun startReply(message: ApartmentChatMessage) {
+        if (message.deleted) return
         _state.update {
             it.copy(replyingTo = message, selectedMessage = null, showForwardPicker = false)
         }
@@ -445,52 +480,79 @@ class ChatThreadViewModel(
         _state.update { it.copy(showForwardPicker = false, selectedMessage = null) }
     }
 
-    fun send() {
-        val content = _state.value.draft
-        if (content.isBlank() || _state.value.isSending) return
-        val reply = _state.value.replyingTo
-        viewModelScope.launch {
-            _state.update { it.copy(isSending = true, error = null) }
-            chatRepository.sendMessage(
-                listingId = peer.listingId,
-                bookingId = peer.bookingId,
-                peerUserId = peer.userId,
-                content = content,
-                replyToId = reply?.id,
-                replyToPreview = reply?.replySnippet().orEmpty(),
-            ).onSuccess {
-                _state.update { it.copy(draft = "", isSending = false, replyingTo = null) }
-            }.onFailure { e ->
-                _state.update { it.copy(isSending = false, error = e.userMessage()) }
-            }
+    fun stageAttachments(files: List<PickedImage>, type: String) {
+        if (files.isEmpty() || _state.value.isSending) return
+        _state.update {
+            it.copy(
+                pendingFiles = files.map { file ->
+                    PendingChatFile(
+                        fileName = file.fileName,
+                        bytes = file.bytes,
+                        mimeType = file.mimeType,
+                        type = type,
+                    )
+                },
+                error = null,
+            )
         }
     }
 
-    fun sendAttachments(files: List<PickedImage>, type: String) {
-        if (files.isEmpty() || _state.value.isSending) return
-        val reply = _state.value.replyingTo
+    fun removePendingFile(index: Int) {
+        _state.update { state ->
+            state.copy(pendingFiles = state.pendingFiles.filterIndexed { i, _ -> i != index })
+        }
+    }
+
+    fun reportAttachError(message: String) {
+        _state.update { it.copy(error = message) }
+    }
+
+    fun send() {
+        val snapshot = _state.value
+        if (snapshot.isSending) return
+        val content = snapshot.draft.trim()
+        val pending = snapshot.pendingFiles
+        if (content.isEmpty() && pending.isEmpty()) return
+        val reply = snapshot.replyingTo
         viewModelScope.launch {
             _state.update { it.copy(isSending = true, error = null) }
-            var lastError: String? = null
-            for (file in files) {
+            if (pending.isEmpty()) {
                 chatRepository.sendMessage(
                     listingId = peer.listingId,
                     bookingId = peer.bookingId,
                     peerUserId = peer.userId,
-                    content = _state.value.draft,
-                    type = type,
+                    content = content,
+                    replyToId = reply?.id,
+                    replyToPreview = reply?.replySnippet().orEmpty(),
+                ).onSuccess {
+                    _state.update { it.copy(draft = "", isSending = false, replyingTo = null) }
+                }.onFailure { e ->
+                    _state.update { it.copy(isSending = false, error = e.userMessage()) }
+                }
+                return@launch
+            }
+            var lastError: String? = null
+            pending.forEachIndexed { index, file ->
+                val caption = if (index == pending.lastIndex) content else ""
+                chatRepository.sendMessage(
+                    listingId = peer.listingId,
+                    bookingId = peer.bookingId,
+                    peerUserId = peer.userId,
+                    content = caption,
+                    type = file.type,
                     fileName = file.fileName,
                     mimeType = file.mimeType,
                     attachmentBytes = file.bytes,
-                    replyToId = reply?.id,
-                    replyToPreview = reply?.replySnippet().orEmpty(),
+                    replyToId = if (index == 0) reply?.id else null,
+                    replyToPreview = if (index == 0) reply?.replySnippet().orEmpty() else "",
                 ).onFailure { e ->
-                    lastError = e.authUserMessage()
+                    lastError = e.userMessage()
                 }
             }
             _state.update {
                 it.copy(
                     draft = if (lastError == null) "" else it.draft,
+                    pendingFiles = if (lastError == null) emptyList() else it.pendingFiles,
                     isSending = false,
                     error = lastError,
                     replyingTo = if (lastError == null) null else it.replyingTo,

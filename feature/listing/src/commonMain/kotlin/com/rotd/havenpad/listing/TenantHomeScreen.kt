@@ -53,7 +53,6 @@ import com.rotd.havenpad.components.HavenPadFloatingNavBar
 import com.rotd.havenpad.components.HavenPadNavTab
 import com.rotd.havenpad.components.HavenPadOfflineBanner
 import com.rotd.havenpad.components.HavenPadPrimaryButton
-import com.rotd.havenpad.components.ListingPhoto
 import com.rotd.havenpad.components.ListingStatusBadge
 import com.rotd.havenpad.components.MarketplaceSectionHeader
 import com.rotd.havenpad.components.MarketplaceTileCard
@@ -81,9 +80,12 @@ fun TenantHomeScreen(
     onNavigateToSearch: (query: String, latitude: Double?, longitude: Double?) -> Unit,
     onNavigateToRequestProperty: () -> Unit,
     onNavigateToNotifications: () -> Unit = {},
+    onTextLandlord: (PropertyListing) -> Unit = {},
+    signedIn: Boolean = true,
     viewModel: TenantHomeViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val currentUserId = com.rotd.havenpad.network.SessionManager.currentUser.collectAsStateWithLifecycle().value?.id
     val showShimmer = state.isLoading && state.listings.isEmpty()
     val showEmpty = !state.isLoading && state.listings.isEmpty() && state.error == null
     var activePopup by rememberSaveable { mutableStateOf<TenantHomePopup?>(null) }
@@ -452,14 +454,21 @@ fun TenantHomeScreen(
                             )
                         },
                         footer = {
-                            HavenPadPrimaryButton(
-                                text = "Inspect listing",
-                                onClick = {
+                            HouseSheetActions(
+                                signedIn = signedIn,
+                                canMessage = signedIn &&
+                                    listing.landlordId.isNotBlank() &&
+                                    listing.landlordId != currentUserId,
+                                onTextLandlord = {
+                                    activePopup = null
+                                    selectedListingId = null
+                                    onTextLandlord(listing)
+                                },
+                                onInspect = {
                                     activePopup = null
                                     selectedListingId = null
                                     onNavigateToProperty(listing.id)
                                 },
-                                modifier = Modifier.fillMaxWidth()
                             )
                         }
                     )
@@ -490,13 +499,8 @@ private fun TenantListingPopupContent(
     userLatitude: Double?,
     userLongitude: Double?
 ) {
-    ListingPhoto(
-        imageUrl = listing.imageUrl,
-        contentDescription = listing.title,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(180.dp)
-    ) {
+    Box {
+        HousePhotoGallery(listing = listing, heroHeight = 200.dp)
         if (listing.status == com.rotd.havenpad.ListingStatus.VERIFIED) {
             ListingStatusBadge(
                 status = listing.status,

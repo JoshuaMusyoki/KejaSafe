@@ -228,6 +228,12 @@ class AuthRepositoryImpl(
         }
     }
 
+    override suspend fun submitLandlordKyc(request: com.rotd.havenpad.LandlordKycRequest): Result<User> =
+        com.rotd.havenpad.network.AuthClient.submitLandlordKyc(request).onSuccess { commitSession(it) }
+
+    override suspend fun submitStudentKyc(request: com.rotd.havenpad.StudentKycRequest): Result<User> =
+        com.rotd.havenpad.network.AuthClient.submitStudentKyc(request).onSuccess { commitSession(it) }
+
     override suspend fun signOut() {
         SessionManager.clearSession()
         profiles.notifySignedOut()

@@ -48,7 +48,6 @@ import com.rotd.havenpad.components.CenteredListingCardRow
 import com.rotd.havenpad.components.CenteredMarketplaceTileRow
 import com.rotd.havenpad.components.CompactListingCard
 import com.rotd.havenpad.components.HavenPadAppBar
-import com.rotd.havenpad.components.ListingPhoto
 import com.rotd.havenpad.components.ListingStatusBadge
 import com.rotd.havenpad.components.HavenPadAppBarContentInset
 import com.rotd.havenpad.components.HavenPadDetailPopup
@@ -456,13 +455,8 @@ private fun BookingsPopupContent(
 
 @Composable
 private fun ListingPopupContent(listing: PropertyListing) {
-    ListingPhoto(
-        imageUrl = listing.imageUrl,
-        contentDescription = listing.title,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(180.dp)
-    ) {
+    Box {
+        HousePhotoGallery(listing = listing, heroHeight = 200.dp)
         ListingStatusBadge(
             status = listing.status,
             modifier = Modifier

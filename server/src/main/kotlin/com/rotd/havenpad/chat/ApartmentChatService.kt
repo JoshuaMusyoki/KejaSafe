@@ -10,7 +10,9 @@ import com.rotd.havenpad.db.ChatConnectionsTable
 import com.rotd.havenpad.db.ChatMessagesTable
 import com.rotd.havenpad.db.ListingBookingsTable
 import com.rotd.havenpad.db.ListingsTable
+import com.rotd.havenpad.db.UsersTable
 import com.rotd.havenpad.domain.chat.ApartmentChatMessage
+import com.rotd.havenpad.domain.chat.ApartmentChatPeer
 import com.rotd.havenpad.domain.chat.Connection
 import com.rotd.havenpad.domain.chat.decodeMessageReactions
 import com.rotd.havenpad.domain.chat.encodeMessageReactions
@@ -181,7 +183,7 @@ object ApartmentChatService {
         require(request.peerUserId.isNotBlank()) { "Missing peer" }
         require(userId != request.peerUserId) { "Cannot message yourself" }
         require(canShareApartment(userId, request.listingId, request.peerUserId)) {
-            "You can only chat with people from a confirmed stay on this listing"
+            "You can message the landlord of this house, or people from a confirmed stay."
         }
 
         val typeNorm = request.type.uppercase().ifBlank { ApartmentChatMessage.TYPE_TEXT }
@@ -285,16 +287,36 @@ object ApartmentChatService {
         upgradeIncoming(userId, listingId, peerUserId, MessageStatus.READ)
     }
 
-    fun deleteMessage(userId: String, messageId: String): Boolean = transaction {
+    fun deleteMessage(userId: String, messageId: String): ApartmentChatMessage? = transaction {
         val row = ChatMessagesTable.selectAll()
             .where { ChatMessagesTable.id eq messageId }
             .singleOrNull()
-            ?: return@transaction false
-        if (row[ChatMessagesTable.senderId] != userId) return@transaction false
+            ?: return@transaction null
+        if (row[ChatMessagesTable.senderId] != userId) return@transaction null
+        if (row[ChatMessagesTable.deleted]) return@transaction row.toMessage()
         val attachmentId = row[ChatMessagesTable.attachmentId]
-        ChatMessagesTable.deleteWhere { ChatMessagesTable.id eq messageId }
+        val now = System.currentTimeMillis()
+        ChatMessagesTable.update({ ChatMessagesTable.id eq messageId }) {
+            it[content] = ""
+            it[type] = ApartmentChatMessage.TYPE_TEXT
+            it[fileName] = null
+            it[mimeType] = null
+            it[ChatMessagesTable.attachmentId] = null
+            it[reactions] = ""
+            it[pinnedAt] = 0L
+            it[replyToPreview] = ""
+            it[deleted] = true
+            it[updatedAt] = now
+        }
+        ChatMessagesTable.update({ ChatMessagesTable.replyToId eq messageId }) {
+            it[replyToPreview] = "This message was deleted"
+            it[updatedAt] = now
+        }
         attachmentId?.let { File(chatUploadRoot, it).delete() }
-        true
+        ChatMessagesTable.selectAll()
+            .where { ChatMessagesTable.id eq messageId }
+            .single()
+            .toMessage()
     }
 
     fun reactToMessage(
@@ -415,8 +437,52 @@ object ApartmentChatService {
             ?.toConnection()
     }
 
+    fun inquiryPeers(userId: String): List<ApartmentChatPeer> = transaction {
+        val rows = ChatMessagesTable.selectAll()
+            .where {
+                (ChatMessagesTable.senderId eq userId) or (ChatMessagesTable.receiverId eq userId)
+            }
+            .toList()
+        val grouped = rows.groupBy { row ->
+            val other = if (row[ChatMessagesTable.senderId] == userId) {
+                row[ChatMessagesTable.receiverId]
+            } else {
+                row[ChatMessagesTable.senderId]
+            }
+            row[ChatMessagesTable.listingId] to other
+        }
+        grouped.mapNotNull { (key, messages) ->
+            val (listingId, otherId) = key
+            if (otherId.isBlank() || otherId == userId) return@mapNotNull null
+            val listing = ListingsTable.selectAll()
+                .where { ListingsTable.id eq listingId }
+                .singleOrNull()
+                ?: return@mapNotNull null
+            val landlordId = listing[ListingsTable.landlordId]
+            val aboutLandlord = otherId == landlordId || userId == landlordId
+            if (!aboutLandlord) return@mapNotNull null
+            val name = UsersTable.selectAll()
+                .where { UsersTable.id eq otherId }
+                .singleOrNull()
+                ?.get(UsersTable.fullName)
+                ?.ifBlank { null }
+                ?: if (otherId == landlordId) "Landlord" else "HavenPad"
+            val firstAt = messages.minOf { it[ChatMessagesTable.timestamp] }
+            ApartmentChatPeer(
+                userId = otherId,
+                displayName = name,
+                listingId = listingId,
+                listingTitle = listing[ListingsTable.title],
+                bookingId = messages.first()[ChatMessagesTable.bookingId],
+                peerIsLandlord = otherId == landlordId,
+                joinedAtMillis = firstAt,
+            )
+        }.distinctBy { "${it.listingId}_${it.userId}" }
+    }
+
     private fun canShareApartment(userId: String, listingId: String, peerId: String): Boolean =
         transaction {
+            if (isLandlordInquiry(userId, listingId, peerId)) return@transaction true
             val confirmed = ListingBookingsTable.selectAll()
                 .where {
                     (ListingBookingsTable.listingId eq listingId) and
@@ -452,6 +518,7 @@ object ApartmentChatService {
             .singleOrNull()
             ?: return@transaction false
         val landlordId = listing[ListingsTable.landlordId]
+        if (isLandlordInquiry(userId, listingId, peerId)) return@transaction true
         val confirmedGuests = ListingBookingsTable.selectAll()
             .where {
                 (ListingBookingsTable.listingId eq listingId) and
@@ -461,6 +528,33 @@ object ApartmentChatService {
             .toSet()
         (userId == landlordId && peerId in confirmedGuests) ||
             (peerId == landlordId && userId in confirmedGuests)
+    }
+
+    private fun isLandlordInquiry(userId: String, listingId: String, peerId: String): Boolean {
+        if (userId.isBlank() || peerId.isBlank() || userId == peerId || listingId.isBlank()) return false
+        val landlordId = ListingsTable.selectAll()
+            .where { ListingsTable.id eq listingId }
+            .singleOrNull()
+            ?.get(ListingsTable.landlordId)
+            ?: return false
+        return when {
+            peerId == landlordId -> true
+            userId == landlordId -> ChatMessagesTable.selectAll()
+                .where {
+                    (ChatMessagesTable.listingId eq listingId) and (
+                        (
+                            (ChatMessagesTable.senderId eq userId) and
+                                (ChatMessagesTable.receiverId eq peerId)
+                            ) or (
+                            (ChatMessagesTable.senderId eq peerId) and
+                                (ChatMessagesTable.receiverId eq userId)
+                            )
+                        )
+                }
+                .limit(1)
+                .singleOrNull() != null
+            else -> false
+        }
     }
 
     private fun org.jetbrains.exposed.v1.core.ResultRow.toConnection() = Connection(
@@ -489,6 +583,7 @@ object ApartmentChatService {
         reactions = decodeMessageReactions(this[ChatMessagesTable.reactions]),
         pinnedAt = this[ChatMessagesTable.pinnedAt],
         forwarded = this[ChatMessagesTable.forwarded],
+        deleted = this[ChatMessagesTable.deleted],
     )
 
     private fun parseConnectionStatus(raw: String): ConnectionStatus =

@@ -10,6 +10,7 @@ import java.io.File
 @Composable
 actual fun rememberPdfPickerLauncher(
     onPdfsPicked: (List<PickedImage>) -> Unit,
+    onError: (String) -> Unit,
 ): () -> Unit {
     return remember {
         {
@@ -20,7 +21,10 @@ actual fun rememberPdfPickerLauncher(
             val directory = dialog.directory ?: return@remember
             val name = dialog.file ?: return@remember
             val file = File(directory, name)
-            if (!file.exists()) return@remember
+            if (!file.exists()) {
+                onError("Couldn't open that PDF. Try another file.")
+                return@remember
+            }
             onPdfsPicked(
                 listOf(
                     PickedImage(

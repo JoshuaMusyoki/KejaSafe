@@ -29,11 +29,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.nio.ByteBuffer
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import org.webrtc.Camera2Enumerator
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
 import org.webrtc.IceCandidate
+import org.webrtc.JavaI420Buffer
 import org.webrtc.MediaConstraints
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
@@ -44,6 +50,8 @@ import org.webrtc.SessionDescription
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoCapturer
+import org.webrtc.VideoFrame
+import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import org.webrtc.audio.JavaAudioDeviceModule
 
@@ -142,10 +150,14 @@ private class AndroidRtcEngine(
     private var peer: PeerConnection? = null
     private var capturer: VideoCapturer? = null
     private var captureHelper: SurfaceTextureHelper? = null
+    private var videoSource: VideoSource? = null
     private var localVideoTrack: VideoTrack? = null
     private var localAudioTrack: org.webrtc.AudioTrack? = null
     private val localIce = Collections.synchronizedList(mutableListOf<RtcIceCandidate>())
     private var cameraWanted = true
+    @Volatile private var sendingBlack = false
+    private var blackPump: ScheduledFuture<*>? = null
+    private var blackScheduler = newBlackScheduler()
 
     override suspend fun prepare(enableCamera: Boolean, enableMic: Boolean) {
         cameraWanted = enableCamera
@@ -208,15 +220,23 @@ private class AndroidRtcEngine(
     }
 
     override fun setCameraEnabled(enabled: Boolean) {
-        localVideoTrack?.setEnabled(enabled)
-        runCatching {
-            if (enabled) capturer?.startCapture(1280, 720, 30) else capturer?.stopCapture()
+        // Keep the track live. Disabling it, or only stopping the camera, leaves the
+        // last picture on this phone and on the other person's large view.
+        localVideoTrack?.setEnabled(true)
+        if (enabled) {
+            stopBlackFrames()
+            runCatching { capturer?.startCapture(1280, 720, 30) }
+        } else {
+            runCatching { capturer?.stopCapture() }
+            startBlackFrames()
         }
     }
 
     override fun hasRemoteVideo(): Boolean = remoteVideo.value != null
 
     override fun close() {
+        stopBlackFrames()
+        blackScheduler.shutdownNow()
         runCatching { capturer?.stopCapture() }
         runCatching { capturer?.dispose() }
         capturer = null
@@ -224,6 +244,7 @@ private class AndroidRtcEngine(
         captureHelper = null
         localVideoTrack = null
         localAudioTrack = null
+        videoSource = null
         localVideo.value = null
         remoteVideo.value = null
         runCatching { peer?.close() }
@@ -240,6 +261,7 @@ private class AndroidRtcEngine(
         val camera = enumerator.createCapturer(name, null) ?: return
         val helper = SurfaceTextureHelper.create("HavenCapture", eglBase.eglBaseContext)
         val source = factory?.createVideoSource(camera.isScreencast) ?: return
+        videoSource = source
         camera.initialize(helper, context, source.capturerObserver)
         camera.startCapture(1280, 720, 30)
         val track = factory?.createVideoTrack("haven-video", source) ?: return
@@ -249,6 +271,51 @@ private class AndroidRtcEngine(
         captureHelper = helper
         localVideoTrack = track
         localVideo.value = track
+    }
+
+    private fun startBlackFrames() {
+        val source = videoSource ?: return
+        sendingBlack = true
+        if (blackPump != null) return
+        if (blackScheduler.isShutdown) blackScheduler = newBlackScheduler()
+        blackPump = runCatching {
+            blackScheduler.scheduleAtFixedRate({
+                if (!sendingBlack) return@scheduleAtFixedRate
+                val frame = blackFrame()
+                runCatching {
+                    source.capturerObserver.onCapturerStarted(true)
+                    source.capturerObserver.onFrameCaptured(frame)
+                }
+                frame.release()
+            }, 0, 200, TimeUnit.MILLISECONDS)
+        }.getOrNull()
+    }
+
+    private fun newBlackScheduler(): ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor { runnable ->
+            Thread(runnable, "HavenBlackFrame").apply { isDaemon = true }
+        }
+
+    private fun stopBlackFrames() {
+        sendingBlack = false
+        blackPump?.cancel(false)
+        blackPump = null
+    }
+
+    private fun blackFrame(): VideoFrame {
+        val width = 160
+        val height = 120
+        val buffer = JavaI420Buffer.allocate(width, height)
+        fillPlane(buffer.dataY, 0)
+        fillPlane(buffer.dataU, 128)
+        fillPlane(buffer.dataV, 128)
+        return VideoFrame(buffer, 0, System.nanoTime())
+    }
+
+    private fun fillPlane(plane: ByteBuffer, value: Int) {
+        val byte = value.toByte()
+        for (index in 0 until plane.capacity()) plane.put(index, byte)
+        plane.rewind()
     }
 
     private val observer = object : PeerConnection.Observer {
@@ -367,6 +434,14 @@ actual fun LiveTourVideoPane(
     } else {
         androidSession?.localVideoTrack
     } ?: MutableStateFlow(null)).collectAsState()
+    val cameraOn by (androidSession?.cameraEnabled ?: MutableStateFlow(true)).collectAsState()
+
+    if (!showRemote && androidSession != null && !cameraOn) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Text(text = "Camera off", color = Color.White.copy(alpha = 0.8f))
+        }
+        return
+    }
 
     if (androidSession == null || track == null) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {

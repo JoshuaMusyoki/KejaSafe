@@ -2,6 +2,7 @@ package com.rotd.havenpad.network
 
 import com.rotd.havenpad.PinChatMessageRequest
 import com.rotd.havenpad.ReactToChatMessageRequest
+import com.rotd.havenpad.RegisterDeviceRequest
 import com.rotd.havenpad.SendApartmentChatMessageRequest
 import com.rotd.havenpad.UpsertChatConnectionRequest
 import com.rotd.havenpad.domain.chat.ApartmentChatMessage
@@ -113,6 +114,19 @@ object ChatClient {
         Result.failure(AppException.from(e))
     }
 
+    suspend fun inquiryPeers(): Result<List<com.rotd.havenpad.domain.chat.ApartmentChatPeer>> = try {
+        val token = authHeader() ?: return notSignedIn()
+        val response = client.get("${AuthClient.BASE_URL}/chat/inquiries") {
+            header(HttpHeaders.Authorization, token)
+        }
+        if (response.status.isSuccess()) Result.success(response.body())
+        else httpFailure(response, "Failed to load landlord chats")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(AppException.from(e))
+    }
+
     suspend fun sendMessage(
         request: SendApartmentChatMessageRequest,
     ): Result<ApartmentChatMessage> = try {
@@ -190,13 +204,42 @@ object ChatClient {
         Result.failure(AppException.from(e))
     }
 
-    suspend fun deleteMessage(messageId: String): Result<Unit> = try {
+    suspend fun deleteMessage(messageId: String): Result<ApartmentChatMessage> = try {
         val token = authHeader() ?: return notSignedIn()
         val response = client.delete("${AuthClient.BASE_URL}/chat/messages/$messageId") {
             header(HttpHeaders.Authorization, token)
         }
-        if (response.status.isSuccess()) Result.success(Unit)
+        if (response.status.isSuccess()) Result.success(response.body())
         else httpFailure(response, "Failed to delete message")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(AppException.from(e))
+    }
+
+    suspend fun registerDevice(token: String, platform: String = "android"): Result<Unit> = try {
+        val auth = authHeader() ?: return notSignedIn()
+        val response = client.post("${AuthClient.BASE_URL}/devices") {
+            header(HttpHeaders.Authorization, auth)
+            contentType(ContentType.Application.Json)
+            setBody(RegisterDeviceRequest(token = token, platform = platform))
+        }
+        if (response.status.isSuccess()) Result.success(Unit)
+        else httpFailure(response, "Failed to register this phone")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(AppException.from(e))
+    }
+
+    suspend fun unregisterDevice(token: String, authorization: String): Result<Unit> = try {
+        val response = client.post("${AuthClient.BASE_URL}/devices/remove") {
+            header(HttpHeaders.Authorization, authorization)
+            contentType(ContentType.Application.Json)
+            setBody(RegisterDeviceRequest(token = token))
+        }
+        if (response.status.isSuccess()) Result.success(Unit)
+        else httpFailure(response, "Failed to remove this phone")
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {

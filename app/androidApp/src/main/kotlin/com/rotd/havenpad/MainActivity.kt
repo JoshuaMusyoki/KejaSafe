@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
+import com.rotd.havenpad.chat.AppVisibility
 import com.rotd.havenpad.network.SessionManager
 import com.rotd.havenpad.storage.AndroidActivityHolder
 
@@ -14,7 +15,7 @@ class MainActivity : FragmentActivity() {
         openChatFromNotification(intent)
         openTourFromNotification(intent)
         if (SessionManager.isLogged()) {
-            ChatBackgroundSync.startAlerts(this)
+            ChatBackgroundSync.startListening()
         }
 
         setContent {
@@ -32,12 +33,14 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         AndroidActivityHolder.current = this
+        AppVisibility.inForeground = true
         if (SessionManager.isLogged()) {
-            ChatBackgroundSync.startAlerts(this)
+            ChatBackgroundSync.startListening()
         }
     }
 
     override fun onPause() {
+        AppVisibility.inForeground = false
         if (SessionManager.isLogged()) {
             ChatBackgroundSync.enqueueSoon(this)
         }

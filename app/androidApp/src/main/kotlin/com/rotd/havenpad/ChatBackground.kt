@@ -3,14 +3,11 @@ package com.rotd.havenpad
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.graphics.BitmapFactory
 import android.os.Build
-import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
 import androidx.work.Constraints
@@ -22,9 +19,16 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.FirebaseMessagingService
+import com.google.firebase.messaging.RemoteMessage
+import com.rotd.havenpad.chat.AppVisibility
 import com.rotd.havenpad.chat.ChatNotificationInbox
+import com.rotd.havenpad.chat.OpenChat
+import com.rotd.havenpad.chat.openChatKey
 import com.rotd.havenpad.chat.pullIncomingCall
 import com.rotd.havenpad.chat.pullNewChatMessages
+import com.rotd.havenpad.network.ChatClient
 import com.rotd.havenpad.domain.repository.ApartmentChatRepository
 import com.rotd.havenpad.navigation.ChatLaunchRequest
 import com.rotd.havenpad.navigation.HavenPadDestination
@@ -41,7 +45,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.koin.mp.KoinPlatform
 
 object ChatNotifyContract {
@@ -57,46 +60,71 @@ object ChatNotifyContract {
     const val KEY_REPLY = "reply_text"
     const val CHANNEL_ID = "chat_messages"
     const val CHANNEL_TOURS = "house_tours"
-    const val CHANNEL_PRESENCE = "havenpad_listening"
     const val EXTRA_SESSION = "tourSessionId"
-    const val PRESENCE_ID = 42
 }
 
 object ChatBackgroundSync {
     private const val PERIODIC = "chat_message_sync"
     private const val SOON = "chat_message_sync_soon"
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var listenJob: Job? = null
 
     fun install(context: Context) {
         val app = context.applicationContext
+        app.getSystemService(NotificationManager::class.java)?.cancel(42)
         AndroidChatBridge.showNotification = { request -> showChatNotification(app, request) }
         AndroidChatBridge.showHouseTour = { request -> showHouseTourNotification(app, request) }
         AndroidChatBridge.cancelHouseTour = { sessionId ->
             app.getSystemService(NotificationManager::class.java)?.cancel(sessionId.hashCode())
         }
+        ensureChannels(app)
         AndroidChatBridge.onSessionSaved = {
             schedule(app)
-            startAlerts(app)
+            startListening()
+            registerPushToken()
         }
+        AndroidChatBridge.onSessionClearing = { unregisterPushToken() }
         AndroidChatBridge.onSessionCleared = {
             cancel(app)
-            stopAlerts(app)
+            stopListening()
         }
     }
 
-    fun startAlerts(context: Context) {
-        val intent = Intent(context, HavenPadAlertService::class.java)
-        runCatching {
-            if (Build.VERSION.SDK_INT >= 26) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+    fun startListening() {
+        if (listenJob?.isActive == true) return
+        listenJob = scope.launch {
+            while (isActive) {
+                if (!SessionManager.isLogged()) break
+                val koin = KoinPlatform.getKoinOrNull()
+                if (koin != null) {
+                    runCatching { pullIncomingCall() }
+                    runCatching { pullNewChatMessages(koin.get<ApartmentChatRepository>()) }
+                }
+                delay(4_000)
             }
         }
     }
 
-    fun stopAlerts(context: Context) {
-        runCatching {
-            context.stopService(Intent(context, HavenPadAlertService::class.java))
+    fun stopListening() {
+        listenJob?.cancel()
+        listenJob = null
+    }
+
+    fun registerPushToken() {
+        if (!SessionManager.isLogged()) return
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (!task.isSuccessful) return@addOnCompleteListener
+            val token = task.result?.takeIf { it.isNotBlank() } ?: return@addOnCompleteListener
+            scope.launch { ChatClient.registerDevice(token) }
+        }
+    }
+
+    fun unregisterPushToken() {
+        val bearer = SessionManager.token.value ?: return
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (!task.isSuccessful) return@addOnCompleteListener
+            val token = task.result?.takeIf { it.isNotBlank() } ?: return@addOnCompleteListener
+            scope.launch { ChatClient.unregisterDevice(token, "Bearer $bearer") }
         }
     }
 
@@ -194,7 +222,10 @@ fun openTourFromNotification(intent: Intent?) {
 
 fun openChatFromNotification(intent: Intent?) {
     val peerId = intent?.getStringExtra(ChatNotifyContract.EXTRA_PEER)?.takeIf { it.isNotBlank() } ?: return
-    intent.getStringExtra(ChatNotifyContract.EXTRA_MESSAGE_ID)?.let(ChatNotificationInbox::markRead)
+    intent.getStringExtra(ChatNotifyContract.EXTRA_MESSAGE_ID)?.let { id ->
+        ChatNotificationInbox.markSeen(listOf(id))
+        ChatNotificationInbox.markRead(id)
+    }
     ChatLaunchRequest.request(
         HavenPadDestination.ChatThread(
             peerUserId = peerId,
@@ -202,7 +233,7 @@ fun openChatFromNotification(intent: Intent?) {
             listingTitle = intent.getStringExtra(ChatNotifyContract.EXTRA_LISTING_TITLE).orEmpty(),
             bookingId = intent.getStringExtra(ChatNotifyContract.EXTRA_BOOKING).orEmpty(),
             displayName = intent.getStringExtra(ChatNotifyContract.EXTRA_NAME).orEmpty(),
-            peerIsLandlord = intent.getBooleanExtra(ChatNotifyContract.EXTRA_LANDLORD, false),
+            peerIsLandlord = intent.truthyExtra(ChatNotifyContract.EXTRA_LANDLORD),
         )
     )
 }
@@ -317,79 +348,6 @@ private fun showHouseTourNotification(context: Context, request: HouseTourNotify
     }
 }
 
-private fun presenceNotification(context: Context): android.app.Notification {
-    val manager = context.getSystemService(NotificationManager::class.java)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager != null) {
-        manager.createNotificationChannel(
-            NotificationChannel(
-                ChatNotifyContract.CHANNEL_PRESENCE,
-                "Message listener",
-                NotificationManager.IMPORTANCE_MIN,
-            )
-        )
-    }
-    return NotificationCompat.Builder(context, ChatNotifyContract.CHANNEL_PRESENCE)
-        .setSmallIcon(R.drawable.ic_stat_message)
-        .setContentTitle("HavenPad")
-        .setContentText("Listening for messages and house tours")
-        .setOngoing(true)
-        .setSilent(true)
-        .setPriority(NotificationCompat.PRIORITY_MIN)
-        .build()
-}
-
-class HavenPadAlertService : Service() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var job: Job? = null
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification = presenceNotification(this)
-        try {
-            if (Build.VERSION.SDK_INT >= 29) {
-                startForeground(
-                    ChatNotifyContract.PRESENCE_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-                )
-            } else {
-                startForeground(ChatNotifyContract.PRESENCE_ID, notification)
-            }
-        } catch (_: Exception) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        if (job?.isActive != true) {
-            job = scope.launch {
-                while (isActive) {
-                    if (!SessionManager.isLogged()) {
-                        withContext(Dispatchers.Main) { stopAlertsQuietly() }
-                        break
-                    }
-                    val koin = KoinPlatform.getKoinOrNull()
-                    if (koin != null) {
-                        runCatching { pullIncomingCall() }
-                        runCatching { pullNewChatMessages(koin.get<ApartmentChatRepository>()) }
-                    }
-                    delay(2_000)
-                }
-            }
-        }
-        return START_STICKY
-    }
-
-    private fun stopAlertsQuietly() {
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
-    override fun onDestroy() {
-        job?.cancel()
-        super.onDestroy()
-    }
-}
-
 private fun Intent.putChatExtras(request: ChatNotifyRequest) {
     putExtra(ChatNotifyContract.EXTRA_MESSAGE_ID, request.notificationKey)
     putExtra(ChatNotifyContract.EXTRA_PEER, request.peerUserId)
@@ -398,4 +356,102 @@ private fun Intent.putChatExtras(request: ChatNotifyRequest) {
     putExtra(ChatNotifyContract.EXTRA_BOOKING, request.bookingId)
     putExtra(ChatNotifyContract.EXTRA_NAME, request.displayName)
     putExtra(ChatNotifyContract.EXTRA_LANDLORD, request.peerIsLandlord)
+}
+
+private fun Intent.truthyExtra(name: String): Boolean {
+    val raw = extras?.get(name) ?: return false
+    return when (raw) {
+        is Boolean -> raw
+        else -> raw.toString().equals("true", ignoreCase = true)
+    }
+}
+
+private fun ensureChannels(context: Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    val manager = context.getSystemService(NotificationManager::class.java) ?: return
+    manager.createNotificationChannel(
+        NotificationChannel(
+            ChatNotifyContract.CHANNEL_ID,
+            "Messages",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "Chat messages"
+            enableVibration(true)
+        },
+    )
+    manager.createNotificationChannel(
+        NotificationChannel(
+            ChatNotifyContract.CHANNEL_TOURS,
+            "House tours",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "Incoming house tours"
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+        },
+    )
+}
+
+/**
+ * Foreground delivery. When HavenPad is closed, Play Services shows the
+ * notification payload itself and this service is not started.
+ */
+class HavenPadMessagingService : FirebaseMessagingService() {
+    override fun onNewToken(token: String) {
+        if (!SessionManager.isLogged()) return
+        CoroutineScope(Dispatchers.IO).launch { ChatClient.registerDevice(token) }
+    }
+
+    override fun onMessageReceived(message: RemoteMessage) {
+        val data = message.data
+        if (data["kind"] == "signin") {
+            val challengeId = data["challengeId"].orEmpty()
+            val deviceName = data["deviceName"].orEmpty().ifBlank { "Another device" }
+            if (challengeId.isNotBlank()) {
+                com.rotd.havenpad.auth.SignInPromptBus.offer(
+                    com.rotd.havenpad.SignInPrompt(challengeId = challengeId, deviceName = deviceName)
+                )
+            }
+            return
+        }
+        if (data["kind"] == "tour") {
+            val sessionId = data["tourSessionId"].orEmpty()
+            if (sessionId.isBlank()) return
+            showHouseTourNotification(
+                this,
+                HouseTourNotify(
+                    callerName = data["displayName"].orEmpty(),
+                    listingTitle = data["listingTitle"].orEmpty(),
+                    sessionId = sessionId,
+                    peerUserId = data["peerUserId"].orEmpty(),
+                    listingId = data["listingId"].orEmpty(),
+                    peerIsLandlord = data["peerIsLandlord"].equals("true", ignoreCase = true),
+                ),
+            )
+            return
+        }
+        val peerId = data["peerUserId"].orEmpty()
+        if (peerId.isBlank()) return
+        val messageId = data["messageId"].orEmpty().ifBlank { message.messageId.orEmpty() }
+        if (messageId.isNotBlank()) ChatNotificationInbox.markSeen(listOf(messageId))
+        val reading = AppVisibility.inForeground &&
+            OpenChat.peerKey == openChatKey(data["listingId"].orEmpty(), peerId)
+        if (reading) return
+        val title = message.notification?.title
+            ?: data["displayName"].orEmpty().ifBlank { "HavenPad" }
+        val body = message.notification?.body.orEmpty()
+        showChatNotification(
+            this,
+            ChatNotifyRequest(
+                title = title,
+                body = body,
+                notificationKey = messageId.ifBlank { peerId },
+                peerUserId = peerId,
+                listingId = data["listingId"].orEmpty(),
+                listingTitle = data["listingTitle"].orEmpty(),
+                bookingId = data["bookingId"].orEmpty(),
+                displayName = data["displayName"].orEmpty().ifBlank { title },
+                peerIsLandlord = data["peerIsLandlord"].equals("true", ignoreCase = true),
+            ),
+        )
+    }
 }

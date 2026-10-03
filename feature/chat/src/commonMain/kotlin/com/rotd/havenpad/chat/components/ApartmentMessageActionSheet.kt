@@ -2,6 +2,9 @@ package com.rotd.havenpad.chat.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,6 +55,8 @@ fun ApartmentMessageActionSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -89,6 +94,16 @@ fun ApartmentMessageActionSheet(
                 maxLines = 3,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
+            if (isMine) {
+                ActionRow(
+                    icon = Icons.Rounded.Delete,
+                    label = "Delete for everyone",
+                    onClick = {
+                        onDelete()
+                        onDismiss()
+                    }
+                )
+            }
             if (onOpen != null) {
                 ActionRow(
                     icon = Icons.AutoMirrored.Rounded.OpenInNew,
@@ -130,16 +145,6 @@ fun ApartmentMessageActionSheet(
                     onDismiss()
                 }
             )
-            if (isMine) {
-                ActionRow(
-                    icon = Icons.Rounded.Delete,
-                    label = "Delete",
-                    onClick = {
-                        onDelete()
-                        onDismiss()
-                    }
-                )
-            }
         }
     }
 }

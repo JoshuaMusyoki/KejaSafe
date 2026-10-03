@@ -22,6 +22,11 @@ object OpenChat {
     var peerKey: String? = null
 }
 
+/** False after the phone app leaves the screen, so a background check can still notify. */
+object AppVisibility {
+    var inForeground: Boolean = true
+}
+
 fun openChatKey(listingId: String, userId: String): String = "${listingId}_$userId"
 
 private val notifiedCallIds = mutableSetOf<String>()
