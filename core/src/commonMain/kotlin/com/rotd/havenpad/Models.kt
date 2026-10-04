@@ -408,8 +408,23 @@ data class PropertyListing(
     val inquiries: Int = 0,
     val latitude: Double = -1.2921,
     val longitude: Double = 36.8219,
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L,
+    /** This house's rating as a percent of five stars. */
+    val reviewPercent: Int = 0,
+    val reviewCount: Int = 0,
+    /** 1 is the best-reviewed house. Empty when this house has no reviews yet. */
+    val landlordRank: Int? = null,
 )
+
+fun PropertyListing.reviewRankLabel(): String = when {
+    reviewCount <= 0 -> "No reviews yet"
+    else -> buildString {
+        append("$reviewPercent%")
+        landlordRank?.let { append(" · Rank #$it") }
+        append(" · $reviewCount review")
+        if (reviewCount != 1) append("s")
+    }
+}
 
 @Serializable
 data class CreateListingRequest(
@@ -826,6 +841,110 @@ data class SendApartmentChatMessageRequest(
 @Serializable
 data class ReactToChatMessageRequest(
     val emoji: String,
+)
+
+/** Who the stars are about. */
+@Serializable
+enum class ReviewSubject {
+    LANDLORD,
+    STUDENT,
+}
+
+@Serializable
+enum class ReviewReportStatus {
+    NONE,
+    OPEN,
+    FOLLOWED_UP,
+    DISMISSED,
+}
+
+@Serializable
+data class StayReview(
+    val id: String,
+    val subject: ReviewSubject,
+    val listingId: String,
+    val listingTitle: String = "",
+    val landlordId: String,
+    val landlordName: String = "",
+    val studentId: String,
+    val studentName: String = "",
+    val authorId: String,
+    val authorName: String = "",
+    val rating: Int,
+    val body: String = "",
+    val createdAt: Long = 0L,
+    val reply: String = "",
+    val replyAt: Long = 0L,
+    val reportStatus: ReviewReportStatus = ReviewReportStatus.NONE,
+    val reportReason: String = "",
+    /** Note HavenPad sent the author after a report. Visible to that author and admin. */
+    val followUpNote: String = "",
+)
+
+@Serializable
+data class Reputation(
+    val userId: String,
+    val subject: ReviewSubject,
+    val percent: Int = 0,
+    val reviewCount: Int = 0,
+    val rank: Int? = null,
+    val reviews: List<StayReview> = emptyList(),
+)
+
+@Serializable
+data class MyReviews(
+    val aboutMe: Reputation,
+    val followUps: List<StayReview> = emptyList(),
+)
+
+@Serializable
+data class ListingReviewPage(
+    val listingId: String,
+    val landlordId: String = "",
+    val landlordName: String = "",
+    val percent: Int = 0,
+    val reviewCount: Int = 0,
+    val rank: Int? = null,
+    val reviews: List<StayReview> = emptyList(),
+)
+
+@Serializable
+data class ReviewStudentOption(
+    val studentId: String,
+    val studentName: String,
+)
+
+@Serializable
+data class ReviewComposer(
+    val canReviewHouse: Boolean = false,
+    val isHouseLandlord: Boolean = false,
+    val students: List<ReviewStudentOption> = emptyList(),
+    /** The signed-in person's review of this house, including any admin follow-up. */
+    val myHouseReview: StayReview? = null,
+)
+
+@Serializable
+data class SubmitReviewRequest(
+    val listingId: String,
+    val subject: ReviewSubject,
+    val studentId: String = "",
+    val rating: Int,
+    val body: String = "",
+)
+
+@Serializable
+data class ReplyReviewRequest(
+    val reply: String,
+)
+
+@Serializable
+data class ReportReviewRequest(
+    val reason: String,
+)
+
+@Serializable
+data class FollowUpReviewRequest(
+    val note: String,
 )
 
 @Serializable

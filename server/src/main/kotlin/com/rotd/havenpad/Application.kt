@@ -13,6 +13,7 @@ import com.rotd.havenpad.db.initDatabase
 import com.rotd.havenpad.kyc.KycService
 import com.rotd.havenpad.listing.ListingService
 import com.rotd.havenpad.listing.LiveTourService
+import com.rotd.havenpad.listing.reviewRoutes
 import com.rotd.havenpad.listing.StoryService
 import com.rotd.havenpad.listing.propertyRequestRoutes
 import com.rotd.havenpad.payment.mpesaCallbackRoutes
@@ -247,6 +248,15 @@ fun Application.module() {
             else call.respond(HttpStatusCode.NotFound, "Listing not found")
         }
 
+        get("/listings/{id}/reviews") {
+            val id = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            try {
+                call.respond(com.rotd.havenpad.listing.ReviewService.listingPage(id))
+            } catch (e: IllegalStateException) {
+                call.respond(HttpStatusCode.NotFound, e.message ?: "House not found")
+            }
+        }
+
         authenticate("auth-jwt") {
             placesRoutes()
 
@@ -322,6 +332,7 @@ fun Application.module() {
             }
 
             adminRoutes()
+            reviewRoutes()
 
             route("/stories") {
                 post {

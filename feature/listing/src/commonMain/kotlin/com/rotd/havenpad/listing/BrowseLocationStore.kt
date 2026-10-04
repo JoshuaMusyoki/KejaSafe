@@ -1,6 +1,7 @@
 package com.rotd.havenpad.listing
 
 import com.rotd.havenpad.storage.JsonCache
+import com.rotd.havenpad.utils.calculateDistance
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -38,12 +39,19 @@ object BrowseLocationStore {
         fromDevice: Boolean = false
     ) {
         val existing = read()
+        val movedKm = if (existing?.latitude != null && existing.longitude != null) {
+            calculateDistance(existing.latitude, existing.longitude, latitude, longitude)
+        } else {
+            Double.MAX_VALUE
+        }
+        val resolvedName = name?.trim()?.takeIf { it.isNotBlank() }
+            ?: if (fromDevice && movedKm > 0.4) null else existing?.name
         JsonCache.put(
             KEY,
             SavedBrowseLocation(
                 latitude = latitude,
                 longitude = longitude,
-                name = name ?: existing?.name,
+                name = resolvedName,
                 skipped = false,
                 fromDevice = fromDevice
             ),

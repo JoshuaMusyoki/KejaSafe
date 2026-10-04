@@ -10,43 +10,52 @@ import com.rotd.havenpad.storage.AndroidAppContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 actual class LocationProvider actual constructor() {
     @SuppressLint("MissingPermission")
     actual suspend fun getCurrentLocation(): GeoCoordinates? = withContext(Dispatchers.IO) {
         try {
             val ctx = AndroidAppContext.require()
-            val fusedLocationClient = LocationServices.getFusedLocationProviderClient(ctx)
-            
-            // Try to get last location first (fast)
-            val lastLoc = fusedLocationClient.lastLocation.await()
-            if (lastLoc != null) {
-                GeoCoordinates(lastLoc.latitude, lastLoc.longitude)
-            } else {
-                val token = CancellationTokenSource().token
-                val freshLoc = fusedLocationClient.getCurrentLocation(
-                    Priority.PRIORITY_HIGH_ACCURACY,
-                    token
-                ).await()
-                freshLoc?.let { GeoCoordinates(it.latitude, it.longitude) }
+            val client = LocationServices.getFusedLocationProviderClient(ctx)
+            val token = CancellationTokenSource()
+            val fresh = withTimeoutOrNull(12_000) {
+                client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, token.token).await()
             }
+            val last = runCatching { client.lastLocation.await() }.getOrNull()
+            val chosen = fresh ?: last?.takeIf {
+                System.currentTimeMillis() - it.time <= RECENT_FIX_MS
+            } ?: return@withContext null
+            GeoCoordinates(
+                latitude = chosen.latitude,
+                longitude = chosen.longitude,
+                accuracyMeters = chosen.accuracy.takeIf { it > 0f },
+            )
         } catch (e: Exception) {
             println("LocationProvider error: ${e.message}")
             null
         }
     }
 
-    actual suspend fun getPlaceName(latitude: Double, longitude: Double): String? = withContext(Dispatchers.IO) {
+    actual suspend fun getPlaceName(
+        latitude: Double,
+        longitude: Double,
+        accuracyMeters: Float?,
+    ): String? = withContext(Dispatchers.IO) {
         try {
             val ctx = AndroidAppContext.require()
             val geocoder = Geocoder(ctx)
-            val addresses = geocoder.getFromLocation(latitude, longitude, 1)
-            val address = addresses?.firstOrNull()
-            address?.let {
-                listOfNotNull(it.subLocality, it.locality).joinToString(", ")
-                    .ifBlank { it.thoroughfare }
-                    ?.ifBlank { "Unknown location" }
+            val address = geocoder.getFromLocation(latitude, longitude, 1)?.firstOrNull()
+                ?: return@withContext null
+            val neighborhood = address.subLocality?.trim()?.takeIf { it.isNotBlank() }
+            val city = address.locality?.trim()?.takeIf { it.isNotBlank() }
+            val precise = accuracyMeters != null && accuracyMeters > 0f && accuracyMeters <= PRECISE_METERS
+            val label = if (precise) {
+                listOfNotNull(neighborhood, city).distinct().joinToString(", ")
+            } else {
+                city.orEmpty()
             }
+            label.ifBlank { null }
         } catch (e: Exception) {
             null
         }
@@ -108,3 +117,6 @@ actual class LocationProvider actual constructor() {
         }
     }
 }
+
+private const val RECENT_FIX_MS = 2 * 60 * 1000L
+private const val PRECISE_METERS = 200f

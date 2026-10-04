@@ -23,11 +23,6 @@ class HavenPadApplication : Application() {
             androidLogger(Level.ERROR)
             androidContext(this@HavenPadApplication)
         }
-        SessionManager.restore()
-        if (SessionManager.isLogged()) {
-            ChatBackgroundSync.schedule(this)
-            ChatBackgroundSync.startListening()
-            ChatBackgroundSync.registerPushToken()
-        }
+        SessionManager.dropSavedSession()
     }
 }

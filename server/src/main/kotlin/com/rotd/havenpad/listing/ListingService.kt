@@ -155,10 +155,11 @@ object ListingService {
     }
 
     fun getListingsForLandlord(landlordId: String): List<PropertyListing> = transaction {
-        ListingsTable.selectAll()
-            .where { ListingsTable.landlordId eq landlordId }
-            .map { row -> row.toListing(loadPhotos(row[ListingsTable.id])) }
-            .sortedByDescending { it.createdAt }
+        ReviewService.applyLandlordRank(
+            ListingsTable.selectAll()
+                .where { ListingsTable.landlordId eq landlordId }
+                .map { row -> row.toListing(loadPhotos(row[ListingsTable.id])) }
+        )
     }
 
     private fun haversineDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
@@ -173,20 +174,16 @@ object ListingService {
     }
 
     fun getBrowseListings(userLat: Double? = null, userLng: Double? = null): List<PropertyListing> = transaction {
-        val allListings = ListingsTable.selectAll()
-            .where { ListingsTable.status inList listOf(ListingStatus.VERIFIED, ListingStatus.PENDING) }
-            .map { row -> row.toListing(loadPhotos(row[ListingsTable.id])) }
-        
+        val ranked = ReviewService.applyLandlordRank(
+            ListingsTable.selectAll()
+                .where { ListingsTable.status inList listOf(ListingStatus.VERIFIED, ListingStatus.PENDING) }
+                .map { row -> row.toListing(loadPhotos(row[ListingsTable.id])) }
+        )
         if (userLat != null && userLng != null) {
-            // Filter by 30km and sort by distance
-            allListings.filter { haversineDistance(userLat, userLng, it.latitude, it.longitude) <= 30.0 }
-                .sortedBy { haversineDistance(userLat, userLng, it.latitude, it.longitude) }
-                .ifEmpty {
-                    // If none within 30km, return all sorted by distance (suggestions)
-                    allListings.sortedBy { haversineDistance(userLat, userLng, it.latitude, it.longitude) }
-                }
+            ranked.filter { haversineDistance(userLat, userLng, it.latitude, it.longitude) <= 30.0 }
+                .ifEmpty { ranked }
         } else {
-            allListings.sortedByDescending { it.createdAt }
+            ranked
         }
     }
 
@@ -194,7 +191,11 @@ object ListingService {
         ListingsTable.selectAll()
             .where { ListingsTable.id eq id }
             .singleOrNull()
-            ?.let { it.toListing(loadPhotos(it[ListingsTable.id])) }
+            ?.let { row ->
+                ReviewService.applyLandlordRank(
+                    listOf(row.toListing(loadPhotos(row[ListingsTable.id])))
+                ).first()
+            }
     }
 
     fun getListingAnalytics(listingId: String, landlordId: String): ListingAnalytics? = transaction {

@@ -38,6 +38,7 @@ class TenantHomeViewModel(
     )
     val state: StateFlow<TenantHomeState> = _state.asStateFlow()
     private var enrichJob: Job? = null
+    private var locationJob: Job? = null
     private var refreshGeneration = 0
 
     init {
@@ -202,13 +203,22 @@ class TenantHomeViewModel(
         }
     }
 
+    /** Replaces a saved area with a fresh device fix when location is allowed. */
+    fun refreshDeviceLocation() {
+        val saved = BrowseLocationStore.read()
+        if (saved?.skipped == true && !saved.hasCoordinates) return
+        requestDeviceLocation()
+    }
+
     fun requestDeviceLocation() {
-        viewModelScope.launch(Dispatchers.Default) {
+        if (locationJob?.isActive == true) return
+        locationJob = viewModelScope.launch(Dispatchers.Default) {
+            _state.update { it.copy(isLocating = true, error = null) }
             val provider = LocationProvider()
             val coords = runCatching { provider.getCurrentLocation() }.getOrNull()
             if (coords != null) {
                 val name = runCatching {
-                    provider.getPlaceName(coords.latitude, coords.longitude)
+                    provider.getPlaceName(coords.latitude, coords.longitude, coords.accuracyMeters)
                 }.getOrNull()
                 BrowseLocationStore.saveCoordinates(
                     coords.latitude,
@@ -221,6 +231,7 @@ class TenantHomeViewModel(
                         userLatitude = coords.latitude,
                         userLongitude = coords.longitude,
                         userLocationName = name,
+                        isLocating = false,
                         showLocationPrompt = false,
                         error = null
                     )
@@ -228,7 +239,10 @@ class TenantHomeViewModel(
                 refresh(showLoading = false)
             } else {
                 _state.update {
-                    it.copy(error = "Could not fetch device GPS. Please pick a center manually.")
+                    it.copy(
+                        isLocating = false,
+                        error = "Could not fetch device GPS. Please pick a center manually."
+                    )
                 }
             }
         }

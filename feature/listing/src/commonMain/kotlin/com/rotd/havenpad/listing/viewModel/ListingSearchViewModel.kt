@@ -290,7 +290,12 @@ private fun SearchFilterInputs.filtered(): List<PropertyListing> {
             matchesProximity && matchesType && matchesUniversity && matchesVerified
     }
     return when (sort) {
-        ListingSortOption.RELEVANCE -> filtered
+        ListingSortOption.RELEVANCE -> filtered.sortedWith(
+            compareByDescending<PropertyListing> { it.reviewCount > 0 }
+                .thenByDescending { it.reviewPercent }
+                .thenByDescending { it.reviewCount }
+                .thenBy { it.landlordRank ?: Int.MAX_VALUE }
+        )
         ListingSortOption.PRICE_LOW -> filtered.sortedBy { it.pricePerMonth ?: Double.MAX_VALUE }
         ListingSortOption.PRICE_HIGH -> filtered.sortedByDescending { it.pricePerMonth ?: Double.MIN_VALUE }
         ListingSortOption.DISTANCE -> {

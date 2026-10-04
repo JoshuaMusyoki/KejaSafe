@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rotd.havenpad.ListingStatus
 import com.rotd.havenpad.PropertyListing
+import com.rotd.havenpad.reviewRankLabel
 import com.rotd.havenpad.components.ListingPhoto
 import com.rotd.havenpad.listing.displayLabel
 import com.rotd.havenpad.web.formatCount
@@ -151,6 +152,13 @@ fun PropertyCard(
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = listing.reviewRankLabel(),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (listing.reviewCount > 0) LandingBrandGreen else LandingTextSecondary,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(

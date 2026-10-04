@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.rotd.havenpad.AdminUserDetail
 import com.rotd.havenpad.AdminUserSummary
 import com.rotd.havenpad.CreateLandlordRequest
+import com.rotd.havenpad.StayReview
 import com.rotd.havenpad.UserRole
 import com.rotd.havenpad.error.userMessage
 import com.rotd.havenpad.media.decodeToImageBitmap
 import com.rotd.havenpad.network.AdminClient
+import com.rotd.havenpad.network.ReviewClient
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,8 +20,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class AdminListSection { LANDLORDS, STUDENTS, REPORTS }
+
 data class AdminUiState(
     val role: UserRole = UserRole.LANDLORD,
+    val section: AdminListSection = AdminListSection.LANDLORDS,
+    val reports: List<StayReview> = emptyList(),
     val loading: Boolean = true,
     val users: List<AdminUserSummary> = emptyList(),
     val error: String? = null,
@@ -41,7 +47,8 @@ class AdminViewModel : ViewModel() {
 
     fun load(role: UserRole) {
         viewModelScope.launch {
-            _state.update { it.copy(role = role, loading = true, error = null, detail = null) }
+            val section = if (role == UserRole.STUDENT) AdminListSection.STUDENTS else AdminListSection.LANDLORDS
+            _state.update { it.copy(role = role, section = section, loading = true, error = null, detail = null) }
             AdminClient.listUsers(role).fold(
                 onSuccess = { users -> _state.update { it.copy(loading = false, users = users) } },
                 onFailure = { error -> _state.update { it.copy(loading = false, error = error.userMessage()) } },
@@ -107,6 +114,57 @@ class AdminViewModel : ViewModel() {
                 onFailure = { error ->
                     _state.update { it.copy(busy = false, error = error.userMessage()) }
                 },
+            )
+        }
+    }
+
+    fun openReports() {
+        viewModelScope.launch {
+            _state.update {
+                it.copy(section = AdminListSection.REPORTS, loading = true, error = null, detail = null)
+            }
+            ReviewClient.reports().fold(
+                onSuccess = { reports -> _state.update { it.copy(loading = false, reports = reports) } },
+                onFailure = { error -> _state.update { it.copy(loading = false, error = error.userMessage()) } },
+            )
+        }
+    }
+
+    fun followUp(reviewId: String, note: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, error = null) }
+            ReviewClient.followUp(reviewId, note).fold(
+                onSuccess = {
+                    _state.update { it.copy(busy = false, message = "Follow-up saved for the student.") }
+                    openReports()
+                },
+                onFailure = { error -> _state.update { it.copy(busy = false, error = error.userMessage()) } },
+            )
+        }
+    }
+
+    fun dismissReport(reviewId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, error = null) }
+            ReviewClient.dismiss(reviewId).fold(
+                onSuccess = {
+                    _state.update { it.copy(busy = false, message = "Review kept on HavenPad.") }
+                    openReports()
+                },
+                onFailure = { error -> _state.update { it.copy(busy = false, error = error.userMessage()) } },
+            )
+        }
+    }
+
+    fun deleteReview(reviewId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, error = null) }
+            ReviewClient.delete(reviewId).fold(
+                onSuccess = {
+                    _state.update { it.copy(busy = false, message = "Review deleted.") }
+                    openReports()
+                },
+                onFailure = { error -> _state.update { it.copy(busy = false, error = error.userMessage()) } },
             )
         }
     }

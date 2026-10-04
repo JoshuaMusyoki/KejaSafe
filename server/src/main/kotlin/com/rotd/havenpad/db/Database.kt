@@ -319,6 +319,26 @@ object ChatMessagesTable : Table("chat_messages") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object StayReviewsTable : Table("stay_reviews") {
+    val id = varchar("id", 50)
+    val subject = varchar("subject", 20)
+    val listingId = varchar("listing_id", 50)
+    val landlordId = varchar("landlord_id", 50)
+    val studentId = varchar("student_id", 50)
+    val authorId = varchar("author_id", 50)
+    val rating = integer("rating")
+    val body = text("body").default("")
+    val createdAt = long("created_at")
+    val reply = text("reply").default("")
+    val replyAt = long("reply_at").default(0L)
+    val reportStatus = varchar("report_status", 20).default("NONE")
+    val reportReason = text("report_reason").default("")
+    val followUpNote = text("follow_up_note").default("")
+    val reportedAt = long("reported_at").default(0L)
+
+    override val primaryKey = PrimaryKey(id)
+}
+
 object HiddenCallLogsTable : Table("hidden_call_logs") {
     val userId = varchar("user_id", 50)
     val sessionId = varchar("session_id", 50)
@@ -351,6 +371,7 @@ fun initDatabase() {
             CommunityStoriesTable,
             ChatConnectionsTable,
             ChatMessagesTable,
+            StayReviewsTable,
             HiddenCallLogsTable,
             EscrowTransactionsTable,
             EscrowAuditLogTable,
@@ -377,6 +398,7 @@ fun initDatabase() {
             CommunityStoriesTable,
             ChatConnectionsTable,
             ChatMessagesTable,
+            StayReviewsTable,
             HiddenCallLogsTable,
             EscrowTransactionsTable,
             EscrowAuditLogTable,

@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rotd.havenpad.PropertyListing
+import com.rotd.havenpad.reviewRankLabel
 import com.rotd.havenpad.components.CenteredMarketplaceTileRow
 import com.rotd.havenpad.components.CompactListingCard
 import com.rotd.havenpad.components.InsightCard
@@ -82,6 +84,7 @@ fun TenantHomeScreen(
     onNavigateToNotifications: () -> Unit = {},
     onTextLandlord: (PropertyListing) -> Unit = {},
     signedIn: Boolean = true,
+    embedInDashboard: Boolean = false,
     viewModel: TenantHomeViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -99,15 +102,20 @@ fun TenantHomeScreen(
             viewModel.requestDeviceLocation()
         }
     }
+    LaunchedEffect(locationPermission.isGranted) {
+        if (locationPermission.isGranted) viewModel.refreshDeviceLocation()
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            HavenPadFloatingNavBar(
-                selectedTab = selectedTab,
-                onTabSelected = onTabSelected
-            )
+            if (!embedInDashboard) {
+                HavenPadFloatingNavBar(
+                    selectedTab = selectedTab,
+                    onTabSelected = onTabSelected
+                )
+            }
         }
     ) { padding ->
         BoxWithConstraints(
@@ -291,10 +299,11 @@ fun TenantHomeScreen(
 
                 item {
                     MarketplaceSectionHeader(
-                        title = if (state.userLocationName != null) {
-                            "Houses around ${state.userLocationName}"
-                        } else {
-                            "Trending near you"
+                        title = when {
+                            state.isLocating -> "Finding houses near you"
+                            !state.userLocationName.isNullOrBlank() -> "Houses around ${state.userLocationName}"
+                            state.userLatitude != null -> "Houses near you"
+                            else -> "Trending near you"
                         }
                     )
                 }
@@ -532,6 +541,14 @@ private fun TenantListingPopupContent(
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+    Text(
+        text = listing.reviewRankLabel(),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    ListingReviewsPanel(listingId = listing.id)
 }
 
 private fun distanceLabel(

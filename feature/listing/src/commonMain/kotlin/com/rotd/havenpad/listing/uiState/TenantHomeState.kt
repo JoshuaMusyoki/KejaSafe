@@ -12,6 +12,7 @@ data class TenantHomeState(
     val userLatitude: Double? = null,
     val userLongitude: Double? = null,
     val userLocationName: String? = null,
+    val isLocating: Boolean = false,
     val showLocationPrompt: Boolean = false,
     val visibleListings: List<PropertyListing> = emptyList(),
     val showingDistantSuggestions: Boolean = false,

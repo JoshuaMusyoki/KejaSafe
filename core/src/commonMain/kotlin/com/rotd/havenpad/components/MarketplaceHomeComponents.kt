@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
@@ -49,6 +52,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.rotd.havenpad.ListingStatus
 import com.rotd.havenpad.PropertyListing
+import com.rotd.havenpad.reviewRankLabel
 import com.rotd.havenpad.PropertyType
 
 enum class MarketplaceTileTone {
@@ -267,7 +271,11 @@ fun HavenPadDetailPopup(
                 ) {
                     PopupHeader(title = title, onDismiss = onDismiss)
                     Column(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .heightIn(max = 560.dp)
+                            .padding(horizontal = 20.dp, vertical = 4.dp)
+                            .imePadding()
+                            .verticalScroll(rememberScrollState()),
                         content = content
                     )
                     footer?.let {
@@ -282,7 +290,13 @@ fun HavenPadDetailPopup(
     } else {
         HavenPadBottomSheet(onDismissRequest = onDismiss) {
             PopupHeader(title = title, onDismiss = onDismiss)
-            content()
+            Column(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .imePadding()
+                    .verticalScroll(rememberScrollState()),
+                content = content,
+            )
             footer?.invoke(this)
         }
     }
@@ -431,6 +445,14 @@ fun CompactListingCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = scheme.primary
+                )
+                Text(
+                    text = listing.reviewRankLabel(),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (listing.reviewCount > 0) scheme.primary else scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 TextButton(

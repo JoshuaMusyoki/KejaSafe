@@ -3,6 +3,7 @@ package com.rotd.havenpad.components
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.BottomSheetDefaults
@@ -40,6 +41,7 @@ fun HavenPadBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .navigationBarsPadding()
                 .padding(horizontal = HavenPadTheme.spacing.containerMarginMobile)
                 .padding(bottom = 24.dp),

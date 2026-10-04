@@ -1,9 +1,11 @@
 package com.rotd.havenpad.admin
 
 import com.rotd.havenpad.CreateLandlordRequest
+import com.rotd.havenpad.FollowUpReviewRequest
 import com.rotd.havenpad.KycStatus
 import com.rotd.havenpad.RejectKycRequest
 import com.rotd.havenpad.UserRole
+import com.rotd.havenpad.listing.ReviewService
 import com.rotd.havenpad.auth.AuthService
 import com.rotd.havenpad.kyc.KycService
 import io.ktor.http.ContentType
@@ -87,6 +89,45 @@ fun Route.adminRoutes() {
                 call.respond(AdminService.detail(id))
             } catch (e: IllegalArgumentException) {
                 call.respondText(e.message ?: "Could not reject", status = HttpStatusCode.BadRequest)
+            }
+        }
+
+        get("/review-reports") {
+            if (requireAdmin(call) == null) return@get
+            call.respond(ReviewService.openReports())
+        }
+
+        post("/review-reports/{id}/follow-up") {
+            if (requireAdmin(call) == null) return@post
+            val id = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+            val request = call.receive<FollowUpReviewRequest>()
+            try {
+                call.respond(ReviewService.followUp(id, request))
+            } catch (e: IllegalArgumentException) {
+                call.respondText(e.message ?: "Could not save the follow-up", status = HttpStatusCode.BadRequest)
+            } catch (e: IllegalStateException) {
+                call.respondText(e.message ?: "Review not found", status = HttpStatusCode.NotFound)
+            }
+        }
+
+        post("/review-reports/{id}/dismiss") {
+            if (requireAdmin(call) == null) return@post
+            val id = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+            try {
+                call.respond(ReviewService.dismiss(id))
+            } catch (e: IllegalStateException) {
+                call.respondText(e.message ?: "Review not found", status = HttpStatusCode.NotFound)
+            }
+        }
+
+        delete("/reviews/{id}") {
+            if (requireAdmin(call) == null) return@delete
+            val id = call.parameters["id"] ?: return@delete call.respond(HttpStatusCode.BadRequest)
+            try {
+                ReviewService.delete(id)
+                call.respond(mapOf("message" to "Review deleted"))
+            } catch (e: IllegalStateException) {
+                call.respondText(e.message ?: "Review not found", status = HttpStatusCode.NotFound)
             }
         }
 

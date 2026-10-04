@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rotd.havenpad.CampusProximity
 import com.rotd.havenpad.PropertyListing
+import com.rotd.havenpad.reviewRankLabel
 import com.rotd.havenpad.PropertyType
 import com.rotd.havenpad.components.CompactListingCard
 import com.rotd.havenpad.components.HavenPadDetailPopup
@@ -309,6 +310,14 @@ fun ListingSearchScreen(
             useDialog = false,
             content = {
                 HousePhotoGallery(listing = listing, heroHeight = 220.dp)
+                Text(
+                    text = listing.reviewRankLabel(),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                ListingReviewsPanel(listingId = listing.id)
             },
             footer = {
                 HouseSheetActions(
@@ -634,7 +643,7 @@ private fun SearchFiltersSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SortChip("Relevance", ListingSortOption.RELEVANCE, sort, onSort)
+                SortChip("Top reviewed", ListingSortOption.RELEVANCE, sort, onSort)
                 SortChip("Price ↑", ListingSortOption.PRICE_LOW, sort, onSort)
                 SortChip("Price ↓", ListingSortOption.PRICE_HIGH, sort, onSort)
                 SortChip("Nearest", ListingSortOption.DISTANCE, sort, onSort)

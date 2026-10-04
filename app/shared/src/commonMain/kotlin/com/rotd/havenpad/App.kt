@@ -24,8 +24,7 @@ import org.koin.compose.KoinContext
 @Composable
 @ScreenPreviews
 fun App() {
-    // Do not SessionManager.restore() — Android clears session on process start so
-    // killing the app logs the user out. Theme still persists.
+    SessionManager.dropSavedSession()
     ThemeController.restore()
 
     val themeMode by ThemeController.mode.collectAsState()

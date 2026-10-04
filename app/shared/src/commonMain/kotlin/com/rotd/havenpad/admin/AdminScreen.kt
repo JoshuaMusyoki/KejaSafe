@@ -126,13 +126,20 @@ fun AdminScreen(
                 )
                 else -> AccountList(
                     role = state.role,
+                    reportsOpen = state.section == AdminListSection.REPORTS,
+                    reports = state.reports,
                     loading = state.loading,
                     users = state.users,
                     error = state.error,
                     message = state.message,
+                    busy = state.busy,
                     onRole = viewModel::load,
+                    onOpenReports = viewModel::openReports,
                     onOpen = viewModel::open,
                     onAdd = { showAdd = true },
+                    onFollowUp = viewModel::followUp,
+                    onDismissReport = viewModel::dismissReport,
+                    onDeleteReview = viewModel::deleteReview,
                 )
             }
         }
@@ -182,13 +189,20 @@ fun AdminScreen(
 @Composable
 private fun AccountList(
     role: UserRole,
+    reportsOpen: Boolean,
+    reports: List<com.rotd.havenpad.StayReview>,
     loading: Boolean,
     users: List<AdminUserSummary>,
     error: String?,
     message: String?,
+    busy: Boolean,
     onRole: (UserRole) -> Unit,
+    onOpenReports: () -> Unit,
     onOpen: (String) -> Unit,
     onAdd: () -> Unit,
+    onFollowUp: (String, String) -> Unit,
+    onDismissReport: (String) -> Unit,
+    onDeleteReview: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -197,7 +211,11 @@ private fun AccountList(
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         // Tab Navigation for Role Filter
-        val selectedIndex = if (role == UserRole.LANDLORD) 0 else 1
+        val selectedIndex = when {
+            reportsOpen -> 2
+            role == UserRole.LANDLORD -> 0
+            else -> 1
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -207,17 +225,22 @@ private fun AccountList(
                 modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
             ) {
                 Tab(
-                    selected = role == UserRole.LANDLORD,
+                    selected = role == UserRole.LANDLORD && !reportsOpen,
                     onClick = { onRole(UserRole.LANDLORD) },
                     text = { Text("Landlords", fontWeight = FontWeight.SemiBold) }
                 )
                 Tab(
-                    selected = role == UserRole.STUDENT,
+                    selected = role == UserRole.STUDENT && !reportsOpen,
                     onClick = { onRole(UserRole.STUDENT) },
                     text = { Text("Students", fontWeight = FontWeight.SemiBold) }
                 )
+                Tab(
+                    selected = reportsOpen,
+                    onClick = onOpenReports,
+                    text = { Text("Reports", fontWeight = FontWeight.SemiBold) }
+                )
             }
-            if (role == UserRole.LANDLORD) {
+            if (role == UserRole.LANDLORD && !reportsOpen) {
                 Spacer(modifier = Modifier.width(12.dp))
                 Button(
                     onClick = onAdd,
@@ -243,6 +266,17 @@ private fun AccountList(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
+            }
+            reportsOpen -> {
+                AdminReviewReports(
+                    reports = reports,
+                    busy = busy,
+                    error = error,
+                    onFollowUp = onFollowUp,
+                    onDismiss = onDismissReport,
+                    onDelete = onDeleteReview,
+                    modifier = Modifier.fillMaxSize().padding(top = 16.dp),
+                )
             }
             users.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

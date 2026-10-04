@@ -12,9 +12,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 
 /**
- * In-memory session. Token/user are still written to disk during the process lifetime
- * (for API clients), but Android clears them in [com.rotd.havenpad.HavenPadApplication]
- * on every cold start so killing the app requires login again.
+ * Session for the current process only. [dropSavedSession] runs once at startup so a
+ * killed app, a closed browser tab, or a reloaded page must sign in with a password again.
+ * The token is still stored while this process is alive so API calls keep working.
  */
 object SessionManager {
     private const val KEY_TOKEN = "session_token"
@@ -33,6 +33,21 @@ object SessionManager {
     val currentUser = _currentUser.asStateFlow()
 
     private var restored = false
+    private var droppedPreviousRun = false
+
+    /**
+     * Forget the login left by the previous run. Safe to call from every entry point;
+     * only the first call in this process clears anything.
+     */
+    fun dropSavedSession() {
+        if (droppedPreviousRun) return
+        droppedPreviousRun = true
+        LocalSettings.putString(KEY_TOKEN, null)
+        LocalSettings.putString(KEY_USER, null)
+        _token.value = null
+        _currentUser.value = null
+        restored = true
+    }
 
     /** Load token/user from disk. Safe to call more than once. */
     fun restore() {

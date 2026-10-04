@@ -348,6 +348,7 @@ fun HavenPadNavHost(
                     onNavigateToNotifications = { requireSignIn { openDetail(HavenPadDestination.Notifications) } },
                     onTextLandlord = ::textLandlord,
                     signedIn = SessionManager.isLogged(),
+                    embedInDashboard = isWeb,
                 )
             }
         }
@@ -374,6 +375,7 @@ fun HavenPadNavHost(
                     onNavigateToNotifications = { requireSignIn { openDetail(HavenPadDestination.Notifications) } },
                     onTextLandlord = ::textLandlord,
                     signedIn = SessionManager.isLogged(),
+                    embedInDashboard = isWeb,
                 )
             }
         }
@@ -627,7 +629,7 @@ fun HavenPadNavHost(
     }
 
     val topDestination = backStack.lastOrNull()
-    val showWebPanel = isWeb && signedInUser != null && when (topDestination) {
+    val showWebPanel = isWeb && when (topDestination) {
         null,
         HavenPadDestination.Landing,
         HavenPadDestination.Features,
@@ -675,12 +677,19 @@ fun HavenPadNavHost(
                     ChatSidebarRequest.select(tab)
                     switchMainTab(HavenPadNavTab.CHAT)
                 },
-                onOpenBookings = { replaceRoot(HavenPadDestination.LandlordBookings) },
+                onOpenBookings = {
+                    if (SessionManager.isLogged()) replaceRoot(HavenPadDestination.LandlordBookings)
+                    else openAuth(HavenPadDestination.Login)
+                },
                 onOpenAdmin = { replaceRoot(HavenPadDestination.Admin) },
                 bookingsSelected = topDestination is HavenPadDestination.LandlordBookings,
                 toursSelected = topDestination is HavenPadDestination.LiveTourCall,
                 adminSelected = topDestination is HavenPadDestination.Admin,
-                onLogout = ::navigateToLogin,
+                onOpenLanding = { showLanding() },
+                onLogout = {
+                    if (SessionManager.isLogged()) navigateToLogin()
+                    else openAuth(HavenPadDestination.Login)
+                },
             ) {
                 AppNavigation()
             }

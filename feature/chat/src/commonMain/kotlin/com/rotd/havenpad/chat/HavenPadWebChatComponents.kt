@@ -30,6 +30,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddPhotoAlternate
@@ -286,6 +287,7 @@ fun HavenPadWebDashboardShell(
     bookingsSelected: Boolean = false,
     toursSelected: Boolean = false,
     adminSelected: Boolean = false,
+    onOpenLanding: () -> Unit = {},
     onLogout: () -> Unit,
     content: @Composable () -> Unit
 ) {
@@ -319,6 +321,7 @@ fun HavenPadWebDashboardShell(
             bookingsSelected = bookingsSelected,
             toursSelected = toursSelected,
             adminSelected = adminSelected,
+            onOpenLanding = onOpenLanding,
             onLogout = onLogout
         )
         Box(
@@ -351,11 +354,13 @@ fun HavenPadWebSidebar(
     bookingsSelected: Boolean = false,
     toursSelected: Boolean = false,
     adminSelected: Boolean = false,
+    onOpenLanding: () -> Unit = {},
     onLogout: () -> Unit = {}
 ) {
     val user = SessionManager.currentUser.value
-    val userName = user?.fullName?.ifBlank { null } ?: user?.email ?: "HavenPad User"
-    val userRole = user?.role?.name?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "User"
+    val signedIn = user != null
+    val userName = user?.fullName?.ifBlank { null } ?: user?.email ?: "Guest"
+    val userRole = user?.role?.name?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "Browsing"
     val initial = userName.firstOrNull()?.uppercase() ?: "K"
 
     Column(
@@ -364,10 +369,13 @@ fun HavenPadWebSidebar(
             .border(BorderStroke(1.dp, HavenPadWebChatColors.CardBorder))
             .padding(vertical = 18.dp, horizontal = 14.dp)
     ) {
-        // HavenPad Brand Header
+        // HavenPad Brand Header — returns to the public landing page.
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 20.dp, start = 4.dp)
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onOpenLanding)
+                .padding(bottom = 20.dp, start = 4.dp, end = 4.dp, top = 2.dp)
         ) {
             Image(
                 painter = painterResource(Res.drawable.haven_pad_logo),
@@ -561,14 +569,14 @@ fun HavenPadWebSidebar(
                 .padding(vertical = 10.dp, horizontal = 12.dp)
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.Logout,
-                contentDescription = "Logout",
+                imageVector = if (signedIn) Icons.AutoMirrored.Filled.Logout else Icons.AutoMirrored.Filled.Login,
+                contentDescription = if (signedIn) "Logout" else "Sign in",
                 tint = HavenPadWebChatColors.EmeraldPrimary,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = "Logout",
+                text = if (signedIn) "Logout" else "Sign in",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = HavenPadWebChatColors.EmeraldPrimary

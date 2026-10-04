@@ -281,7 +281,9 @@ private fun ProfileContent(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 RoleBadge(user = user)
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                ProfileReviewsSection(modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
                 HavenPadPrimaryButton(
                     text = "Edit Profile",
                     onClick = onEditProfile,

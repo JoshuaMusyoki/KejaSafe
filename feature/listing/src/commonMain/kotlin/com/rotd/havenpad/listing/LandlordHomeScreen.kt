@@ -44,6 +44,7 @@ import com.rotd.havenpad.CampusProximity
 import com.rotd.havenpad.ListingPerformance
 import com.rotd.havenpad.PropertyListing
 import com.rotd.havenpad.PropertyType
+import com.rotd.havenpad.reviewRankLabel
 import com.rotd.havenpad.components.CenteredListingCardRow
 import com.rotd.havenpad.components.CenteredMarketplaceTileRow
 import com.rotd.havenpad.components.CompactListingCard
@@ -485,6 +486,14 @@ private fun ListingPopupContent(listing: PropertyListing) {
             color = MaterialTheme.colorScheme.primary
         )
     }
+    Text(
+        text = listing.reviewRankLabel(),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    ListingReviewsPanel(listingId = listing.id)
 }
 
 private fun viewerProgress(performance: ListingPerformance): Float = when {
