@@ -29,19 +29,30 @@ object PlacesService {
 
     suspend fun autocomplete(query: String): PlaceSearchResponse {
         val key = ServerConfig.googlePlacesApiKey
-        if (key.isNullOrBlank()) return PlaceSearchResponse(configured = false)
+        if (key.isNullOrBlank()) {
+            return PlaceSearchResponse(configured = false)
+        }
+
         val response = client.post("https://places.googleapis.com/v1/places:autocomplete") {
             header("X-Goog-Api-Key", key)
             contentType(ContentType.Application.Json)
             setBody(
                 GoogleAutocompleteRequest(
                     input = query,
-                    includedRegionCodes = listOf("ke"),
+                    includedRegionCodes = listOf("KE", "ke"),
+                    locationBias = GoogleLocationBias(
+                        circle = GoogleCircle(
+                            center = GoogleLatLng(latitude = -1.286389, longitude = 36.817223),
+                            radius = 50000.0
+                        )
+                    ),
                     languageCode = "en"
                 )
             )
         }
-        if (!response.status.isSuccess()) return PlaceSearchResponse(suggestions = emptyList())
+        if (!response.status.isSuccess()) {
+            return PlaceSearchResponse(configured = false, suggestions = emptyList())
+        }
         val body = response.body<GoogleAutocompleteResponse>()
         val suggestions = body.suggestions.mapNotNull { suggestion ->
             val prediction = suggestion.placePrediction ?: return@mapNotNull null
@@ -58,7 +69,7 @@ object PlacesService {
                 description = secondary.ifBlank { prediction.text?.text.orEmpty() }
             )
         }
-        return PlaceSearchResponse(suggestions = suggestions)
+        return PlaceSearchResponse(suggestions = suggestions, configured = true)
     }
 
     suspend fun details(placeId: String): LandmarkDetails? {
@@ -83,9 +94,26 @@ object PlacesService {
 }
 
 @Serializable
+private data class GoogleCircle(
+    val center: GoogleLatLng,
+    val radius: Double
+)
+
+@Serializable
+private data class GoogleLocationBias(
+    val circle: GoogleCircle
+)
+
+@Serializable
 private data class GoogleAutocompleteRequest(
     val input: String,
-    val includedRegionCodes: List<String> = emptyList(),
+    val includedRegionCodes: List<String> = listOf("KE", "ke"),
+    val locationBias: GoogleLocationBias = GoogleLocationBias(
+        circle = GoogleCircle(
+            center = GoogleLatLng(latitude = -1.286389, longitude = 36.817223),
+            radius = 50000.0
+        )
+    ),
     val languageCode: String = "en"
 )
 

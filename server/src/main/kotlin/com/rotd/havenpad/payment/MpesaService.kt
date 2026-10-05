@@ -6,6 +6,7 @@ import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
@@ -22,20 +23,22 @@ object MpesaService {
         }
     }
 
-    private const val AUTH_URL =
-        "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-    private const val STK_PUSH_URL =
-        "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
-    private const val STK_QUERY_URL =
-        "https://sandbox.safaricom.co.ke/mpesa/stkpushquery/v1/query"
-
     suspend fun getAccessToken(): String {
-        val auth = Base64.getEncoder().encodeToString(
-            "${ServerConfig.mpesaConsumerKey}:${ServerConfig.mpesaConsumerSecret}".toByteArray()
-        )
-        val response: MpesaAuthResponse = client.get(AUTH_URL) {
+        val key = ServerConfig.mpesaConsumerKey.trim()
+        val secret = ServerConfig.mpesaConsumerSecret.trim()
+        if (key.isBlank() || secret.isBlank()) {
+            error("M-Pesa Consumer Key and Consumer Secret must be set in local.properties or environment variables.")
+        }
+        val auth = Base64.getEncoder().encodeToString("$key:$secret".toByteArray())
+        val httpResponse = client.get(ServerConfig.mpesaAuthUrl) {
             header(HttpHeaders.Authorization, "Basic $auth")
-        }.body()
+        }
+        if (!httpResponse.status.isSuccess()) {
+            val bodyText = runCatching { httpResponse.bodyAsText() }.getOrDefault("")
+            println("M-Pesa auth HTTP ${httpResponse.status.value}: $bodyText")
+            error("M-Pesa authentication failed: ${httpResponse.status.description}. Check your Consumer Key & Secret.")
+        }
+        val response: MpesaAuthResponse = httpResponse.body()
         return response.accessToken
     }
 
@@ -50,58 +53,90 @@ object MpesaService {
         description: String = "HavenPad payment"
     ): MpesaStkResponse {
         require(amountKes >= 1) { "Amount must be at least 1 KES" }
+        val shortCode = ServerConfig.mpesaBusinessShortCode.trim()
+        val passkey = ServerConfig.mpesaPasskey.trim()
+        if (shortCode.isBlank() || passkey.isBlank()) {
+            error("M-Pesa Shortcode and Passkey must be set in local.properties or environment variables.")
+        }
+
         val token = getAccessToken()
         val timestamp = SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(Date())
         val password = Base64.getEncoder().encodeToString(
-            "${ServerConfig.mpesaBusinessShortCode}${ServerConfig.mpesaPasskey}$timestamp".toByteArray()
+            "$shortCode$passkey$timestamp".toByteArray()
         )
 
         val formattedPhone = formatMpesaPhone(phoneNumber)
         val safeReference = reference.filter { it.isLetterOrDigit() }.take(12).ifBlank { "HavenPad" }
         val safeDesc = description.filter { it.isLetterOrDigit() }.take(20).ifBlank { "Payment" }
 
+        val secretToken = ServerConfig.mpesaCallbackSecretToken
+        val effectiveCallbackUrl = if (!secretToken.isNullOrBlank() && !ServerConfig.mpesaCallbackUrl.contains("token=")) {
+            if (ServerConfig.mpesaCallbackUrl.contains("?")) {
+                "${ServerConfig.mpesaCallbackUrl}&token=$secretToken"
+            } else {
+                "${ServerConfig.mpesaCallbackUrl}?token=$secretToken"
+            }
+        } else {
+            ServerConfig.mpesaCallbackUrl
+        }
+
         val request = MpesaStkRequest(
-            BusinessShortCode = ServerConfig.mpesaBusinessShortCode,
+            BusinessShortCode = shortCode,
             Password = password,
             Timestamp = timestamp,
-            TransactionType = "CustomerPayBillOnline",
+            TransactionType = ServerConfig.mpesaCommandId,
             Amount = amountKes,
             PartyA = formattedPhone,
-            PartyB = ServerConfig.mpesaBusinessShortCode,
+            PartyB = shortCode,
             PhoneNumber = formattedPhone,
-            CallBackURL = ServerConfig.mpesaCallbackUrl,
+            CallBackURL = effectiveCallbackUrl,
             AccountReference = safeReference,
             TransactionDesc = safeDesc
         )
 
-        return client.post(STK_PUSH_URL) {
+        val httpResponse = client.post(ServerConfig.mpesaStkPushUrl) {
             header(HttpHeaders.Authorization, "Bearer $token")
             contentType(ContentType.Application.Json)
             setBody(request)
-        }.body()
+        }
+        if (!httpResponse.status.isSuccess()) {
+            val bodyText = runCatching { httpResponse.bodyAsText() }.getOrDefault("")
+            println("M-Pesa STK push HTTP ${httpResponse.status.value}: $bodyText")
+            error("M-Pesa STK Push request failed (${httpResponse.status.value}): $bodyText")
+        }
+
+        return httpResponse.body()
     }
 
     /**
      * Asks Daraja for the final STK outcome. Use when the callback URL cannot reach this server.
      */
     suspend fun queryStkPush(checkoutRequestId: String): MpesaStkQueryResponse {
+        val shortCode = ServerConfig.mpesaBusinessShortCode.trim()
+        val passkey = ServerConfig.mpesaPasskey.trim()
         val token = getAccessToken()
         val timestamp = SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(Date())
         val password = Base64.getEncoder().encodeToString(
-            "${ServerConfig.mpesaBusinessShortCode}${ServerConfig.mpesaPasskey}$timestamp".toByteArray()
+            "$shortCode$passkey$timestamp".toByteArray()
         )
-        return client.post(STK_QUERY_URL) {
+        val httpResponse = client.post(ServerConfig.mpesaStkQueryUrl) {
             header(HttpHeaders.Authorization, "Bearer $token")
             contentType(ContentType.Application.Json)
             setBody(
                 MpesaStkQueryRequest(
-                    BusinessShortCode = ServerConfig.mpesaBusinessShortCode,
+                    BusinessShortCode = shortCode,
                     Password = password,
                     Timestamp = timestamp,
                     CheckoutRequestID = checkoutRequestId
                 )
             )
-        }.body()
+        }
+        if (!httpResponse.status.isSuccess()) {
+            val bodyText = runCatching { httpResponse.bodyAsText() }.getOrDefault("")
+            println("M-Pesa STK query HTTP ${httpResponse.status.value}: $bodyText")
+            error("M-Pesa STK Query failed (${httpResponse.status.value}): $bodyText")
+        }
+        return httpResponse.body()
     }
 
     fun formatMpesaPhone(phoneNumber: String): String {

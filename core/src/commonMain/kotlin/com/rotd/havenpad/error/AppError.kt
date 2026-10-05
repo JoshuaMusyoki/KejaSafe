@@ -59,14 +59,28 @@ sealed class AppError(
 
     /** Prefer a server-provided message when it is short and human-readable. */
     companion object {
+        private fun extractErrorMessageFromJson(body: String): String? {
+            if (!body.startsWith("{")) return null
+            return try {
+                val json = kotlinx.serialization.json.Json.parseToJsonElement(body)
+                val obj = json as? kotlinx.serialization.json.JsonObject ?: return null
+                val err = obj["error"] ?: obj["message"] ?: obj["ResultDesc"] ?: obj["errorMessage"]
+                (err as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
         fun fromHttp(statusCode: Int, body: String? = null, fallbackAction: String? = null): AppError {
             val trimmed = body?.trim().orEmpty()
-            val usableBody = trimmed.takeIf {
-                it.isNotBlank() &&
-                    it.length <= 200 &&
-                    !it.startsWith("{") &&
-                    !it.startsWith("<")
-            }
+            val extractedJsonMsg = extractErrorMessageFromJson(trimmed)
+            val usableBody = extractedJsonMsg
+                ?: trimmed.takeIf {
+                    it.isNotBlank() &&
+                        it.length <= 500 &&
+                        !it.startsWith("{") &&
+                        !it.startsWith("<")
+                }
 
             return when (statusCode) {
                 401 -> Unauthorized(

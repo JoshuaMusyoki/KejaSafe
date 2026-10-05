@@ -422,7 +422,7 @@ fun Application.module() {
                             message = result["message"].orEmpty()
                         ))
                     } catch (e: Exception) {
-                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Payment failed")
+                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.message ?: "Payment failed")))
                     }
                 }
 
