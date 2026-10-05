@@ -7,7 +7,13 @@ import androidx.compose.ui.graphics.Color
 // These will adapt to the current MaterialTheme.colorScheme
 val LandingBrandGreen @Composable get() = MaterialTheme.colorScheme.primary
 val LandingBrandSecondary @Composable get() = MaterialTheme.colorScheme.secondary
-val LandingLightGreenBg @Composable get() = if (MaterialTheme.colorScheme.primary == Color(0xFF006948)) Color(0xFFF8FBFB) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+val LandingLightGreenBg @Composable get() = if (MaterialTheme.colorScheme.primary == Color(0xFF006948)) Color(
+    0xFFF9FBF8
+) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+
+val LandingLightGreenBg2 @Composable get() = if (MaterialTheme.colorScheme.primary == Color(0xFF006948)) Color(
+    0xFFA5EE81
+) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
 val LandingPillarMint @Composable get() = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
 val LandingTextDark @Composable get() = MaterialTheme.colorScheme.onBackground
 val LandingTextSecondary @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant

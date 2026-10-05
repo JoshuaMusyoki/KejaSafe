@@ -44,6 +44,8 @@ import com.rotd.havenpad.listing.displayLabel
 import com.rotd.havenpad.web.formatCount
 import com.rotd.havenpad.web.formatMoney
 import com.rotd.havenpad.web.theme.LandingBrandGreen
+import com.rotd.havenpad.web.theme.LandingLightGreenBg
+import com.rotd.havenpad.web.theme.LandingLightGreenBg2
 import com.rotd.havenpad.web.theme.LandingPillarMint
 import com.rotd.havenpad.web.theme.LandingTextDark
 import com.rotd.havenpad.web.theme.LandingTextSecondary
@@ -198,11 +200,11 @@ fun PropertyCard(
                     }
                     Button(
                         onClick = onInspect,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF3F4F6)),
+                        colors = ButtonDefaults.buttonColors(containerColor = LandingLightGreenBg2),
                         shape = RoundedCornerShape(4.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
                     ) {
-                        Text("Inspect", color = LandingTextDark, style = MaterialTheme.typography.labelMedium)
+                        Text("Inspect", color = LandingTextSecondary, style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
