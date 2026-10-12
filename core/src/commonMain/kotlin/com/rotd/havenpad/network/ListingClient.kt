@@ -268,6 +268,7 @@ object ListingClient {
             setBody(request)
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Generate bill failed")
@@ -328,6 +329,7 @@ object ListingClient {
             )
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Payment failed")
@@ -345,6 +347,7 @@ object ListingClient {
             contentType(ContentType.Application.Json)
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Request payment failed")
@@ -363,6 +366,7 @@ object ListingClient {
             setBody(request)
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Update bill failed")
@@ -395,6 +399,7 @@ object ListingClient {
             header(HttpHeaders.Authorization, token)
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Failed to load bookings")
@@ -411,6 +416,7 @@ object ListingClient {
             header(HttpHeaders.Authorization, token)
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Failed to load apartment mates")
@@ -427,6 +433,7 @@ object ListingClient {
             header(HttpHeaders.Authorization, token)
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Failed to load requests")
@@ -445,6 +452,7 @@ object ListingClient {
             setBody(request)
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Update listing failed")
@@ -461,6 +469,7 @@ object ListingClient {
             header(HttpHeaders.Authorization, token)
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Failed to load listings")
@@ -479,6 +488,7 @@ object ListingClient {
             if (lng != null) parameter("lng", lng)
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Failed to load listings")
@@ -495,6 +505,7 @@ object ListingClient {
             header(HttpHeaders.Authorization, token)
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Failed to load performance")
@@ -532,6 +543,7 @@ object ListingClient {
             header(HttpHeaders.Authorization, token)
         }
         if (response.status.isSuccess()) {
+            RentDataBus.notifyBillsChanged()
             Result.success(response.body())
         } else {
             httpFailure(response, "Photo upload failed")

@@ -65,7 +65,7 @@ fun PropertyCard(
     }
     val price = listing.pricePerMonth
         ?.let { formatMoney(it, listing.currency) }
-        ?: "Price on request"
+        ?: "Price on request" 
 
     Card(
         modifier = modifier,

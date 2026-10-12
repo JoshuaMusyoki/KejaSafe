@@ -16,3 +16,12 @@ object ListingDataBus {
         _listingsChanged.tryEmit(Unit)
     }
 }
+
+object RentDataBus {
+    private val _billsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val billsChanged: SharedFlow<Unit> = _billsChanged.asSharedFlow()
+
+    fun notifyBillsChanged() {
+        _billsChanged.tryEmit(Unit)
+    }
+}

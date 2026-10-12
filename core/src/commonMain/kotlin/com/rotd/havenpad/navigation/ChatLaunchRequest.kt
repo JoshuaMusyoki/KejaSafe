@@ -30,3 +30,16 @@ object TourLaunchRequest {
         _pending.value = null
     }
 }
+
+object BillLaunchRequest {
+    private val _pending = MutableStateFlow<String?>(null)
+    val pending = _pending.asStateFlow()
+
+    fun request(billId: String) {
+        _pending.value = billId
+    }
+
+    fun consume() {
+        _pending.value = null
+    }
+}

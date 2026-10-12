@@ -8,6 +8,7 @@ import com.rotd.havenpad.ExtraCharge
 import com.rotd.havenpad.GenerateBillRequest
 import com.rotd.havenpad.ListingCharges
 import com.rotd.havenpad.RentBill
+import com.rotd.havenpad.push.PushService
 import com.rotd.havenpad.db.BillItemsTable
 import com.rotd.havenpad.db.BillsTable
 import com.rotd.havenpad.db.ListingBookingsTable
@@ -40,7 +41,9 @@ object RentService {
         tenantName: String = "",
         bookingId: String? = null,
         depositIncluded: Boolean = false,
-        electricityNote: String? = null
+        electricityNote: String? = null,
+        waterPricePerUnit: Double = 0.0,
+        electricityBilling: ElectricityBilling = ElectricityBilling.TOKEN
     ): RentBill = transaction {
         val id = UUID.randomUUID().toString()
         val payable = utilities.filter { it.amount > 0 || it.name.contains("token", ignoreCase = true) }
@@ -84,7 +87,7 @@ object RentService {
             }
         }
 
-        RentBill(
+        val bill = RentBill(
             id = id,
             userId = userId,
             propertyId = propertyId,
@@ -97,8 +100,12 @@ object RentService {
             totalAmount = total,
             dueDate = due,
             depositIncluded = depositIncluded,
-            electricityNote = electricityNote
+            electricityNote = electricityNote,
+            waterPricePerUnit = waterPricePerUnit,
+            electricityBilling = electricityBilling
         )
+        PushService.notifyBill(bill, title = "New rent bill issued", body = "Rent bill of KES ${bill.totalAmount.toInt()} for ${bill.propertyTitle.ifBlank { "your property" }} is ready.")
+        bill
     }
 
     /**
@@ -178,7 +185,9 @@ object RentService {
             tenantName = booking[ListingBookingsTable.guestName],
             bookingId = request.bookingId,
             depositIncluded = includeDeposit && charges.deposit > 0,
-            electricityNote = electricityNote
+            electricityNote = electricityNote,
+            waterPricePerUnit = charges.water,
+            electricityBilling = charges.electricityBilling
         )
     }
 
@@ -516,9 +525,11 @@ object RentService {
         BillsTable.update({ BillsTable.id eq billId }) {
             it[paymentRequested] = true
         }
-        toBill(
+        val bill = toBill(
             BillsTable.selectAll().where { BillsTable.id eq billId }.single()
         )
+        PushService.notifyBill(bill, title = "Payment requested", body = "Your landlord requested payment for your bill of KES ${bill.remainingAmount.toInt()}.")
+        bill
     }
 
     /**
@@ -566,7 +577,9 @@ object RentService {
             it[paymentRequested] = false
         }
 
-        toBill(BillsTable.selectAll().where { BillsTable.id eq billId }.single())
+        val bill = toBill(BillsTable.selectAll().where { BillsTable.id eq billId }.single())
+        PushService.notifyBill(bill, title = "Rent bill updated", body = "Your invoice for ${bill.propertyTitle} has been updated. Total: KES ${bill.totalAmount.toInt()}.")
+        bill
     }
 
     fun buildBillPdf(billId: String, requesterUserId: String): ByteArray {
@@ -622,6 +635,9 @@ object RentService {
                 ?.get(UsersTable.fullName)
                 .orEmpty()
         }
+        val listingRow = ListingsTable.selectAll().where { ListingsTable.id eq row[BillsTable.propertyId] }.singleOrNull()
+        val charges = listingRow?.let { chargesFromListing(it) } ?: ListingCharges()
+
         return RentBill(
             id = billId,
             userId = row[BillsTable.userId],
@@ -641,7 +657,9 @@ object RentService {
             paymentRequested = row[BillsTable.paymentRequested],
             mpesaReceiptCode = row[BillsTable.mpesaReceiptCode],
             mpesaPayerName = row[BillsTable.mpesaPayerName],
-            paymentFailureReason = row[BillsTable.paymentFailureReason]
+            paymentFailureReason = row[BillsTable.paymentFailureReason],
+            waterPricePerUnit = charges.water,
+            electricityBilling = charges.electricityBilling
         )
     }
 }

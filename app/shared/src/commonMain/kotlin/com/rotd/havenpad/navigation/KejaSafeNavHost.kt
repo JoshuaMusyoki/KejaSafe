@@ -1,7 +1,9 @@
 package com.rotd.havenpad.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -61,8 +63,11 @@ fun HavenPadNavHost(
     modifier: Modifier = Modifier,
     startDestination: HavenPadDestination = HavenPadDestination.Login
 ) {
-    val backStack = remember { mutableStateListOf(startDestination) }
-    val isWeb = getPlatform().isWeb
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val isDesktopWeb = getPlatform().isWeb && maxWidth >= 720.dp
+        val embedInDashboard = isDesktopWeb
+        val backStack = remember { mutableStateListOf(startDestination) }
+        val isWeb = getPlatform().isWeb
     val signedInUser by SessionManager.currentUser.collectAsState()
     if (signedInUser != null) {
         ChatIncomingNotifications()
@@ -169,6 +174,10 @@ fun HavenPadNavHost(
 
     fun openChatFromNotice(notice: ChatNotice) {
         ChatNotificationInbox.markRead(notice.id)
+        if (notice.peerUserId.isBlank()) {
+            openDetail(HavenPadDestination.Rent)
+            return
+        }
         if (isWeb) {
             ChatPanelLaunch.open(notice.toPeer())
             ChatSidebarRequest.select(ChatInboxTab.MESSAGES)
@@ -239,6 +248,14 @@ fun HavenPadNavHost(
         if (!SessionManager.isLogged()) return@LaunchedEffect
         TourLaunchRequest.consume()
         openDetail(HavenPadDestination.LiveTourCall(sessionId))
+    }
+
+    val pendingBill by com.rotd.havenpad.navigation.BillLaunchRequest.pending.collectAsState()
+    LaunchedEffect(pendingBill) {
+        val billId = pendingBill ?: return@LaunchedEffect
+        if (!SessionManager.isLogged()) return@LaunchedEffect
+        com.rotd.havenpad.navigation.BillLaunchRequest.consume()
+        openDetail(HavenPadDestination.Rent)
     }
 
     /** Landing CTAs: signed-in visitors go straight to their dashboard, others to login. */
@@ -348,7 +365,7 @@ fun HavenPadNavHost(
                     onNavigateToNotifications = { requireSignIn { openDetail(HavenPadDestination.Notifications) } },
                     onTextLandlord = ::textLandlord,
                     signedIn = SessionManager.isLogged(),
-                    embedInDashboard = isWeb,
+                    embedInDashboard = embedInDashboard,
                 )
             }
         }
@@ -375,7 +392,7 @@ fun HavenPadNavHost(
                     onNavigateToNotifications = { requireSignIn { openDetail(HavenPadDestination.Notifications) } },
                     onTextLandlord = ::textLandlord,
                     signedIn = SessionManager.isLogged(),
-                    embedInDashboard = isWeb,
+                    embedInDashboard = embedInDashboard,
                 )
             }
         }
@@ -562,7 +579,7 @@ fun HavenPadNavHost(
             ChatInboxScreen(
                 selectedTab = HavenPadNavTab.CHAT,
                 onTabSelected = ::switchMainTab,
-                embedInDashboard = isWeb,
+                embedInDashboard = embedInDashboard,
                 onOpenBookings = { replaceRoot(HavenPadDestination.LandlordBookings) },
                 onOpenThread = { peer ->
                     openDetail(
@@ -629,7 +646,7 @@ fun HavenPadNavHost(
     }
 
     val topDestination = backStack.lastOrNull()
-    val showWebPanel = isWeb && when (topDestination) {
+    val showWebPanel = isDesktopWeb && when (topDestination) {
         null,
         HavenPadDestination.Landing,
         HavenPadDestination.Features,
@@ -702,4 +719,5 @@ fun HavenPadNavHost(
             }
         }
     }
+  }
 }

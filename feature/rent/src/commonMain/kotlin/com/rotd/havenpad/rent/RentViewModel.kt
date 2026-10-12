@@ -16,6 +16,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 data class EditableBillLine(
     val id: String,
@@ -55,6 +56,28 @@ class RentViewModel(
                 loadBills()
             }
         }
+        viewModelScope.launch {
+            com.rotd.havenpad.network.RentDataBus.billsChanged.collect {
+                loadBills()
+            }
+        }
+        viewModelScope.launch {
+            while (true) {
+                delay(1_500)
+                if (SessionManager.isLogged()) {
+                    runCatching {
+                        rentRepository.getBills(onCacheHit = {}).onSuccess { offline ->
+                            val current = _state.value as? RentState.Success
+                            if (current != null) {
+                                if (current.bills != offline.value) {
+                                    _state.value = current.copy(bills = offline.value)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fun loadBills() {
@@ -65,17 +88,31 @@ class RentViewModel(
             }
             rentRepository.getBills(
                 onCacheHit = { cached ->
-                    _state.value = RentState.Success(bills = cached)
+                    val current = _state.value as? RentState.Success
+                    if (current != null) {
+                        _state.value = current.copy(bills = cached)
+                    } else {
+                        _state.value = RentState.Success(bills = cached)
+                    }
                 }
             )
                 .onSuccess { offline ->
-                    val paying = (_state.value as? RentState.Success)?.payingBillId
-                    _state.value = RentState.Success(
-                        bills = offline.value,
-                        syncWarning = offline.syncWarning,
-                        payingBillId = paying,
-                        message = (_state.value as? RentState.Success)?.message
-                    )
+                    val current = _state.value as? RentState.Success
+                    if (current != null) {
+                        val updatedPreview = current.previewBill?.let { p ->
+                            offline.value.find { it.id == p.id } ?: p
+                        }
+                        _state.value = current.copy(
+                            bills = offline.value,
+                            syncWarning = offline.syncWarning,
+                            previewBill = updatedPreview
+                        )
+                    } else {
+                        _state.value = RentState.Success(
+                            bills = offline.value,
+                            syncWarning = offline.syncWarning
+                        )
+                    }
                 }
                 .onFailure { e ->
                     val current = _state.value as? RentState.Success
@@ -123,11 +160,18 @@ class RentViewModel(
                 val bill = bills.find { it.id == billId }
                 val current = _state.value as? RentState.Success
                 if (bill?.status == BillStatus.PAID && !bill.mpesaReceiptCode.isNullOrBlank()) {
-                    _state.value = RentState.Success(
-                        bills = bills,
-                        message = "Payment received. M-Pesa code: ${bill.mpesaReceiptCode}",
-                        syncWarning = current?.syncWarning
-                    )
+                    if (current != null) {
+                        _state.value = current.copy(
+                            bills = bills,
+                            message = "Payment received. M-Pesa code: ${bill.mpesaReceiptCode}",
+                            payingBillId = null
+                        )
+                    } else {
+                        _state.value = RentState.Success(
+                            bills = bills,
+                            message = "Payment received. M-Pesa code: ${bill.mpesaReceiptCode}"
+                        )
+                    }
                     return@launch
                 }
                 if (
@@ -135,11 +179,17 @@ class RentViewModel(
                     bill.amountPaid > paidBefore &&
                     current?.payingBillId == billId
                 ) {
-                    _state.value = RentState.Success(
-                        bills = bills,
-                        message = "Partial payment received. Remaining KES ${bill.remainingAmount.toLong()}",
-                        syncWarning = current.syncWarning
-                    )
+                    if (current != null) {
+                        _state.value = current.copy(
+                            bills = bills,
+                            message = "Partial payment received. Remaining KES ${bill.remainingAmount.toLong()}"
+                        )
+                    } else {
+                        _state.value = RentState.Success(
+                            bills = bills,
+                            message = "Partial payment received. Remaining KES ${bill.remainingAmount.toLong()}"
+                        )
+                    }
                     return@launch
                 }
                 if (
@@ -152,11 +202,17 @@ class RentViewModel(
                             BillStatus.CANCELLED -> "Payment cancelled"
                             else -> "Payment failed"
                         }
-                    _state.value = RentState.Success(
-                        bills = bills,
-                        message = reason,
-                        syncWarning = current.syncWarning
-                    )
+                    if (current != null) {
+                        _state.value = current.copy(
+                            bills = bills,
+                            message = reason
+                        )
+                    } else {
+                        _state.value = RentState.Success(
+                            bills = bills,
+                            message = reason
+                        )
+                    }
                     return@launch
                 }
                 if (current != null) {
@@ -178,9 +234,10 @@ class RentViewModel(
             ListingClient.requestPayment(billId)
                 .onSuccess { updated ->
                     val bills = current.bills.map { if (it.id == updated.id) updated else it }
-                    _state.value = RentState.Success(
+                    _state.value = current.copy(
                         bills = bills,
-                        message = "Payment request sent to tenant"
+                        message = "Payment request sent to tenant",
+                        requestingBillId = null
                     )
                 }
                 .onFailure { e ->
@@ -195,7 +252,8 @@ class RentViewModel(
     fun updateBill(
         billId: String,
         lines: List<EditableBillLine>,
-        electricityNote: String?
+        electricityNote: String?,
+        onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
             val current = _state.value as? RentState.Success ?: return@launch
@@ -222,6 +280,7 @@ class RentViewModel(
                         bills = bills,
                         message = "Bill updated — water & utilities saved"
                     )
+                    onSuccess()
                 }
                 .onFailure { e ->
                     _state.value = current.copy(

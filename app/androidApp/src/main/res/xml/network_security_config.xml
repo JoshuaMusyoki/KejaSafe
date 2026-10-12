@@ -19,7 +19,7 @@
         <domain includeSubdomains="true">192.168.100.3</domain>
         <domain includeSubdomains="true">10.120.212.251</domain>
         <domain includeSubdomains="true">10.123.201.152</domain>
-        <domain includeSubdomains="true">10.8.123.173</domain>
+        <domain includeSubdomains="true">10.8.125.35</domain>
         <domain includeSubdomains="true">10.8.126.202</domain>
         <domain includeSubdomains="true">10.8.122.105</domain>
     </domain-config>

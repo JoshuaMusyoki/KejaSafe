@@ -315,7 +315,9 @@ data class RentBill(
     val mpesaReceiptCode: String? = null,
     val mpesaPayerName: String? = null,
     /** Last M-Pesa failure / cancel reason when status is FAILED or CANCELLED. */
-    val paymentFailureReason: String? = null
+    val paymentFailureReason: String? = null,
+    val waterPricePerUnit: Double = 0.0,
+    val electricityBilling: ElectricityBilling = ElectricityBilling.TOKEN
 ) {
     val remainingAmount: Double
         get() = (totalAmount - amountPaid).coerceAtLeast(0.0)

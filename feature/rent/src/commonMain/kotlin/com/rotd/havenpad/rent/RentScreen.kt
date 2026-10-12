@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import org.koin.compose.viewmodel.koinViewModel
 import com.rotd.havenpad.BillStatus
+import com.rotd.havenpad.ElectricityBilling
 import com.rotd.havenpad.RentBill
 import com.rotd.havenpad.UserRole
 import com.rotd.havenpad.components.BillsListShimmer
@@ -193,18 +194,11 @@ fun RentScreen(
             onDismiss = { if (!awaitingSave) editBill = null },
             onSave = { lines, note ->
                 awaitingSave = true
-                viewModel.updateBill(bill.id, lines, note)
+                viewModel.updateBill(bill.id, lines, note, onSuccess = {
+                    editBill = null
+                })
             }
         )
-        LaunchedEffect(success?.isSavingEdit, success?.message, awaitingSave) {
-            if (!awaitingSave) return@LaunchedEffect
-            val s = success ?: return@LaunchedEffect
-            if (s.isSavingEdit) return@LaunchedEffect
-            awaitingSave = false
-            if (s.message?.contains("updated", ignoreCase = true) == true) {
-                editBill = null
-            }
-        }
     }
 
     Scaffold(
@@ -310,32 +304,58 @@ private fun EditBillDialog(
     onDismiss: () -> Unit,
     onSave: (List<EditableBillLine>, String?) -> Unit
 ) {
-    val lines = remember(bill.id) {
+    val existingWaterAmount = remember(bill.id) {
+        bill.items.firstOrNull { it.name.contains("water", ignoreCase = true) }?.amount ?: 0.0
+    }
+    val initialWaterUnits = if (bill.waterPricePerUnit > 0 && existingWaterAmount > 0) {
+        (existingWaterAmount / bill.waterPricePerUnit).toInt().toString()
+    } else {
+        if (existingWaterAmount > 0) existingWaterAmount.toInt().toString() else "0"
+    }
+    var waterUnits by remember(bill.id) { mutableStateOf(initialWaterUnits) }
+
+    val existingElecAmount = remember(bill.id) {
+        bill.items.firstOrNull { it.name.contains("electricity", ignoreCase = true) && !it.name.contains("token", ignoreCase = true) }?.amount ?: 0.0
+    }
+    var electricityAmount by remember(bill.id) { mutableStateOf(existingElecAmount.toInt().toString()) }
+
+    val otherLines = remember(bill.id) {
         mutableStateListOf<EditableBillLine>().apply {
             addAll(
-                bill.items.mapIndexed { index, item ->
-                    EditableBillLine(
-                        id = "line_$index",
-                        name = item.name,
-                        amount = if (item.amount == 0.0) "0" else item.amount.toInt().toString()
-                    )
-                }
+                bill.items
+                    .filter { !it.name.contains("water", ignoreCase = true) && !it.name.contains("electricity", ignoreCase = true) }
+                    .mapIndexed { index, item ->
+                        EditableBillLine(
+                            id = "line_$index",
+                            name = item.name,
+                            amount = if (item.amount == 0.0) "0" else item.amount.toInt().toString()
+                        )
+                    }
             )
-            // Ensure common utility rows exist so landlord can fill month-varying amounts.
-            ensureUtilityLine("Water")
-            ensureUtilityLine("Electricity")
+            if (none { it.name.contains("rent", ignoreCase = true) }) {
+                add(0, EditableBillLine(id = "rent", name = "Base rent", amount = ""))
+            }
         }
     }
+
     var electricityNote by remember(bill.id) {
         mutableStateOf(bill.electricityNote.orEmpty())
     }
-    val previewTotal = lines.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+
+    val calculatedWaterAmount = (waterUnits.toDoubleOrNull() ?: 0.0) * (if (bill.waterPricePerUnit > 0) bill.waterPricePerUnit else 0.0)
+    val calculatedElecAmount = if (bill.electricityBilling == ElectricityBilling.MONTHLY) {
+        electricityAmount.toDoubleOrNull() ?: 0.0
+    } else 0.0
+
+    val previewTotal = calculatedWaterAmount +
+        calculatedElecAmount +
+        otherLines.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
 
     AlertDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
         title = {
             Column {
-                Text("Edit bill", fontWeight = FontWeight.SemiBold)
+                Text("Modify invoice & utilities", fontWeight = FontWeight.SemiBold)
                 Text(
                     text = buildString {
                         append("${monthName(bill.month)} ${bill.year}")
@@ -355,9 +375,56 @@ private fun EditBillDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 HavenPadLabel(
-                    text = "Update water, electricity, and other utilities for this month. Base rent should stay on the bill."
+                    text = "Enter units consumed for water and monthly charges for electricity (if not token)."
                 )
-                lines.forEachIndexed { index, line ->
+
+                if (bill.waterPricePerUnit > 0) {
+                    OutlinedTextField(
+                        value = waterUnits,
+                        onValueChange = { value ->
+                            if (value.isEmpty() || value.all { it.isDigit() }) {
+                                waterUnits = value
+                            }
+                        },
+                        label = { Text("Water units consumed") },
+                        supportingText = { Text("Rate: KES ${bill.waterPricePerUnit.toInt()} per unit · Total: KES ${calculatedWaterAmount.toInt()}") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                } else {
+                    var fallbackWaterAmount by remember(bill.id) { mutableStateOf(existingWaterAmount.toInt().toString()) }
+                    OutlinedTextField(
+                        value = fallbackWaterAmount,
+                        onValueChange = { fallbackWaterAmount = it },
+                        label = { Text("Water amount (KES)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    )
+                }
+
+                if (bill.electricityBilling == ElectricityBilling.MONTHLY) {
+                    OutlinedTextField(
+                        value = electricityAmount,
+                        onValueChange = { electricityAmount = it },
+                        label = { Text("Electricity (KES / mo)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    )
+                } else {
+                    Text(
+                        text = "Electricity: Prepaid token (tenant tops up separately)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                HorizontalDivider()
+                Text("Other Charges & Rent", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+
+                otherLines.forEachIndexed { index, line ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -365,7 +432,7 @@ private fun EditBillDialog(
                     ) {
                         OutlinedTextField(
                             value = line.name,
-                            onValueChange = { lines[index] = line.copy(name = it) },
+                            onValueChange = { otherLines[index] = line.copy(name = it) },
                             label = { Text("Item") },
                             modifier = Modifier.weight(1.2f),
                             singleLine = true
@@ -374,7 +441,7 @@ private fun EditBillDialog(
                             value = line.amount,
                             onValueChange = { value ->
                                 if (value.isEmpty() || value.all { it.isDigit() || it == '.' }) {
-                                    lines[index] = line.copy(amount = value)
+                                    otherLines[index] = line.copy(amount = value)
                                 }
                             },
                             label = { Text("KES") },
@@ -386,7 +453,7 @@ private fun EditBillDialog(
                 }
                 TextButton(
                     onClick = {
-                        lines.add(
+                        otherLines.add(
                             EditableBillLine(
                                 id = "line_${Random.nextLong().toULong().toString(16)}",
                                 name = "",
@@ -395,19 +462,20 @@ private fun EditBillDialog(
                         )
                     }
                 ) {
-                    Text("Add line")
+                    Text("Add line item")
                 }
+
                 OutlinedTextField(
                     value = electricityNote,
                     onValueChange = { electricityNote = it },
-                    label = { Text("Electricity note (optional)") },
-                    placeholder = { Text("e.g. prepaid token — tenant tops up") },
+                    label = { Text("Invoice / Electricity note (optional)") },
+                    placeholder = { Text("e.g. meter reading or token details") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = false,
                     minLines = 2
                 )
                 Text(
-                    text = "New total: KES ${previewTotal.toInt()}",
+                    text = "New invoice total: KES ${previewTotal.toInt()}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary
@@ -416,10 +484,26 @@ private fun EditBillDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(lines.toList(), electricityNote) },
+                onClick = {
+                    val finalLines = buildList {
+                        val wUnits = waterUnits.toDoubleOrNull() ?: 0.0
+                        val wAmt = if (bill.waterPricePerUnit > 0) wUnits * bill.waterPricePerUnit else (waterUnits.toDoubleOrNull() ?: 0.0)
+                        if (wAmt > 0 || bill.waterPricePerUnit > 0) {
+                            add(EditableBillLine("water", "Water (${wUnits.toInt()} units @ ${bill.waterPricePerUnit.toInt()}/u)", wAmt.toString()))
+                        }
+                        if (bill.electricityBilling == ElectricityBilling.MONTHLY) {
+                            val eAmt = electricityAmount.toDoubleOrNull() ?: 0.0
+                            if (eAmt > 0) {
+                                add(EditableBillLine("elec", "Electricity", eAmt.toString()))
+                            }
+                        }
+                        addAll(otherLines)
+                    }
+                    onSave(finalLines, electricityNote)
+                },
                 enabled = !isSaving
             ) {
-                Text(if (isSaving) "Saving…" else "Save bill")
+                Text(if (isSaving) "Saving…" else "Send updated invoice")
             }
         },
         dismissButton = {
@@ -430,11 +514,7 @@ private fun EditBillDialog(
     )
 }
 
-private fun MutableList<EditableBillLine>.ensureUtilityLine(name: String) {
-    if (none { it.name.contains(name, ignoreCase = true) }) {
-        add(EditableBillLine(id = "ensure_$name", name = name, amount = ""))
-    }
-}
+
 
 @Composable
 private fun BillCard(

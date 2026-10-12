@@ -14,8 +14,10 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         openChatFromNotification(intent)
         openTourFromNotification(intent)
+        openBillFromNotification(intent)
         if (SessionManager.isLogged()) {
             ChatBackgroundSync.startListening()
+            ChatBackgroundSync.registerPushToken()
         }
 
         setContent {
@@ -28,6 +30,7 @@ class MainActivity : FragmentActivity() {
         setIntent(intent)
         openChatFromNotification(intent)
         openTourFromNotification(intent)
+        openBillFromNotification(intent)
     }
 
     override fun onResume() {
@@ -36,6 +39,7 @@ class MainActivity : FragmentActivity() {
         AppVisibility.inForeground = true
         if (SessionManager.isLogged()) {
             ChatBackgroundSync.startListening()
+            ChatBackgroundSync.registerPushToken()
         }
     }
 

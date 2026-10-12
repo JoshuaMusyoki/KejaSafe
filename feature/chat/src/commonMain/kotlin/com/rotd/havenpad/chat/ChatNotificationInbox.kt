@@ -76,6 +76,34 @@ object ChatNotificationInbox {
         return notice
     }
 
+    fun recordNotice(
+        id: String,
+        title: String,
+        body: String,
+        peerUserId: String = "",
+        listingId: String = "",
+        listingTitle: String = "",
+        bookingId: String = "",
+        displayName: String = "HavenPad Billing",
+        peerIsLandlord: Boolean = false
+    ): ChatNotice {
+        val notice = ChatNotice(
+            id = id,
+            title = title,
+            body = body,
+            timestamp = platformEpochMillis(),
+            peerUserId = peerUserId,
+            listingId = listingId,
+            listingTitle = listingTitle,
+            bookingId = bookingId,
+            displayName = displayName,
+            peerIsLandlord = peerIsLandlord,
+        )
+        val next = listOf(notice) + _items.value.filterNot { it.id == notice.id }
+        save(next.take(MAX_ITEMS))
+        return notice
+    }
+
     fun markRead(id: String) {
         save(_items.value.map { if (it.id == id) it.copy(read = true) else it })
     }

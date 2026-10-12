@@ -22,6 +22,7 @@ import androidx.work.WorkerParameters
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import com.rotd.havenpad.BillStatus
 import com.rotd.havenpad.chat.AppVisibility
 import com.rotd.havenpad.chat.ChatNotificationInbox
 import com.rotd.havenpad.chat.OpenChat
@@ -60,7 +61,9 @@ object ChatNotifyContract {
     const val KEY_REPLY = "reply_text"
     const val CHANNEL_ID = "chat_messages"
     const val CHANNEL_TOURS = "house_tours"
+    const val CHANNEL_BILLS = "rent_bills"
     const val EXTRA_SESSION = "tourSessionId"
+    const val EXTRA_BILL_ID = "billId"
 }
 
 object ChatBackgroundSync {
@@ -130,7 +133,7 @@ object ChatBackgroundSync {
 
     fun schedule(context: Context) {
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
             .build()
         val periodic = PeriodicWorkRequestBuilder<ChatSyncWorker>(15, TimeUnit.MINUTES)
             .setConstraints(constraints)
@@ -145,11 +148,10 @@ object ChatBackgroundSync {
 
     fun enqueueSoon(context: Context) {
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
             .build()
         val soon = OneTimeWorkRequestBuilder<ChatSyncWorker>()
             .setConstraints(constraints)
-            .setInitialDelay(20, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             SOON,
@@ -172,8 +174,37 @@ class ChatSyncWorker(
     override suspend fun doWork(): Result {
         val koin = KoinPlatform.getKoinOrNull() ?: return Result.retry()
         return try {
+            SessionManager.restore()
+            if (!SessionManager.isLogged()) return Result.success()
             pullNewChatMessages(koin.get<ApartmentChatRepository>())
             pullIncomingCall()
+            runCatching {
+                val rentRepo = koin.get<com.rotd.havenpad.data.RentRepository>()
+                val result = rentRepo.getBills()
+                result.onSuccess { wrapper ->
+                    val bills = wrapper.value
+                    val prefs = applicationContext.getSharedPreferences("havenpad_bills_sync", Context.MODE_PRIVATE)
+                    bills.forEach { bill ->
+                        val lastTotal = prefs.getFloat("bill_total_${bill.id}", -1f)
+                        val currentTotal = bill.totalAmount.toFloat()
+                        if (lastTotal == -1f) {
+                            prefs.edit().putFloat("bill_total_${bill.id}", currentTotal).apply()
+                        } else if (lastTotal != currentTotal) {
+                            prefs.edit().putFloat("bill_total_${bill.id}", currentTotal).apply()
+                            if (bill.status != BillStatus.PAID) {
+                                showBillNotification(
+                                    applicationContext,
+                                    BillNotifyRequest(
+                                        title = "Rent bill updated",
+                                        body = "Your invoice for ${bill.propertyTitle.ifBlank { "your property" }} has been updated. Total: KES ${bill.totalAmount.toInt()}.",
+                                        billId = bill.id,
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             ChatBackgroundSync.enqueueSoon(applicationContext)
             Result.success()
         } catch (_: Exception) {
@@ -218,6 +249,64 @@ fun openTourFromNotification(intent: Intent?) {
     val sessionId = intent?.getStringExtra(ChatNotifyContract.EXTRA_SESSION)?.takeIf { it.isNotBlank() }
         ?: return
     com.rotd.havenpad.navigation.TourLaunchRequest.request(sessionId)
+}
+
+fun openBillFromNotification(intent: Intent?) {
+    val billId = intent?.getStringExtra(ChatNotifyContract.EXTRA_BILL_ID)?.takeIf { it.isNotBlank() } ?: return
+    com.rotd.havenpad.navigation.BillLaunchRequest.request(billId)
+}
+
+data class BillNotifyRequest(
+    val title: String,
+    val body: String,
+    val billId: String,
+)
+
+private fun showBillNotification(context: Context, request: BillNotifyRequest) {
+    ChatNotificationInbox.recordNotice(
+        id = request.billId,
+        title = request.title,
+        body = request.body,
+    )
+    val manager = context.getSystemService(NotificationManager::class.java) ?: return
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        manager.createNotificationChannel(
+            NotificationChannel(
+                ChatNotifyContract.CHANNEL_BILLS,
+                "Rent & Bills",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Rent bills and utility updates"
+            }
+        )
+    }
+    val openIntent = Intent(context, MainActivity::class.java).apply {
+        action = ChatNotifyContract.ACTION_OPEN
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+            Intent.FLAG_ACTIVITY_SINGLE_TOP
+        putExtra(ChatNotifyContract.EXTRA_BILL_ID, request.billId)
+    }
+    val contentIntent = PendingIntent.getActivity(
+        context,
+        request.billId.hashCode(),
+        openIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+    val largeIcon = BitmapFactory.decodeResource(context.resources, R.drawable.haven_pad_logo)
+    val notification = NotificationCompat.Builder(context, ChatNotifyContract.CHANNEL_ID)
+        .setSmallIcon(R.drawable.ic_stat_message)
+        .setLargeIcon(largeIcon)
+        .setContentTitle(request.title)
+        .setContentText(request.body)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(request.body))
+        .setAutoCancel(true)
+        .setContentIntent(contentIntent)
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setCategory(NotificationCompat.CATEGORY_STATUS)
+        .setDefaults(NotificationCompat.DEFAULT_ALL)
+        .build()
+    manager.notify(request.billId.hashCode(), notification)
 }
 
 fun openChatFromNotification(intent: Intent?) {
@@ -389,6 +478,15 @@ private fun ensureChannels(context: Context) {
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
         },
     )
+    manager.createNotificationChannel(
+        NotificationChannel(
+            ChatNotifyContract.CHANNEL_BILLS,
+            "Rent & Bills",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "Rent bills and utility updates"
+        },
+    )
 }
 
 /**
@@ -411,6 +509,17 @@ class HavenPadMessagingService : FirebaseMessagingService() {
                     com.rotd.havenpad.SignInPrompt(challengeId = challengeId, deviceName = deviceName)
                 )
             }
+            return
+        }
+        if (data["kind"] == "bill") {
+            showBillNotification(
+                this,
+                BillNotifyRequest(
+                    title = message.notification?.title ?: "Rent bill updated",
+                    body = message.notification?.body.orEmpty(),
+                    billId = data["billId"].orEmpty(),
+                )
+            )
             return
         }
         if (data["kind"] == "tour") {

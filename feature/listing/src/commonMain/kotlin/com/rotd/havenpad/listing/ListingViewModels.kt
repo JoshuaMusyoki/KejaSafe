@@ -83,14 +83,15 @@ private fun CreateListingDraft.toCharges(): ListingCharges {
 internal fun CreateListingDraft.estimateSummary(): String {
     val rent = pricePerMonth.toDoubleOrNull() ?: 0.0
     val charges = toCharges()
-    val monthly = charges.monthlyGrandTotal(rent)
+    val estWater = charges.water * 3
+    val monthly = rent.coerceAtLeast(0.0) + charges.garbageCollection.coerceAtLeast(0.0) + estWater + (if (charges.electricityBilling == ElectricityBilling.MONTHLY) charges.electricityMonthly else 0.0) + charges.extraCharges.sumOf { it.amount }
     val depositLabel = if (charges.deposit > 0) {
         " · Deposit KES ${charges.deposit.toInt()} (first bill)"
     } else ""
     val elec = if (charges.electricityBilling == ElectricityBilling.TOKEN) {
         " · Power: prepaid token"
     } else ""
-    return "Est. monthly: KES ${monthly.toInt()}$depositLabel$elec"
+    return "Est. monthly: KES ${monthly.toInt()}$depositLabel$elec (Water @ KES ${charges.water.toInt()}/unit)"
 }
 
 private fun ListingCharges.toDraftFields(): CreateListingDraft.() -> CreateListingDraft = {

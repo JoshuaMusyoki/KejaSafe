@@ -3,6 +3,7 @@ package com.rotd.havenpad.push
 import com.google.auth.oauth2.GoogleCredentials
 import com.rotd.havenpad.LiveTourSession
 import com.rotd.havenpad.RegisterDeviceRequest
+import com.rotd.havenpad.RentBill
 import com.rotd.havenpad.admin.AccountEventLog
 import com.rotd.havenpad.config.ServerConfig
 import com.rotd.havenpad.db.DeviceTokensTable
@@ -140,6 +141,35 @@ object PushService {
         }
     }
 
+    fun notifyBill(bill: RentBill, title: String = "New rent bill issued", body: String = "") {
+        println("PushService.notifyBill triggered for billId=${bill.id}, userId=${bill.userId}")
+        thread(name = "fcm-bill", isDaemon = true) {
+            runCatching {
+                send(
+                    bill.userId,
+                    ChatPush(
+                        title = title,
+                        body = body.ifBlank { "Rent bill of KES ${bill.totalAmount.toInt()} for ${bill.propertyTitle.ifBlank { "your property" }} is ready." },
+                        channelId = "chat_messages",
+                        data = mapOf(
+                            "kind" to "bill",
+                            "billId" to bill.id,
+                            "propertyId" to bill.propertyId,
+                            "propertyTitle" to bill.propertyTitle,
+                            "messageId" to bill.id,
+                            "peerUserId" to bill.userId,
+                            "listingId" to bill.propertyId,
+                            "listingTitle" to bill.propertyTitle,
+                            "bookingId" to bill.bookingId.orEmpty(),
+                            "displayName" to "HavenPad Billing",
+                            "peerIsLandlord" to "false",
+                        ),
+                    ),
+                )
+            }.onFailure { println("FCM bill push failed: ${it.message}") }
+        }
+    }
+
     private fun deliverChat(message: ApartmentChatMessage) {
         val meta = transaction {
             val sender = UsersTable.selectAll()
@@ -213,8 +243,11 @@ object PushService {
                 .where { DeviceTokensTable.userId eq userId }
                 .map { it[DeviceTokensTable.token] }
         }
+        println("PushService.send for userId=$userId found ${tokens.size} tokens (kind=${push.data["kind"]})")
         if (tokens.isEmpty()) return
-        val access = accessToken() ?: return
+        val access = accessToken() ?: run {
+            return
+        }
         val url = "https://fcm.googleapis.com/v1/projects/${ServerConfig.fcmProjectId}/messages:send"
         tokens.forEach { token ->
             val response = kotlinx.coroutines.runBlocking {
@@ -226,16 +259,16 @@ object PushService {
                             message = FcmMessage(
                                 token = token,
                                 notification = FcmNotification(title = push.title, body = push.body),
-                                data = push.data,
-                                android = FcmAndroid(
-                                    notification = FcmAndroidNotification(channelId = push.channelId),
-                                ),
+                                data = push.data + mapOf("title" to push.title, "body" to push.body),
                             ),
                         ),
                     )
                 }
             }
-            if (response.status.isSuccess()) return@forEach
+            if (response.status.isSuccess()) {
+                println("PushService.send FCM SUCCESS for token ${token.take(12)}... kind=${push.data["kind"]}")
+                return@forEach
+            }
             val body = runCatching { kotlinx.coroutines.runBlocking { response.bodyAsText() } }.getOrNull().orEmpty()
             println("FCM ${response.status.value} for $userId: ${body.take(300)}")
             if (response.status.value == 404 || body.contains("UNREGISTERED")) {
@@ -281,19 +314,7 @@ private data class FcmMessage(
     val token: String,
     val notification: FcmNotification,
     val data: Map<String, String>,
-    val android: FcmAndroid,
 )
 
 @Serializable
 private data class FcmNotification(val title: String, val body: String)
-
-@Serializable
-private data class FcmAndroid(
-    val priority: String = "HIGH",
-    val notification: FcmAndroidNotification,
-)
-
-@Serializable
-private data class FcmAndroidNotification(
-    @SerialName("channel_id") val channelId: String,
-)

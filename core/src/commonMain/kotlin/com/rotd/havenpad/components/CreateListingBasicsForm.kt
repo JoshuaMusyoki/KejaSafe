@@ -367,11 +367,11 @@ fun CreateListingBasicsForm(
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
-            HavenPadFormField(label = "Water (KES / mo)") {
+            HavenPadFormField(label = "Water price per unit (KES / unit)") {
                 HavenPadTextField(
                     value = water,
                     onValueChange = onWaterChange ?: {},
-                    placeholder = "e.g. 500"
+                    placeholder = "e.g. 200"
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
