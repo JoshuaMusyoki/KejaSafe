@@ -8,6 +8,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.rotd.havenpad.storage.AndroidAppContext
+import com.rotd.havenpad.trust.browsePlaceName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
@@ -51,15 +52,11 @@ actual class LocationProvider actual constructor() {
             val geocoder = Geocoder(ctx)
             val addresses = geocoder.suspendGetFromLocation(latitude, longitude, 1)
             val address = addresses.firstOrNull() ?: return@withContext null
-            val neighborhood = address.subLocality?.trim()?.takeIf { it.isNotBlank() }
-            val city = address.locality?.trim()?.takeIf { it.isNotBlank() }
-            val precise = accuracyMeters != null && accuracyMeters > 0f && accuracyMeters <= PRECISE_METERS
-            val label = if (precise) {
-                listOfNotNull(neighborhood, city).distinct().joinToString(", ")
-            } else {
-                city.orEmpty()
-            }
-            label.ifBlank { null }
+            browsePlaceName(
+                neighborhood = address.subLocality,
+                city = address.locality,
+                accuracyMeters = accuracyMeters,
+            )
         } catch (e: Exception) {
             null
         }
@@ -206,4 +203,3 @@ private suspend fun Geocoder.suspendGetFromLocation(latitude: Double, longitude:
 }
 
 private const val RECENT_FIX_MS = 2 * 60 * 1000L
-private const val PRECISE_METERS = 200f

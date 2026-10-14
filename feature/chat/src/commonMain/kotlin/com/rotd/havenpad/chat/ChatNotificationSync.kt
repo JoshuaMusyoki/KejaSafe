@@ -12,6 +12,7 @@ import com.rotd.havenpad.notify.showIncomingChatNotification
 suspend fun pullNewChatMessages(repository: ApartmentChatRepository) {
     SessionManager.restore()
     val me = SessionManager.currentUser.value?.id ?: return
+    ChatNotificationInbox.showAccount(me)
     val peers = repository.refreshEligiblePeers().getOrElse { return }
     val primed = ChatNotificationInbox.isPrimed()
     peers.forEach { peer ->

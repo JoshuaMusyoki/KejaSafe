@@ -6,7 +6,9 @@ import com.auth0.jwt.algorithms.Algorithm
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
+import com.rotd.havenpad.KycStatus
 import com.rotd.havenpad.RegistrationRequest
+import com.rotd.havenpad.onboardingError
 import com.rotd.havenpad.config.ServerConfig
 import com.rotd.havenpad.RoommatePreferences
 import com.rotd.havenpad.UpdateProfileRequest
@@ -23,7 +25,6 @@ import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
-import java.util.Collections
 import java.util.Date
 import java.util.UUID
 
@@ -36,8 +37,12 @@ object AuthService {
     private val jwtIssuer = ServerConfig.jwtIssuer
     private val jwtAudience = ServerConfig.jwtAudience
     private val verifier by lazy {
+        val audiences = listOf(ServerConfig.googleClientId, ServerConfig.googleIosClientId)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
         GoogleIdTokenVerifier.Builder(NetHttpTransport(), GsonFactory())
-            .setAudience(Collections.singletonList(ServerConfig.googleClientId))
+            .setAudience(audiences.ifEmpty { listOf(ServerConfig.googleClientId) })
             .build()
     }
 
@@ -52,8 +57,7 @@ object AuthService {
     }
 
     fun registerUser(request: RegistrationRequest): User? {
-        if (request.role == UserRole.ADMIN) return null
-        require(request.password.length >= 8) { "Password must be at least 8 characters." }
+        request.onboardingError()?.let { throw IllegalArgumentException(it) }
         return createAccount(request, request.role)
     }
 
@@ -154,6 +158,16 @@ object AuthService {
         val id = UUID.randomUUID().toString()
         val passwordHash = BCrypt.withDefaults().hashToString(12, request.password.toCharArray())
         val now = System.currentTimeMillis()
+        val kyc = if (role == UserRole.AGENT) KycStatus.PENDING else KycStatus.NOT_SUBMITTED
+        val phone = request.phone.trim().ifBlank { null }
+        val major = request.major.trim().ifBlank { null }
+        val businessName = request.businessName.trim().ifBlank { null }
+        val university = request.university.trim().ifBlank { null }
+        val studentNumber = request.studentNumber.trim().ifBlank { null }
+        val nationalId = request.nationalIdNumber.trim().ifBlank { null }
+        val address = request.residentialAddress.trim().ifBlank { null }
+        val license = request.licenseNumber.trim().ifBlank { null }
+        val area = request.serviceArea.trim().ifBlank { null }
 
         UsersTable.insert {
             it[UsersTable.id] = id
@@ -162,6 +176,17 @@ object AuthService {
             it[UsersTable.fullName] = fullName
             it[UsersTable.passwordHash] = passwordHash
             it[UsersTable.role] = role
+            it[UsersTable.kycStatus] = kyc
+            it[UsersTable.phone] = phone
+            it[UsersTable.major] = major
+            it[UsersTable.yearOfStudy] = request.yearOfStudy
+            it[UsersTable.businessName] = businessName
+            it[UsersTable.university] = university
+            it[UsersTable.studentNumber] = studentNumber
+            it[UsersTable.nationalId] = nationalId
+            it[UsersTable.residentialAddress] = address
+            it[UsersTable.licenseNumber] = license
+            it[UsersTable.serviceArea] = area
             it[UsersTable.active] = true
             it[UsersTable.createdAt] = now
         }
@@ -171,7 +196,18 @@ object AuthService {
             email = email,
             username = username,
             fullName = fullName,
-            role = role
+            role = role,
+            kycStatus = kyc,
+            phone = phone,
+            major = major,
+            yearOfStudy = request.yearOfStudy,
+            businessName = businessName,
+            university = university,
+            studentNumber = studentNumber,
+            nationalIdNumber = nationalId,
+            residentialAddress = address,
+            licenseNumber = license,
+            serviceArea = area,
         )
     }
 
@@ -305,7 +341,13 @@ object AuthService {
             yearOfStudy = this[UsersTable.yearOfStudy],
             roommatePreferences = prefs,
             phone = this[UsersTable.phone],
-            businessName = this[UsersTable.businessName]
+            businessName = this[UsersTable.businessName],
+            university = this[UsersTable.university],
+            studentNumber = this[UsersTable.studentNumber],
+            nationalIdNumber = this[UsersTable.nationalId],
+            residentialAddress = this[UsersTable.residentialAddress],
+            licenseNumber = this[UsersTable.licenseNumber],
+            serviceArea = this[UsersTable.serviceArea],
         )
     }
 }

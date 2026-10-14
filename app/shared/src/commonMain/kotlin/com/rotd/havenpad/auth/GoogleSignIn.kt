@@ -53,15 +53,6 @@ internal const val HAVEN_GOOGLE_SIGN_IN_SCRIPT = """
         if (event.target === overlay) finish("", "Google sign-in was cancelled");
       });
       document.body.appendChild(overlay);
-      google.accounts.id.initialize({
-        client_id: clientId,
-        callback: function (resp) {
-          if (resp && resp.credential) finish(resp.credential, "");
-          else finish("", "Google did not return a sign-in");
-        },
-        auto_select: false,
-        cancel_on_tap_outside: false
-      });
       google.accounts.id.renderButton(host, {
         theme: "outline",
         size: "large",
@@ -69,8 +60,32 @@ internal const val HAVEN_GOOGLE_SIGN_IN_SCRIPT = """
         width: 280
       });
     }
+    function showAccounts() {
+      var google = globalThis.google;
+      if (!google || !google.accounts || !google.accounts.id) {
+        finish("", "Google sign-in failed to load");
+        return;
+      }
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: function (resp) {
+          if (resp && resp.credential) finish(resp.credential, "");
+          else finish("", "Google did not return a sign-in");
+        },
+        auto_select: false,
+        cancel_on_tap_outside: true,
+        use_fedcm_for_prompt: true
+      });
+      google.accounts.id.prompt(function (notification) {
+        var hidden = notification && notification.isNotDisplayed && notification.isNotDisplayed();
+        var skipped = notification && notification.isSkippedMoment && notification.isSkippedMoment();
+        var dismissed = notification && notification.isDismissedMoment && notification.isDismissedMoment();
+        if (hidden || skipped) openPicker();
+        else if (dismissed) finish("", "Google sign-in was cancelled");
+      });
+    }
     if (globalThis.google && globalThis.google.accounts && globalThis.google.accounts.id) {
-      openPicker();
+      showAccounts();
       return;
     }
     var script = document.querySelector("script[data-haven-gis]");
@@ -83,12 +98,12 @@ internal const val HAVEN_GOOGLE_SIGN_IN_SCRIPT = """
       document.head.appendChild(script);
     }
     if (script.getAttribute("data-haven-loaded") === "1") {
-      openPicker();
+      showAccounts();
       return;
     }
     script.addEventListener("load", function () {
       script.setAttribute("data-haven-loaded", "1");
-      openPicker();
+      showAccounts();
     });
     script.addEventListener("error", function () {
       finish("", "Could not load Google sign-in");

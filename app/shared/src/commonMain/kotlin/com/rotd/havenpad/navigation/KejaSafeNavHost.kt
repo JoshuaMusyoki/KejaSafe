@@ -23,6 +23,7 @@ import com.rotd.havenpad.KycStatus
 import com.rotd.havenpad.admin.AdminScreen
 import com.rotd.havenpad.auth.LoginScreen
 import com.rotd.havenpad.auth.RegisterScreen
+import com.rotd.havenpad.auth.RoleChoiceScreen
 import com.rotd.havenpad.chat.ChatIncomingNotifications
 import com.rotd.havenpad.chat.ChatInboxScreen
 import com.rotd.havenpad.chat.ChatInboxTab
@@ -69,6 +70,9 @@ fun HavenPadNavHost(
         val backStack = remember { mutableStateListOf(startDestination) }
         val isWeb = getPlatform().isWeb
     val signedInUser by SessionManager.currentUser.collectAsState()
+    LaunchedEffect(signedInUser?.id) {
+        ChatNotificationInbox.showAccount(signedInUser?.id)
+    }
     if (signedInUser != null) {
         ChatIncomingNotifications()
     }
@@ -97,7 +101,7 @@ fun HavenPadNavHost(
     }
 
     fun showRegister() {
-        replaceRoot(HavenPadDestination.Register)
+        replaceRoot(HavenPadDestination.RoleChoice)
     }
 
     fun openAuth(destination: HavenPadDestination) {
@@ -305,12 +309,26 @@ fun HavenPadNavHost(
             )
         }
 
-        entry<HavenPadDestination.Register> {
+        entry<HavenPadDestination.RoleChoice> {
+            RoleChoiceScreen(
+                onBack = {
+                    if (backStack.size > 1) goBack() else showLogin()
+                },
+                onContinue = { role ->
+                    openAuth(HavenPadDestination.Register(role.name))
+                },
+            )
+        }
+
+        entry<HavenPadDestination.Register> { destination ->
+            val role = runCatching { UserRole.valueOf(destination.roleName) }
+                .getOrDefault(UserRole.STUDENT)
             RegisterScreen(
+                role = role,
                 onNavigateToLogin = {
                     if (backStack.size > 1) goBack() else showLogin()
                 },
-                onBack = if (isWeb && backStack.size > 1) {
+                onBack = if (backStack.size > 1) {
                     { goBack() }
                 } else null,
                 onRegistrationSuccess = {
@@ -329,10 +347,10 @@ fun HavenPadNavHost(
         entry<HavenPadDestination.Login> {
             LoginScreen(
                 onNavigateToRegister = {
-                    if (backStack.any { it is HavenPadDestination.Register }) {
+                    if (backStack.any { it is HavenPadDestination.RoleChoice }) {
                         goBack()
                     } else {
-                        openAuth(HavenPadDestination.Register)
+                        openAuth(HavenPadDestination.RoleChoice)
                     }
                 },
                 onBack = if (isWeb && backStack.size > 1) {
@@ -652,7 +670,8 @@ fun HavenPadNavHost(
         HavenPadDestination.Features,
         HavenPadDestination.Policy,
         HavenPadDestination.Login,
-        HavenPadDestination.Register -> false
+        HavenPadDestination.RoleChoice -> false
+        is HavenPadDestination.Register -> false
         else -> true
     }
     val sidebarChatTab by ChatSidebarRequest.tab.collectAsState()

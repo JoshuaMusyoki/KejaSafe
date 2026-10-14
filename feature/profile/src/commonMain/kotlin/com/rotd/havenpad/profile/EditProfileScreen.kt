@@ -217,5 +217,6 @@ fun EditProfileScreen(
 private fun roleLabel(role: UserRole): String = when (role) {
     UserRole.STUDENT -> "Student"
     UserRole.LANDLORD -> "Landlord"
+    UserRole.AGENT -> "Agent"
     UserRole.ADMIN -> "Admin"
 }

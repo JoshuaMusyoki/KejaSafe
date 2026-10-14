@@ -24,6 +24,16 @@ interface UserProfileDataSource {
         role: UserRole,
         googleId: String? = null,
         phone: String? = null,
+        major: String? = null,
+        yearOfStudy: Int? = null,
+        businessName: String? = null,
+        university: String? = null,
+        studentNumber: String? = null,
+        nationalIdNumber: String? = null,
+        residentialAddress: String? = null,
+        licenseNumber: String? = null,
+        serviceArea: String? = null,
+        kycStatus: KycStatus? = null,
     ): Result<User>
 
     suspend fun updateMyProfile(request: UpdateProfileRequest): Result<User>

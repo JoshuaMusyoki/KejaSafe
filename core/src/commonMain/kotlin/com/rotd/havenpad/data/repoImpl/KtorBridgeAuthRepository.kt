@@ -38,8 +38,9 @@ class KtorBridgeAuthRepository(
         username: String,
         fullName: String,
         role: UserRole,
+        details: RegistrationRequest?,
     ): Result<User> = AuthClient.register(
-        RegistrationRequest(email, username, fullName, password, role)
+        details ?: RegistrationRequest(email, username, fullName, password, role)
     ).mapSession()
 
     override suspend fun signInWithEmail(email: String, password: String): Result<User> =

@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.GoogleAuthProvider
 import com.rotd.havenpad.KycStatus
+import com.rotd.havenpad.RegistrationRequest
 import com.rotd.havenpad.UpdateProfileRequest
 import com.rotd.havenpad.User
 import com.rotd.havenpad.UserRole
@@ -55,6 +56,7 @@ class AuthRepositoryImpl(
         username: String,
         fullName: String,
         role: UserRole,
+        details: RegistrationRequest?,
     ): Result<User> {
         return try {
             val trimmedEmail = email.trim()
@@ -67,6 +69,17 @@ class AuthRepositoryImpl(
                 username = username.trim(),
                 fullName = fullName.trim(),
                 role = role,
+                phone = details?.phone?.trim()?.ifBlank { null },
+                major = details?.major?.trim()?.ifBlank { null },
+                yearOfStudy = details?.yearOfStudy,
+                businessName = details?.businessName?.trim()?.ifBlank { null },
+                university = details?.university?.trim()?.ifBlank { null },
+                studentNumber = details?.studentNumber?.trim()?.ifBlank { null },
+                nationalIdNumber = details?.nationalIdNumber?.trim()?.ifBlank { null },
+                residentialAddress = details?.residentialAddress?.trim()?.ifBlank { null },
+                licenseNumber = details?.licenseNumber?.trim()?.ifBlank { null },
+                serviceArea = details?.serviceArea?.trim()?.ifBlank { null },
+                kycStatus = if (role == UserRole.AGENT) KycStatus.PENDING else KycStatus.NOT_SUBMITTED,
             ).getOrElse { return Result.failure(it) }
             commitSession(profile)
             Result.success(profile)

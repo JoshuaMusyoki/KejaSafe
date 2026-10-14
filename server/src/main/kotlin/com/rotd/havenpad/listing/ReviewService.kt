@@ -15,6 +15,8 @@ import com.rotd.havenpad.ReviewSubject
 import com.rotd.havenpad.StayReview
 import com.rotd.havenpad.SubmitReviewRequest
 import com.rotd.havenpad.UserRole
+import com.rotd.havenpad.trust.HouseScore
+import com.rotd.havenpad.trust.rankByAverageRating
 import com.rotd.havenpad.db.ListingBookingsTable
 import com.rotd.havenpad.db.ListingsTable
 import com.rotd.havenpad.db.StayReviewsTable
@@ -29,13 +31,10 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import java.util.UUID
-import kotlin.math.roundToInt
 
 object ReviewService {
     private const val SUBJECT_LANDLORD = "LANDLORD"
     private const val SUBJECT_STUDENT = "STUDENT"
-
-    private data class Score(val percent: Int, val count: Int, val rank: Int)
 
     fun applyLandlordRank(listings: List<PropertyListing>): List<PropertyListing> {
         if (listings.isEmpty()) return listings
@@ -214,11 +213,7 @@ object ReviewService {
     fun openReports(): List<StayReview> = transaction {
         StayReviewsTable.selectAll()
             .map { it.toReview(includeFollowUp = true) }
-            .filter {
-                it.reportStatus == ReviewReportStatus.OPEN ||
-                    it.reportStatus == ReviewReportStatus.FOLLOWED_UP ||
-                    (it.reportReason.isNotBlank() && it.reportStatus != ReviewReportStatus.DISMISSED)
-            }
+            .filter { isActionableReport(it.reportStatus, it.reportReason) }
             .sortedByDescending { it.createdAt }
     }
 
@@ -270,33 +265,24 @@ object ReviewService {
         )
     }
 
-    private fun landlordScores(): Map<String, Score> =
+    private fun landlordScores(): Map<String, HouseScore> =
         scoresFor(SUBJECT_LANDLORD) { it[StayReviewsTable.landlordId] }
 
-    private fun houseScores(): Map<String, Score> =
+    private fun houseScores(): Map<String, HouseScore> =
         scoresFor(SUBJECT_LANDLORD) { it[StayReviewsTable.listingId] }
 
-    private fun studentScores(): Map<String, Score> =
+    private fun studentScores(): Map<String, HouseScore> =
         scoresFor(SUBJECT_STUDENT) { it[StayReviewsTable.studentId] }
 
     private fun scoresFor(
         subject: String,
         owner: (ResultRow) -> String,
-    ): Map<String, Score> {
+    ): Map<String, HouseScore> {
         val grouped = StayReviewsTable.selectAll()
             .where { StayReviewsTable.subject eq subject }
             .groupBy(owner)
-        val ranked = grouped.map { (id, rows) ->
-            val average = rows.map { it[StayReviewsTable.rating] }.average()
-            val percent = ((average / 5.0) * 100.0).roundToInt().coerceIn(0, 100)
-            id to (percent to rows.size)
-        }.sortedWith(
-            compareByDescending<Pair<String, Pair<Int, Int>>> { it.second.first }
-                .thenByDescending { it.second.second }
-        )
-        return ranked.mapIndexed { index, (id, stats) ->
-            id to Score(percent = stats.first, count = stats.second, rank = index + 1)
-        }.toMap()
+            .mapValues { (_, rows) -> rows.map { it[StayReviewsTable.rating] } }
+        return rankByAverageRating(grouped)
     }
 
     private fun listingRow(listingId: String): ResultRow =
@@ -383,3 +369,9 @@ object ReviewService {
         )
     }
 }
+
+/** A blank "Report review" must not show up in the admin queue. */
+internal fun isActionableReport(status: ReviewReportStatus, reason: String): Boolean =
+    status == ReviewReportStatus.OPEN ||
+        status == ReviewReportStatus.FOLLOWED_UP ||
+        (reason.isNotBlank() && status != ReviewReportStatus.DISMISSED)

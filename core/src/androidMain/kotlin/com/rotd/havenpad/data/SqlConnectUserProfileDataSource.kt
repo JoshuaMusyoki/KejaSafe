@@ -54,9 +54,22 @@ class SqlConnectUserProfileDataSource(
         role: UserRole,
         googleId: String?,
         phone: String?,
+        major: String?,
+        yearOfStudy: Int?,
+        businessName: String?,
+        university: String?,
+        studentNumber: String?,
+        nationalIdNumber: String?,
+        residentialAddress: String?,
+        licenseNumber: String?,
+        serviceArea: String?,
+        kycStatus: KycStatus?,
     ): Result<User> {
-        val local = cache.upsertMyUser(email, username, fullName, role, googleId, phone)
-            .getOrElse { return Result.failure(it) }
+        val local = cache.upsertMyUser(
+            email, username, fullName, role, googleId, phone,
+            major, yearOfStudy, businessName, university, studentNumber,
+            nationalIdNumber, residentialAddress, licenseNumber, serviceArea, kycStatus,
+        ).getOrElse { return Result.failure(it) }
         // --- Cloud SQL (Data Connect) upsert — paused (needs Cloud SQL instance) ---
         // if (DataConnectRuntime.cloudEnabled) {
         //     connector.upsertMyUser.execute(email, username, fullName, role.name) {

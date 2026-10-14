@@ -43,6 +43,16 @@ class SessionCachedUserProfileDataSource : UserProfileDataSource {
         role: UserRole,
         googleId: String?,
         phone: String?,
+        major: String?,
+        yearOfStudy: Int?,
+        businessName: String?,
+        university: String?,
+        studentNumber: String?,
+        nationalIdNumber: String?,
+        residentialAddress: String?,
+        licenseNumber: String?,
+        serviceArea: String?,
+        kycStatus: KycStatus?,
     ): Result<User> {
         val uid = LocalSettings.getString(KEY_ACTIVE_UID)
             ?: return Result.failure(IllegalStateException("No signed-in user"))
@@ -53,13 +63,19 @@ class SessionCachedUserProfileDataSource : UserProfileDataSource {
             username = username,
             fullName = fullName,
             role = role,
-            kycStatus = existing?.kycStatus ?: KycStatus.NOT_SUBMITTED,
+            kycStatus = kycStatus ?: existing?.kycStatus ?: KycStatus.NOT_SUBMITTED,
             profilePictureUrl = existing?.profilePictureUrl,
-            major = existing?.major,
-            yearOfStudy = existing?.yearOfStudy,
+            major = major ?: existing?.major,
+            yearOfStudy = yearOfStudy ?: existing?.yearOfStudy,
             roommatePreferences = existing?.roommatePreferences.orEmpty(),
             phone = phone ?: existing?.phone,
-            businessName = existing?.businessName,
+            businessName = businessName ?: existing?.businessName,
+            university = university ?: existing?.university,
+            studentNumber = studentNumber ?: existing?.studentNumber,
+            nationalIdNumber = nationalIdNumber ?: existing?.nationalIdNumber,
+            residentialAddress = residentialAddress ?: existing?.residentialAddress,
+            licenseNumber = licenseNumber ?: existing?.licenseNumber,
+            serviceArea = serviceArea ?: existing?.serviceArea,
         )
         writeUser(user)
         indexUsername(username, email)

@@ -165,7 +165,7 @@ fun Application.module() {
                 if (request.role == UserRole.ADMIN) {
                     call.respond(
                         HttpStatusCode.BadRequest,
-                        "Choose Student or Landlord. Admin accounts are issued by the HavenPad team."
+                        "Choose student, landlord, or agent. Admin accounts are issued by the HavenPad team."
                     )
                     return@post
                 }

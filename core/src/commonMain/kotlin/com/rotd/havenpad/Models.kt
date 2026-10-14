@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class UserRole {
-    STUDENT, LANDLORD, ADMIN
+    STUDENT, LANDLORD, AGENT, ADMIN
 }
 
 @Serializable
@@ -25,7 +25,13 @@ data class User(
     val yearOfStudy: Int? = null,
     val roommatePreferences: List<String> = emptyList(),
     val phone: String? = null,
-    val businessName: String? = null
+    val businessName: String? = null,
+    val university: String? = null,
+    val studentNumber: String? = null,
+    val nationalIdNumber: String? = null,
+    val residentialAddress: String? = null,
+    val licenseNumber: String? = null,
+    val serviceArea: String? = null,
 )
 
 @Serializable
@@ -195,7 +201,17 @@ data class RegistrationRequest(
     val username: String,
     val fullName: String,
     val password: String,
-    val role: UserRole
+    val role: UserRole,
+    val phone: String = "",
+    val university: String = "",
+    val studentNumber: String = "",
+    val major: String = "",
+    val yearOfStudy: Int? = null,
+    val businessName: String = "",
+    val nationalIdNumber: String = "",
+    val residentialAddress: String = "",
+    val licenseNumber: String = "",
+    val serviceArea: String = "",
 )
 
 @Serializable

@@ -698,7 +698,7 @@ private fun monthName(month: Int): String = when (month) {
     else -> "Month $month"
 }
 
-private fun formatDue(epochMs: Long): String {
+internal fun formatDue(epochMs: Long): String {
     var z = epochMs / 86_400_000L + 719_468L
     val era = (if (z >= 0) z else z - 146_096) / 146_097
     val doe = z - era * 146_097

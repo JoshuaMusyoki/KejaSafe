@@ -322,7 +322,7 @@ class EditProfileViewModel(
                 username = draft.username.trim(),
                 phone = draft.phone.trim().ifBlank { null },
                 businessName = when (user.role) {
-                    UserRole.LANDLORD, UserRole.ADMIN ->
+                    UserRole.LANDLORD, UserRole.AGENT, UserRole.ADMIN ->
                         draft.businessName.trim().ifBlank { null }
                     else -> null
                 },

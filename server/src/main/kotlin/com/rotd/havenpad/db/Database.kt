@@ -34,6 +34,12 @@ object UsersTable : Table("users") {
     val roommatePreferences = varchar("roommate_preferences", 500).nullable()
     val phone = varchar("phone", 40).nullable()
     val businessName = varchar("business_name", 150).nullable()
+    val university = varchar("university", 150).nullable()
+    val studentNumber = varchar("student_number", 60).nullable()
+    val nationalId = varchar("national_id", 40).nullable()
+    val residentialAddress = varchar("residential_address", 300).nullable()
+    val licenseNumber = varchar("license_number", 80).nullable()
+    val serviceArea = varchar("service_area", 150).nullable()
     val active = bool("is_active").default(true)
     val createdAt = long("created_at").default(0L)
 

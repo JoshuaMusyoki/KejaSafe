@@ -9,6 +9,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
 
 @Composable
@@ -25,7 +26,8 @@ fun HavenPadTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     leadingIcon: @Composable (() -> Unit)? = null,
-    trailingIcon: @Composable (() -> Unit)? = null
+    trailingIcon: @Composable (() -> Unit)? = null,
+    textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
 ) {
     OutlinedTextField(
         value = value,
@@ -33,7 +35,8 @@ fun HavenPadTextField(
         modifier = modifier.fillMaxWidth(),
         enabled = enabled,
         singleLine = singleLine,
-        label = if (label != null) { { Text(label) } } else null,
+        textStyle = textStyle,
+        label = if (label != null) { { Text(label, style = textStyle) } } else null,
         placeholder = if (placeholder != null) { { Text(placeholder) } } else null,
         shape = MaterialTheme.shapes.large,
         isError = isError,

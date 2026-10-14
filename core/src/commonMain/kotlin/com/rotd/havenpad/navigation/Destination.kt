@@ -52,8 +52,12 @@ sealed interface HavenPadDestination : NavKey {
     @Serializable
     data object Login : HavenPadDestination
 
+    /** Student, landlord, or agent, before the role-specific form. */
     @Serializable
-    data object Register : HavenPadDestination
+    data object RoleChoice : HavenPadDestination
+
+    @Serializable
+    data class Register(val roleName: String = "STUDENT") : HavenPadDestination
 
     @Serializable
     data object Rent : HavenPadDestination

@@ -739,6 +739,11 @@ private fun RoleBadge(user: User) {
             Emerald700.copy(alpha = 0.14f),
             Emerald700
         )
+        UserRole.AGENT -> Triple(
+            if (user.kycStatus == KycStatus.VERIFIED) "Verified Agent" else "Agent",
+            Emerald700.copy(alpha = 0.14f),
+            Emerald700
+        )
         UserRole.ADMIN -> Triple(
             "Admin",
             MaterialTheme.colorScheme.surfaceVariant,
@@ -781,6 +786,11 @@ private fun roleSubtitle(user: User): String = when (user.role) {
     UserRole.LANDLORD -> {
         val business = user.businessName?.takeIf { it.isNotBlank() } ?: "Property owner"
         "$business · @${user.username}"
+    }
+    UserRole.AGENT -> {
+        val agency = user.businessName?.takeIf { it.isNotBlank() } ?: "Agent"
+        val area = user.serviceArea?.takeIf { it.isNotBlank() }
+        if (area == null) "$agency · @${user.username}" else "$agency · $area · @${user.username}"
     }
     UserRole.ADMIN -> "Administrator · @${user.username}"
 }

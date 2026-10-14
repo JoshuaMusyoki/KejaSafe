@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rotd.havenpad.components.ReviewStars
 import com.rotd.havenpad.MyReviews
+import com.rotd.havenpad.Reputation
 import com.rotd.havenpad.ReviewReportStatus
 import com.rotd.havenpad.ReviewSubject
 import com.rotd.havenpad.StayReview
@@ -65,16 +66,7 @@ fun ProfileReviewsSection(modifier: Modifier = Modifier) {
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = when {
-                about == null -> "Loading your rating…"
-                about.reviewCount <= 0 -> "No reviews yet."
-                else -> buildString {
-                    append("${about.percent}%")
-                    about.rank?.let { append(" · Rank #${it}") }
-                    append(" · ${about.reviewCount} review")
-                    if (about.reviewCount != 1) append("s")
-                }
-            },
+            text = reputationHeadline(about),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.SemiBold,
@@ -215,5 +207,16 @@ private fun ProfileReviewCard(
                 }
             }
         }
+    }
+}
+
+internal fun reputationHeadline(about: Reputation?): String = when {
+    about == null -> "Loading your rating…"
+    about.reviewCount <= 0 -> "No reviews yet."
+    else -> buildString {
+        append("${about.percent}%")
+        about.rank?.let { append(" · Rank #${it}") }
+        append(" · ${about.reviewCount} review")
+        if (about.reviewCount != 1) append("s")
     }
 }

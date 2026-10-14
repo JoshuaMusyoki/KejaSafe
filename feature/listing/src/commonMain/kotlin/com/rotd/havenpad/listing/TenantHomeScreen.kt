@@ -299,12 +299,11 @@ fun TenantHomeScreen(
 
                 item {
                     MarketplaceSectionHeader(
-                        title = when {
-                            state.isLocating -> "Finding houses near you"
-                            !state.userLocationName.isNullOrBlank() -> "Houses around ${state.userLocationName}"
-                            state.userLatitude != null -> "Houses near you"
-                            else -> "Trending near you"
-                        }
+                        title = browseHeading(
+                            isLocating = state.isLocating,
+                            locationName = state.userLocationName,
+                            hasCoordinates = state.userLatitude != null,
+                        )
                     )
                 }
 

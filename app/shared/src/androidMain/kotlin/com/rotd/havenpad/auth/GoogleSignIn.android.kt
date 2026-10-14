@@ -8,7 +8,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.launch
 
@@ -27,11 +27,7 @@ actual fun rememberGoogleIdTokenLauncher(
         } else scope.launch {
             runCatching {
                 val manager = CredentialManager.create(context)
-                val option = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false)
-                    .setServerClientId(clientId)
-                    .setAutoSelectEnabled(false)
-                    .build()
+                val option = GetSignInWithGoogleOption.Builder(clientId).build()
                 val request = GetCredentialRequest.Builder()
                     .addCredentialOption(option)
                     .build()

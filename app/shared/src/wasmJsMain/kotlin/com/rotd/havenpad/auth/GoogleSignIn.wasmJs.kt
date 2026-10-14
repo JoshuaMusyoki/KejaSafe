@@ -1,6 +1,7 @@
 package com.rotd.havenpad.auth
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -19,12 +20,14 @@ actual fun rememberGoogleIdTokenLauncher(
     val onErrorState by rememberUpdatedState(onError)
     val scope = rememberCoroutineScope()
     val bridge = remember { WasmGoogleBridge() }
+    LaunchedEffect(Unit) { bridge.warm() }
     return { clientId ->
         if (clientId.isBlank()) {
             onErrorState("Google sign-in is not set up on this server yet.")
         } else {
+            val pending = bridge.begin(clientId)
             scope.launch {
-                val (token, error) = runCatching { bridge.request(clientId) }
+                val (token, error) = runCatching { withTimeout(120_000) { pending.await() } }
                     .getOrElse { "" to (it.message ?: "Google sign-in failed") }
                 if (token.isNotBlank()) onTokenState(token)
                 else onErrorState(error.ifBlank { "Google sign-in failed" })
@@ -37,23 +40,31 @@ private class WasmGoogleBridge {
     private var ready = false
     private var pending: CompletableDeferred<Pair<String, String>>? = null
 
-    suspend fun request(clientId: String): Pair<String, String> {
-        if (!ready) {
-            evalHavenGoogle(HAVEN_GOOGLE_SIGN_IN_SCRIPT)
-            bindGoogleDone { payload ->
-                val split = payload.indexOf('\n')
-                val token = if (split < 0) payload else payload.substring(0, split)
-                val error = if (split < 0) "" else payload.substring(split + 1)
-                pending?.complete(token to error)
-                pending = null
-            }
-            ready = true
-        }
+    fun warm() {
+        install()
+    }
+
+    /** Starts Google in the click turn so the browser can show the account list. */
+    fun begin(clientId: String): CompletableDeferred<Pair<String, String>> {
+        install()
         val deferred = CompletableDeferred<Pair<String, String>>()
         pending?.complete("" to "Google sign-in was replaced")
         pending = deferred
         startGoogle(clientId)
-        return withTimeout(120_000) { deferred.await() }
+        return deferred
+    }
+
+    private fun install() {
+        if (ready) return
+        evalHavenGoogle(HAVEN_GOOGLE_SIGN_IN_SCRIPT)
+        bindGoogleDone { payload ->
+            val split = payload.indexOf('\n')
+            val token = if (split < 0) payload else payload.substring(0, split)
+            val error = if (split < 0) "" else payload.substring(split + 1)
+            pending?.complete(token to error)
+            pending = null
+        }
+        ready = true
     }
 }
 

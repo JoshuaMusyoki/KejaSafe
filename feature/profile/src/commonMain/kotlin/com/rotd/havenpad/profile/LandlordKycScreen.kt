@@ -14,8 +14,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -140,18 +144,11 @@ fun LandlordKycScreen(
                 if (state.loading && record == null) {
                     CircularProgressIndicator()
                 }
-                Text("Document", style = MaterialTheme.typography.titleSmall)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(selected = documentType == "National ID", onClick = { documentType = "National ID" })
-                    Text("National ID")
-                    RadioButton(selected = documentType == "Passport", onClick = { documentType = "Passport" })
-                    Text("Passport")
-                }
-                HavenPadTextField(
-                    value = documentNumber,
-                    onValueChange = { documentNumber = it },
-                    label = "ID number",
-                    modifier = Modifier.fillMaxWidth(),
+                DocumentNumberField(
+                    documentType = documentType,
+                    onDocumentType = { documentType = it },
+                    number = documentNumber,
+                    onNumberChange = { documentNumber = it },
                 )
                 HavenPadTextField(
                     value = address,
@@ -182,7 +179,12 @@ fun LandlordKycScreen(
                         val id = idImage
                         val proof = addressImage
                         when {
-                            documentNumber.trim().length < 4 -> formError = "Enter the ID number."
+                            documentNumber.trim().length < 4 ->
+                                formError = if (documentType == "Passport") {
+                                    "Enter the passport number."
+                                } else {
+                                    "Enter the ID number."
+                                }
                             address.trim().length < 8 -> formError = "Enter the full residential address."
                             id == null -> formError = "Add a photo of the ID."
                             proof == null -> formError = "Add a photo of your proof of address."
@@ -215,6 +217,62 @@ fun LandlordKycScreen(
                 }
                 Spacer(modifier = Modifier.height(24.dp))
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DocumentNumberField(
+    documentType: String,
+    onDocumentType: (String) -> Unit,
+    number: String,
+    onNumberChange: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val passport = documentType == "Passport"
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+    ) {
+        val typeAnchor = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable)
+        HavenPadTextField(
+            value = number,
+            onValueChange = onNumberChange,
+            label = if (passport) "Passport number" else "ID number",
+            modifier = Modifier.fillMaxWidth(),
+            trailingIcon = {
+                Row(
+                    modifier = typeAnchor.padding(end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (passport) "Passport" else "National ID",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                }
+            },
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("ID number") },
+                onClick = {
+                    onDocumentType("National ID")
+                    expanded = false
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Passport number") },
+                onClick = {
+                    onDocumentType("Passport")
+                    expanded = false
+                },
+            )
         }
     }
 }

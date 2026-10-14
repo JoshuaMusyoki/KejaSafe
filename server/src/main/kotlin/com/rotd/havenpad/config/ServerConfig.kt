@@ -166,6 +166,12 @@ object ServerConfig {
      */
     val googleClientId: String = configValue("HAVENPAD_GOOGLE_CLIENT_ID") ?: ""
 
+    /**
+     * OAuth iOS client id. Same value as Info.plist GIDClientID.
+     * Accepted as a second ID-token audience so iOS sign-in verifies beside the web client.
+     */
+    val googleIosClientId: String = configValue("HAVENPAD_GOOGLE_IOS_CLIENT_ID") ?: ""
+
     /** Server-side key for Places Autocomplete. Never shipped to the app. */
     val googlePlacesApiKey: String? = configValue("GOOGLE_PLACES_API_KEY")
 

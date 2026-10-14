@@ -63,18 +63,36 @@ class LoginViewModel(
         }
     }
 
+    private var googleClientId: String? = null
+
+    /** Load the web client id before the click, so the account picker keeps the user gesture. */
+    fun warmGoogleSignIn() {
+        if (!googleClientId.isNullOrBlank()) return
+        viewModelScope.launch {
+            AuthClient.googleClientId().onSuccess { id ->
+                googleClientId = id.takeIf { it.isNotBlank() }
+            }
+        }
+    }
+
     fun prepareGoogleSignIn(onClientId: (String) -> Unit) {
+        val clientId = googleClientId
+        if (!clientId.isNullOrBlank()) {
+            onClientId(clientId)
+            return
+        }
         viewModelScope.launch {
             _state.value = LoginState.Loading
             AuthClient.googleClientId().fold(
-                onSuccess = { clientId ->
-                    if (clientId.isBlank()) {
+                onSuccess = { id ->
+                    if (id.isBlank()) {
                         _state.value = LoginState.Error(
                             "Google sign-in is not set up on this server yet. Continue as a guest, or sign in with email.",
                         )
                     } else {
+                        googleClientId = id
                         _state.value = LoginState.Idle
-                        onClientId(clientId)
+                        onClientId(id)
                     }
                 },
                 onFailure = {
@@ -86,6 +104,25 @@ class LoginViewModel(
 
     fun reportError(message: String) {
         _state.value = LoginState.Error(message)
+    }
+
+    fun sendPasswordReset() {
+        val email = identifier.value.trim()
+        if (!email.contains("@")) {
+            _state.value = LoginState.Error("Enter the email on your account to reset the password.")
+            return
+        }
+        viewModelScope.launch {
+            _state.value = LoginState.Loading
+            authRepository.sendPasswordResetEmail(email).fold(
+                onSuccess = {
+                    _state.value = LoginState.Error("Password reset email sent. Check your inbox.")
+                },
+                onFailure = {
+                    _state.value = LoginState.Error(it.authUserMessage())
+                },
+            )
+        }
     }
 
     fun loginWithGoogle(idToken: String, role: UserRole = UserRole.STUDENT) {

@@ -1,6 +1,7 @@
 package com.rotd.havenpad.domain.repository
 
 import com.rotd.havenpad.KycStatus
+import com.rotd.havenpad.RegistrationRequest
 import com.rotd.havenpad.LandlordKycRequest
 import com.rotd.havenpad.StudentKycRequest
 import com.rotd.havenpad.UpdateProfileRequest
@@ -21,6 +22,7 @@ interface AuthRepository {
         username: String,
         fullName: String,
         role: UserRole,
+        details: RegistrationRequest? = null,
     ): Result<User>
 
     suspend fun signInWithEmail(email: String, password: String): Result<User>

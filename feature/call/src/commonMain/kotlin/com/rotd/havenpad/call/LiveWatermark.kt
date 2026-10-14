@@ -110,7 +110,7 @@ private fun WatermarkLine(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-private fun formatElapsed(totalSec: Int): String {
+internal fun formatElapsed(totalSec: Int): String {
     val h = totalSec / 3600
     val m = (totalSec % 3600) / 60
     val s = totalSec % 60

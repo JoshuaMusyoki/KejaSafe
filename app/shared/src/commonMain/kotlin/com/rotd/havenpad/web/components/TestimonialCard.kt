@@ -124,6 +124,7 @@ internal fun RatingStars(rating: Int, size: Int = 16) {
 internal fun UserRole.storyLabel(): String = when (this) {
     UserRole.STUDENT -> "Verified Student"
     UserRole.LANDLORD -> "Verified Landlord"
+    UserRole.AGENT -> "Agent"
     UserRole.ADMIN -> "HavenPad Team"
 }
 
