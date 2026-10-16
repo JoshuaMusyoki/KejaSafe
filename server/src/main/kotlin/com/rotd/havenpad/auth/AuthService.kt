@@ -11,6 +11,7 @@ import com.rotd.havenpad.RegistrationRequest
 import com.rotd.havenpad.onboardingError
 import com.rotd.havenpad.config.ServerConfig
 import com.rotd.havenpad.RoommatePreferences
+import com.rotd.havenpad.listing.ListingService
 import com.rotd.havenpad.UpdateProfileRequest
 import com.rotd.havenpad.User
 import com.rotd.havenpad.UserRole
@@ -25,8 +26,16 @@ import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
+import java.awt.Color
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.util.Base64
 import java.util.Date
 import java.util.UUID
+import javax.imageio.ImageIO
 
 class AccountRemovedException : RuntimeException(
     "This account has been removed from HavenPad. Contact the HavenPad team if this is a mistake."
@@ -324,6 +333,76 @@ object AuthService {
             .where { UsersTable.id eq userId }
             .singleOrNull()
             ?.toUser()
+    }
+
+    fun saveProfilePhoto(userId: String, fileName: String, imageBase64: String): User? {
+        if (userId.isBlank()) return null
+        val original = decodeProfilePhoto(imageBase64)
+        val bytes = shrinkPhoto(original)
+        val safeId = userId.filter { it.isLetterOrDigit() || it == '-' }
+        if (safeId.isBlank()) return null
+        val dir = File(ListingService.uploadRoot, "avatars").apply { mkdirs() }
+        dir.listFiles()?.filter { it.name.startsWith("$safeId.") }?.forEach { it.delete() }
+        File(dir, "$safeId.jpg").writeBytes(bytes)
+        val url = "/uploads/avatars/$safeId.jpg"
+        val updated = transaction {
+            UsersTable.update({ UsersTable.id eq userId }) {
+                it[UsersTable.profilePictureUrl] = url
+            }
+        }
+        if (updated == 0) return null
+        return getUserById(userId)
+    }
+
+    fun shrinkStoredAvatars() {
+        val dir = File(ListingService.uploadRoot, "avatars")
+        if (!dir.isDirectory) return
+        dir.listFiles()?.forEach { file ->
+            if (!file.isFile || file.length() < 80_000) return@forEach
+            val shrunk = runCatching { shrinkPhoto(file.readBytes()) }.getOrNull() ?: return@forEach
+            if (shrunk.size >= file.length()) return@forEach
+            val jpg = File(dir, "${file.nameWithoutExtension}.jpg")
+            jpg.writeBytes(shrunk)
+            if (jpg.name != file.name) file.delete()
+            val newUrl = "/uploads/avatars/${jpg.name}"
+            val oldUrl = "/uploads/avatars/${file.name}"
+            if (newUrl != oldUrl) {
+                transaction {
+                    UsersTable.update({ UsersTable.profilePictureUrl eq oldUrl }) {
+                        it[UsersTable.profilePictureUrl] = newUrl
+                    }
+                }
+            }
+        }
+    }
+
+    private fun shrinkPhoto(bytes: ByteArray): ByteArray {
+        val source = ImageIO.read(ByteArrayInputStream(bytes)) ?: return bytes
+        val maxEdge = 512
+        val longest = maxOf(source.width, source.height).coerceAtLeast(1)
+        val ratio = minOf(1.0, maxEdge.toDouble() / longest)
+        val width = (source.width * ratio).toInt().coerceAtLeast(1)
+        val height = (source.height * ratio).toInt().coerceAtLeast(1)
+        val image = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+        val graphics = image.createGraphics()
+        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+        graphics.color = Color.WHITE
+        graphics.fillRect(0, 0, width, height)
+        graphics.drawImage(source, 0, 0, width, height, null)
+        graphics.dispose()
+        val out = ByteArrayOutputStream()
+        if (!ImageIO.write(image, "jpg", out)) return bytes
+        return out.toByteArray()
+    }
+
+    private fun decodeProfilePhoto(base64: String): ByteArray {
+        val cleaned = base64.substringAfter("base64,", base64).trim()
+        val bytes = runCatching { Base64.getDecoder().decode(cleaned) }.getOrElse {
+            throw IllegalArgumentException("Could not read that photo.")
+        }
+        require(bytes.isNotEmpty()) { "That photo is empty." }
+        require(bytes.size <= 3 * 1024 * 1024) { "Choose a photo under 3MB." }
+        return bytes
     }
 
     private fun ResultRow.toUser(): User {

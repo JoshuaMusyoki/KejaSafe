@@ -42,7 +42,11 @@ import com.rotd.havenpad.network.ReviewClient
 import kotlinx.coroutines.launch
 
 @Composable
-fun ProfileReviewsSection(modifier: Modifier = Modifier) {
+fun ProfileReviewsSection(
+    modifier: Modifier = Modifier,
+    showHeading: Boolean = true,
+    onLoaded: (MyReviews) -> Unit = {},
+) {
     var mine by remember { mutableStateOf<MyReviews?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
@@ -50,7 +54,10 @@ fun ProfileReviewsSection(modifier: Modifier = Modifier) {
 
     LaunchedEffect(refresh) {
         ReviewClient.mine().fold(
-            onSuccess = { mine = it },
+            onSuccess = {
+                mine = it
+                onLoaded(it)
+            },
             onFailure = { error = it.userMessage() },
         )
     }
@@ -60,17 +67,19 @@ fun ProfileReviewsSection(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = if (about?.subject == ReviewSubject.STUDENT) "Student reviews" else "Landlord reviews",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = reputationHeadline(about),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
-        )
+        if (showHeading) {
+            Text(
+                text = if (about?.subject == ReviewSubject.STUDENT) "Student reviews" else "Landlord reviews",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = reputationHeadline(about),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
         error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }

@@ -35,6 +35,12 @@ data class User(
 )
 
 @Serializable
+data class ProfilePhotoRequest(
+    val imageBase64: String,
+    val fileName: String,
+)
+
+@Serializable
 data class UpdateProfileRequest(
     val fullName: String,
     val username: String,

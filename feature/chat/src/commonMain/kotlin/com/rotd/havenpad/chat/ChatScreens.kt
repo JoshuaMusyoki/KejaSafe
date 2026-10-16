@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -72,7 +73,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -124,6 +125,8 @@ import com.rotd.havenpad.media.rememberPdfPickerLauncher
 import com.rotd.havenpad.media.rememberMediaExport
 import com.rotd.havenpad.media.renderPdfFirstPage
 import com.rotd.havenpad.media.renderPdfPageForPreview
+import com.rotd.havenpad.components.UserPhoto
+import com.rotd.havenpad.components.photoInitials
 import com.rotd.havenpad.network.SessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -132,7 +135,6 @@ import kotlinx.coroutines.withContext
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatInboxScreen(
     selectedTab: HavenPadNavTab = HavenPadNavTab.CHAT,
@@ -275,6 +277,8 @@ fun ChatInboxScreen(
                     onCallLog = viewModel::callLogPeer,
                     onMessageLog = { entry -> selectedPeer = entry.toPeer() },
                     onDeleteCall = viewModel::deleteCall,
+                    onLoadOlder = { threadViewModel?.loadOlderMessages() },
+                    fetchAttachment = { id -> threadViewModel?.fetchAttachment(id) },
                 )
                 val webThread = threadState
                 if (webThread?.showForwardPicker == true) {
@@ -345,6 +349,13 @@ fun ChatInboxScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                         )
                         NotificationBell(onClick = onOpenNotifications)
+                        val me by SessionManager.currentUser.collectAsStateWithLifecycle()
+                        Spacer(modifier = Modifier.width(4.dp))
+                        UserPhoto(
+                            imageUrl = me?.profilePictureUrl,
+                            fallback = photoInitials(me?.fullName ?: me?.email ?: "?"),
+                            modifier = Modifier.size(36.dp),
+                        )
                     }
 
                     SecondaryTabRow(
@@ -794,69 +805,21 @@ fun ChatThreadScreen(
     val timeline = remember(state.messages) {
         buildChatTimeline(state.messages, nowMillis = platformEpochMillis())
     }
-    val timelineSize by rememberUpdatedState(timeline.size)
+    val anchored = remember(timeline) { timeline.asReversed() }
     TrackOpenChat(peer.listingId, peer.userId)
-    /** index, offset, timeline size before older page was prepended */
-    var pendingOlderAnchor by remember {
-        mutableStateOf<Triple<Int, Int, Int>?>(null)
-    }
-    var paginationReady by remember { mutableStateOf(false) }
 
     LaunchedEffect(peer.listingId, peer.userId) {
-        paginationReady = false
         viewModel.onThreadVisible()
     }
 
-    LaunchedEffect(timeline.size, state.isInitialLoading) {
-        if (!state.isInitialLoading && timeline.isNotEmpty() && pendingOlderAnchor == null) {
-            listState.animateScrollToItem(timeline.lastIndex)
-            // Wait until we've settled at the bottom before allowing history fetch.
-            kotlinx.coroutines.delay(320)
-            paginationReady = true
-        }
-    }
-
-    LaunchedEffect(timeline.size, state.isLoadingOlder) {
-        val anchor = pendingOlderAnchor ?: return@LaunchedEffect
-        if (!state.isLoadingOlder) {
-            val (index, offset, oldTimelineSize) = anchor
-            val delta = (timeline.size - oldTimelineSize).coerceAtLeast(0)
-            listState.scrollToItem((index + delta).coerceAtLeast(0), offset)
-            pendingOlderAnchor = null
-        }
-    }
-
-    LaunchedEffect(
-        listState,
-        state.hasMoreOlder,
-        state.isLoadingOlder,
-        state.isInitialLoading,
-        paginationReady,
-    ) {
-        if (!paginationReady) return@LaunchedEffect
-        snapshotFlow {
-            Triple(
-                listState.firstVisibleItemIndex,
-                listState.firstVisibleItemScrollOffset,
-                listState.canScrollForward,
-            )
-        }
-            .distinctUntilChanged()
-            .collect { (index, offset, canScrollForward) ->
-                // Only fetch while scrolled away from the newest messages (not on first open).
-                if (
-                    !state.isInitialLoading &&
-                    !state.isLoadingOlder &&
-                    state.hasMoreOlder &&
-                    canScrollForward &&
-                    index <= 1 &&
-                    pendingOlderAnchor == null
-                ) {
-                    pendingOlderAnchor = Triple(index, offset, timelineSize)
-                    viewModel.loadOlderMessages()
-                }
-            }
-    }
+    KeepLatestAndLoadHistory(
+        listState = listState,
+        newestKey = (anchored.firstOrNull() as? ChatTimelineItem.Bubble)?.message?.id,
+        hasMoreOlder = state.hasMoreOlder,
+        isLoadingOlder = state.isLoadingOlder,
+        isInitialLoading = state.isInitialLoading,
+        onLoadOlder = viewModel::loadOlderMessages,
+    )
 
     openPdf?.let { (name, bytes) ->
         PdfReaderScreen(
@@ -957,11 +920,24 @@ fun ChatThreadScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        state.peer?.displayName ?: peer.displayName,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    val title = state.peer?.displayName ?: peer.displayName
+                    val photoUrl = state.peer?.profilePictureUrl ?: peer.profilePictureUrl
+                    LaunchedEffect(photoUrl) {
+                        com.rotd.havenpad.media.ProfilePhotoLoader.load(photoUrl)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        UserPhoto(
+                            imageUrl = photoUrl,
+                            fallback = photoInitials(title),
+                            modifier = Modifier.size(32.dp),
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -1103,67 +1079,60 @@ fun ChatThreadScreen(
                 )
             }
             else -> {
-                LazyColumn(
-                    state = listState,
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding)
-                        .padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
+                        .padding(padding),
                 ) {
                     state.pinnedMessage?.let { pinned ->
-                        item(key = "pinned_${pinned.id}") {
-                            PinnedMessageBanner(
-                                message = pinned,
-                                onUnpin = { viewModel.unpinMessage(pinned) },
-                                modifier = Modifier.padding(bottom = 4.dp),
-                            )
-                        }
+                        PinnedMessageBanner(
+                            message = pinned,
+                            onUnpin = { viewModel.unpinMessage(pinned) },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
                     }
-                    if (state.isLoadingOlder || state.hasMoreOlder) {
-                        item(key = "older_shimmer") {
-                            if (state.isLoadingOlder) {
-                                ChatBubbleShimmerRow(mine = false)
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = "Scroll up for earlier messages",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.outline,
-                                    )
+                    LazyColumn(
+                        state = listState,
+                        reverseLayout = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                    ) {
+                        items(
+                            items = anchored,
+                            key = { item ->
+                                when (item) {
+                                    is ChatTimelineItem.DayHeader -> "day_${item.dayKey}"
+                                    is ChatTimelineItem.Bubble -> item.message.id
                                 }
+                            },
+                        ) { item ->
+                            when (item) {
+                                is ChatTimelineItem.DayHeader -> DateHeaderChip(item.label)
+                                is ChatTimelineItem.Bubble -> MessageBubble(
+                                    message = item.message,
+                                    isMine = item.message.senderId == state.myUserId,
+                                    peerPhotoUrl = peer.profilePictureUrl,
+                                    peerName = peer.displayName,
+                                    loadAttachment = viewModel::loadAttachment,
+                                    fetchAttachment = viewModel::fetchAttachment,
+                                    onLongPress = { viewModel.selectMessage(item.message) },
+                                    onReply = { viewModel.startReply(item.message) },
+                                    onOpenImage = { bitmap, fileName, mime, bytes ->
+                                        imageNote = null
+                                        openImage = OpenChatImage(bitmap, fileName, mime, bytes)
+                                    },
+                                    onOpenPdf = { name, bytes -> openPdf = name to bytes },
+                                )
                             }
                         }
-                    }
-                    items(
-                        items = timeline,
-                        key = { item ->
-                            when (item) {
-                                is ChatTimelineItem.DayHeader -> "day_${item.dayKey}"
-                                is ChatTimelineItem.Bubble -> item.message.id
+                        if (state.isLoadingOlder) {
+                            item(key = "older_shimmer") {
+                                ChatBubbleShimmerRow(mine = false)
                             }
-                        },
-                    ) { item ->
-                        when (item) {
-                            is ChatTimelineItem.DayHeader -> DateHeaderChip(item.label)
-                            is ChatTimelineItem.Bubble -> MessageBubble(
-                                message = item.message,
-                                isMine = item.message.senderId == state.myUserId,
-                                loadAttachment = viewModel::loadAttachment,
-                                onLongPress = { viewModel.selectMessage(item.message) },
-                                onReply = { viewModel.startReply(item.message) },
-                                onOpenImage = { bitmap, fileName, mime, bytes ->
-                                    imageNote = null
-                                    openImage = OpenChatImage(bitmap, fileName, mime, bytes)
-                                },
-                                onOpenPdf = { name, bytes -> openPdf = name to bytes },
-                            )
                         }
                     }
                 }
@@ -1172,17 +1141,61 @@ fun ChatThreadScreen(
     }
 }
 
+@Composable
+internal fun KeepLatestAndLoadHistory(
+    listState: LazyListState,
+    newestKey: String?,
+    hasMoreOlder: Boolean,
+    isLoadingOlder: Boolean,
+    isInitialLoading: Boolean,
+    onLoadOlder: () -> Unit,
+) {
+    var ready by remember { mutableStateOf(false) }
+    var quietFills by remember { mutableStateOf(0) }
+    LaunchedEffect(isInitialLoading) {
+        if (!isInitialLoading && !ready) {
+            kotlinx.coroutines.delay(120)
+            ready = true
+        }
+    }
+    LaunchedEffect(newestKey) {
+        if (newestKey != null && listState.firstVisibleItemIndex <= 1) {
+            listState.scrollToItem(0)
+        }
+    }
+    LaunchedEffect(listState, hasMoreOlder, isLoadingOlder, isInitialLoading, ready) {
+        if (!ready || isInitialLoading) return@LaunchedEffect
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            last to info.totalItemsCount
+        }
+            .distinctUntilChanged()
+            .collect { (last, total) ->
+                if (!hasMoreOlder || isLoadingOlder || total <= 0 || last < total - 3) return@collect
+                val scrolledUp = listState.firstVisibleItemIndex > 0
+                if (!scrolledUp && quietFills >= 2) return@collect
+                if (!scrolledUp) quietFills += 1
+                onLoadOlder()
+            }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
     message: ApartmentChatMessage,
     isMine: Boolean,
+    peerPhotoUrl: String? = null,
+    peerName: String = "",
     loadAttachment: (String) -> ByteArray?,
+    fetchAttachment: suspend (String) -> ByteArray?,
     onLongPress: () -> Unit,
     onReply: () -> Unit,
     onOpenImage: (ImageBitmap, String, String, ByteArray) -> Unit,
     onOpenPdf: (String, ByteArray) -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
     val bubbleColor = if (isMine) {
         MaterialTheme.colorScheme.primary
     } else {
@@ -1193,10 +1206,28 @@ private fun MessageBubble(
     } else {
         MaterialTheme.colorScheme.onSurface
     }
-    Column(
+    val me by SessionManager.currentUser.collectAsStateWithLifecycle()
+    val photoUrl = if (isMine) me?.profilePictureUrl else peerPhotoUrl
+    val photoName = if (isMine) me?.fullName.orEmpty() else peerName
+    LaunchedEffect(photoUrl) {
+        com.rotd.havenpad.media.ProfilePhotoLoader.load(photoUrl)
+    }
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
+        horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom,
     ) {
+        if (!isMine) {
+            UserPhoto(
+                imageUrl = photoUrl,
+                fallback = photoInitials(photoName),
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Column(
+            horizontalAlignment = if (isMine) Alignment.End else Alignment.Start,
+        ) {
         SwipeToReplyBox(onReply = onReply) {
         Column(
             modifier = Modifier
@@ -1213,17 +1244,18 @@ private fun MessageBubble(
                 .combinedClickable(
                     onClick = {
                         val id = message.attachmentId ?: return@combinedClickable
-                        val bytes = loadAttachment(id) ?: return@combinedClickable
-                        when {
-                            message.isImage() -> {
-                                bytes.decodeToImageBitmap()?.let { bitmap ->
+                        scope.launch {
+                            val bytes = fetchAttachment(id) ?: return@launch
+                            when {
+                                message.isImage() -> {
+                                    val bitmap = withContext(Dispatchers.Default) {
+                                        bytes.decodeToImageBitmap()
+                                    } ?: return@launch
                                     val name = message.fileName?.takeIf { it.isNotBlank() } ?: "photo.jpg"
                                     val mime = message.mimeType?.takeIf { it.isNotBlank() } ?: "image/jpeg"
                                     onOpenImage(bitmap, name, mime, bytes)
                                 }
-                            }
-                            message.isPdf() -> {
-                                onOpenPdf(message.fileName ?: "document.pdf", bytes)
+                                message.isPdf() -> onOpenPdf(message.fileName ?: "document.pdf", bytes)
                             }
                         }
                     },
@@ -1254,6 +1286,7 @@ private fun MessageBubble(
                     ChatImageThumb(
                         attachmentId = message.attachmentId,
                         loadAttachment = loadAttachment,
+                        fetchAttachment = fetchAttachment,
                     )
                     if (message.content.isNotBlank() &&
                         message.content != "Photo" &&
@@ -1273,6 +1306,7 @@ private fun MessageBubble(
                         fileName = message.fileName ?: "PDF",
                         textColor = textColor,
                         loadAttachment = loadAttachment,
+                        fetchAttachment = fetchAttachment,
                     )
                     if (message.content.isNotBlank() &&
                         message.content != "PDF" &&
@@ -1312,6 +1346,15 @@ private fun MessageBubble(
                 MessageReceiptTicks(status = message.status)
             }
         }
+        }
+        if (isMine) {
+            Spacer(modifier = Modifier.width(8.dp))
+            UserPhoto(
+                imageUrl = photoUrl,
+                fallback = photoInitials(photoName),
+                modifier = Modifier.size(28.dp),
+            )
+        }
     }
 }
 
@@ -1340,6 +1383,7 @@ internal fun ChatPdfThumb(
     fileName: String,
     textColor: Color,
     loadAttachment: (String) -> ByteArray?,
+    fetchAttachment: suspend (String) -> ByteArray? = { loadAttachment(it) },
 ) {
     var bitmap by remember(attachmentId) { mutableStateOf<ImageBitmap?>(null) }
     var failed by remember(attachmentId) { mutableStateOf(false) }
@@ -1352,17 +1396,16 @@ internal fun ChatPdfThumb(
             failed = false
             return@LaunchedEffect
         }
-        val bytes = withContext(Dispatchers.Default) {
-            attachmentId?.let(loadAttachment)
+        val bytes = attachmentId?.let { id ->
+            ChatDecodeGate.run { fetchAttachment(id) }
         }
-        val decoded = bytes?.let {
-            withContext(Dispatchers.Default) {
-                renderPdfFirstPage(it, maxWidthPx = 720, maxHeightPx = 960)
+        val decoded = bytes?.let { pdf ->
+            ChatDecodeGate.run {
+                renderPdfFirstPage(pdf, maxWidthPx = 480, maxHeightPx = 640)
+                    ?: runCatching {
+                        renderPdfPageForPreview(pdf, pageIndex = 0, maxWidthPx = 480)?.bitmap
+                    }.getOrNull()
             }
-        } ?: bytes?.let {
-            runCatching {
-                renderPdfPageForPreview(it, pageIndex = 0, maxWidthPx = 720)?.bitmap
-            }.getOrNull()
         }
         if (decoded != null && cacheKey != null) {
             ImageBitmapCache.put(cacheKey, decoded)
@@ -1374,7 +1417,7 @@ internal fun ChatPdfThumb(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 140.dp, max = 240.dp)
+                .height(180.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color.White),
             contentAlignment = Alignment.Center,
@@ -1384,7 +1427,7 @@ internal fun ChatPdfThumb(
                 preview != null -> Image(
                     bitmap = preview,
                     contentDescription = fileName,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
+                    modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
                 )
                 failed -> Icon(
@@ -1394,7 +1437,7 @@ internal fun ChatPdfThumb(
                     modifier = Modifier.size(48.dp),
                 )
                 else -> ShimmerBlock(
-                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    modifier = Modifier.fillMaxSize(),
                     brush = brush,
                     shape = RoundedCornerShape(8.dp),
                 )
@@ -1416,10 +1459,24 @@ internal fun ChatPdfThumb(
     }
 }
 
+internal object ChatDecodeGate {
+    private val permits = kotlinx.coroutines.sync.Semaphore(2)
+
+    suspend fun <T> run(block: suspend () -> T): T {
+        permits.acquire()
+        try {
+            return withContext(Dispatchers.Default) { block() }
+        } finally {
+            permits.release()
+        }
+    }
+}
+
 @Composable
 internal fun ChatImageThumb(
     attachmentId: String?,
     loadAttachment: (String) -> ByteArray?,
+    fetchAttachment: suspend (String) -> ByteArray? = { id -> loadAttachment(id) },
 ) {
     var bitmap by remember(attachmentId) { mutableStateOf<ImageBitmap?>(null) }
     var failed by remember(attachmentId) { mutableStateOf(false) }
@@ -1432,15 +1489,19 @@ internal fun ChatImageThumb(
             failed = false
             return@LaunchedEffect
         }
-        var decoded: ImageBitmap? = null
-        // The thread can render before the attachment download finishes.
-        for (attempt in 0 until 15) {
-            val bytes = attachmentId?.let(loadAttachment)
-            if (bytes != null) {
-                decoded = withContext(Dispatchers.Default) { bytes.decodeToImageBitmap() }
-                break
+        val decoded = attachmentId?.let { id ->
+            ChatDecodeGate.run {
+                var bitmap: ImageBitmap? = null
+                for (attempt in 0 until 4) {
+                    val bytes = fetchAttachment(id)
+                    if (bytes != null) {
+                        bitmap = bytes.decodeToImageBitmap()
+                        break
+                    }
+                    kotlinx.coroutines.delay(if (attempt == 0) 80 else 240)
+                }
+                bitmap
             }
-            kotlinx.coroutines.delay(if (attempt == 0) 90 else 300)
         }
         if (decoded != null && cacheKey != null) {
             ImageBitmapCache.put(cacheKey, decoded)
@@ -1451,7 +1512,7 @@ internal fun ChatImageThumb(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 120.dp, max = 220.dp)
+            .height(200.dp)
             .clip(RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center,
     ) {
@@ -1460,7 +1521,7 @@ internal fun ChatImageThumb(
             image != null -> Image(
                 bitmap = image,
                 contentDescription = "Shared photo",
-                modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp),
+                modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
             failed -> Icon(
@@ -1470,7 +1531,7 @@ internal fun ChatImageThumb(
                 modifier = Modifier.size(48.dp),
             )
             else -> ShimmerBlock(
-                modifier = Modifier.fillMaxWidth().height(160.dp),
+                modifier = Modifier.fillMaxSize(),
                 brush = brush,
                 shape = RoundedCornerShape(8.dp),
             )
@@ -1592,7 +1653,7 @@ private fun ChatThreadShimmer(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ChatBubbleShimmerRow(
+internal fun ChatBubbleShimmerRow(
     mine: Boolean,
     tallMedia: Boolean = false,
 ) {

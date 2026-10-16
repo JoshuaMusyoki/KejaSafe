@@ -64,6 +64,14 @@ class KtorBridgeAuthRepository(
     override suspend fun updateProfilePicture(url: String): Result<User> =
         Result.failure(UnsupportedOperationException("Profile picture update not wired on this target."))
 
+    override suspend fun uploadProfilePhoto(bytes: ByteArray, fileName: String): Result<User> =
+        AuthClient.uploadProfilePhoto(
+            com.rotd.havenpad.ProfilePhotoRequest(
+                imageBase64 = kotlin.io.encoding.Base64.encode(bytes),
+                fileName = fileName,
+            )
+        ).onSuccess { SessionManager.updateUser(it) }
+
     override suspend fun submitKyc(
         documentType: String,
         documentNumber: String,

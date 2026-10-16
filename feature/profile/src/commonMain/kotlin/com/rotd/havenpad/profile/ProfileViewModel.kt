@@ -2,6 +2,7 @@ package com.rotd.havenpad.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rotd.havenpad.PickedImage
 import com.rotd.havenpad.RoommatePreferences
 import com.rotd.havenpad.SignedInDevice
 import com.rotd.havenpad.UpdateProfileRequest
@@ -40,6 +41,8 @@ data class ProfileUiState(
     val biometricEnabled: Boolean = false,
     val biometricMessage: String? = null,
     val accountMessage: String? = null,
+    val isUploadingPhoto: Boolean = false,
+    val photoMessage: String? = null,
     val showBiometricPasswordPrompt: Boolean = false,
     val devices: List<SignedInDevice> = emptyList(),
 )
@@ -78,6 +81,26 @@ class ProfileViewModel(
         }
         loadProfile()
         refreshBiometricState()
+    }
+
+    fun uploadPhoto(image: PickedImage) {
+        if (image.bytes.size > 3 * 1024 * 1024) {
+            _state.update { it.copy(photoMessage = "Choose a photo under 3MB.") }
+            return
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(isUploadingPhoto = true, photoMessage = null) }
+            authRepository.uploadProfilePhoto(image.bytes, image.fileName)
+                .onSuccess { user ->
+                    SessionManager.updateUser(user)
+                    _state.update { it.copy(user = user, isUploadingPhoto = false, photoMessage = null) }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(isUploadingPhoto = false, photoMessage = error.userMessage())
+                    }
+                }
+        }
     }
 
     fun loadProfile() {

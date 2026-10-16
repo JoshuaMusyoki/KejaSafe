@@ -13,6 +13,7 @@ import com.rotd.havenpad.SignInPrompt
 import com.rotd.havenpad.SignedInDevice
 import com.rotd.havenpad.device.DeviceIdentity
 import com.rotd.havenpad.RegistrationRequest
+import com.rotd.havenpad.ProfilePhotoRequest
 import com.rotd.havenpad.UpdateProfileRequest
 import com.rotd.havenpad.User
 import io.ktor.client.HttpClient
@@ -20,6 +21,7 @@ import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -182,6 +184,34 @@ object AuthClient {
             httpFailure(response, "Load profile")
         }
     }
+
+    suspend fun uploadProfilePhoto(request: ProfilePhotoRequest): Result<User> = runApi {
+        val token = SessionManager.token.value ?: return@runApi notSignedIn()
+        val response = client.post("$BASE_URL/user/profile/photo") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (response.status.isSuccess()) {
+            Result.success(response.body())
+        } else {
+            httpFailure(response, "Profile photo")
+        }
+    }
+
+    fun resolvePublicUrl(url: String?): String? {
+        val raw = url?.takeIf { it.isNotBlank() } ?: return null
+        return when {
+            raw.startsWith("http://") || raw.startsWith("https://") -> raw
+            else -> BASE_URL.trimEnd('/') + "/" + raw.trimStart('/')
+        }
+    }
+
+    suspend fun fetchPublicBytes(url: String): ByteArray? = runCatching {
+        val absolute = resolvePublicUrl(url) ?: return null
+        val response = client.get(absolute)
+        if (response.status.isSuccess()) response.bodyAsBytes() else null
+    }.getOrNull()
 
     suspend fun updateProfile(request: UpdateProfileRequest): Result<User> = runApi {
         val token = SessionManager.token.value ?: return@runApi notSignedIn()

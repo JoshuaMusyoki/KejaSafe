@@ -53,6 +53,7 @@ import com.rotd.havenpad.listing.viewModel.RequestPropertyViewModel
 import com.rotd.havenpad.network.SessionManager
 import com.rotd.havenpad.profile.EditProfileScreen
 import com.rotd.havenpad.profile.ProfileScreen
+import com.rotd.havenpad.profile.SettingsScreen
 import com.rotd.havenpad.rent.RentScreen
 import com.rotd.havenpad.web.FeaturesScreen
 import com.rotd.havenpad.web.LandingScreen
@@ -72,6 +73,9 @@ fun HavenPadNavHost(
     val signedInUser by SessionManager.currentUser.collectAsState()
     LaunchedEffect(signedInUser?.id) {
         ChatNotificationInbox.showAccount(signedInUser?.id)
+    }
+    LaunchedEffect(signedInUser?.profilePictureUrl) {
+        com.rotd.havenpad.media.ProfilePhotoLoader.load(signedInUser?.profilePictureUrl)
     }
     if (signedInUser != null) {
         ChatIncomingNotifications()
@@ -203,6 +207,15 @@ fun HavenPadNavHost(
     fun goBack() {
         if (backStack.size > 1) {
             backStack.removeLastOrNull()
+        }
+    }
+
+    fun openKyc() {
+        val role = SessionManager.currentUser.value?.role
+        if (role == UserRole.STUDENT) {
+            openDetail(HavenPadDestination.StudentKyc(allowSkip = false))
+        } else if (role == UserRole.LANDLORD) {
+            openDetail(HavenPadDestination.LandlordKyc(allowSkip = false))
         }
     }
 
@@ -511,21 +524,11 @@ fun HavenPadNavHost(
                     selectedTab = HavenPadNavTab.PROFILE,
                     onTabSelected = ::switchMainTab,
                     onEditProfile = { openDetail(HavenPadDestination.EditProfile) },
-                    onOpenNotifications = { openDetail(HavenPadDestination.Notifications) },
+                    onOpenSettings = { openDetail(HavenPadDestination.Settings) },
                     onOpenHome = { switchMainTab(HavenPadNavTab.HOME) },
-                    onOpenChat = { switchMainTab(HavenPadNavTab.CHAT) },
-                    onOpenBills = { switchMainTab(HavenPadNavTab.BILLS) },
                     onOpenBookings = { openDetail(HavenPadDestination.LandlordBookings) },
-                    onOpenKyc = {
-                        val role = SessionManager.currentUser.value?.role
-                        if (role == UserRole.STUDENT) {
-                            openDetail(HavenPadDestination.StudentKyc(allowSkip = false))
-                        } else {
-                            openDetail(HavenPadDestination.LandlordKyc(allowSkip = false))
-                        }
-                    },
+                    onOpenKyc = { openKyc() },
                     onOpenAdmin = { replaceRoot(HavenPadDestination.Admin) },
-                    onLogout = { navigateToLogin() },
                     onCreateListingClick = { openDetail(HavenPadDestination.CreateListing()) }
                 )
             }
@@ -564,6 +567,19 @@ fun HavenPadNavHost(
         entry<HavenPadDestination.Admin> {
             webDashboard(HavenPadNavTab.PROFILE) {
                 AdminScreen(onLogout = ::navigateToLogin)
+            }
+        }
+
+        entry<HavenPadDestination.Settings> {
+            webDashboard(HavenPadNavTab.PROFILE) {
+                SettingsScreen(
+                    onBack = ::goBack,
+                    onEditProfile = { openDetail(HavenPadDestination.EditProfile) },
+                    onOpenNotifications = { openDetail(HavenPadDestination.Notifications) },
+                    onOpenKyc = { openKyc() },
+                    onOpenAdmin = { replaceRoot(HavenPadDestination.Admin) },
+                    onLogout = { navigateToLogin() },
+                )
             }
         }
 
@@ -700,6 +716,7 @@ fun HavenPadNavHost(
                 HavenPadDestination.Rent -> HavenPadNavTab.BILLS
                 HavenPadDestination.Profile,
                 HavenPadDestination.EditProfile,
+                HavenPadDestination.Settings,
                 is HavenPadDestination.LandlordKyc,
                 is HavenPadDestination.StudentKyc,
                 HavenPadDestination.Admin -> HavenPadNavTab.PROFILE

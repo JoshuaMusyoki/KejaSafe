@@ -28,6 +28,7 @@ import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
+import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -437,6 +438,19 @@ object ApartmentChatService {
             ?.toConnection()
     }
 
+    fun profilePhotos(userIds: List<String>): List<com.rotd.havenpad.domain.chat.ProfilePhotoRef> = transaction {
+        val ids = userIds.map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(80)
+        if (ids.isEmpty()) return@transaction emptyList()
+        UsersTable.selectAll()
+            .where { UsersTable.id inList ids }
+            .map { row ->
+                com.rotd.havenpad.domain.chat.ProfilePhotoRef(
+                    userId = row[UsersTable.id],
+                    profilePictureUrl = row[UsersTable.profilePictureUrl],
+                )
+            }
+    }
+
     fun inquiryPeers(userId: String): List<ApartmentChatPeer> = transaction {
         val rows = ChatMessagesTable.selectAll()
             .where {
@@ -461,10 +475,10 @@ object ApartmentChatService {
             val landlordId = listing[ListingsTable.landlordId]
             val aboutLandlord = otherId == landlordId || userId == landlordId
             if (!aboutLandlord) return@mapNotNull null
-            val name = UsersTable.selectAll()
+            val person = UsersTable.selectAll()
                 .where { UsersTable.id eq otherId }
                 .singleOrNull()
-                ?.get(UsersTable.fullName)
+            val name = person?.get(UsersTable.fullName)
                 ?.ifBlank { null }
                 ?: if (otherId == landlordId) "Landlord" else "HavenPad"
             val firstAt = messages.minOf { it[ChatMessagesTable.timestamp] }
@@ -476,6 +490,7 @@ object ApartmentChatService {
                 bookingId = messages.first()[ChatMessagesTable.bookingId],
                 peerIsLandlord = otherId == landlordId,
                 joinedAtMillis = firstAt,
+                profilePictureUrl = person?.get(UsersTable.profilePictureUrl),
             )
         }.distinctBy { "${it.listingId}_${it.userId}" }
     }

@@ -27,6 +27,10 @@ sealed interface HavenPadDestination : NavKey {
     @Serializable
     data object EditProfile : HavenPadDestination
 
+    /** Account rows: email, appearance, verification, security. */
+    @Serializable
+    data object Settings : HavenPadDestination
+
     /** Landlord ID and residential-address documents. [allowSkip] is used right after signup. */
     @Serializable
     data class LandlordKyc(val allowSkip: Boolean = false) : HavenPadDestination

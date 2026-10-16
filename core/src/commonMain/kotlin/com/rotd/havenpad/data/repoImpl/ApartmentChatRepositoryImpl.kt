@@ -108,9 +108,17 @@ class ApartmentChatRepositoryImpl(
         val inquiryPeers = ChatClient.inquiryPeers().getOrElse { emptyList() }
         val eligible = (bookingPeers + matePeers + inquiryPeers)
             .distinctBy { "${it.listingId}_${it.userId}" }
+        val photos = ChatClient.profilePhotos(eligible.map { it.userId }).getOrElse { emptyMap() }
+        val withPhotos = eligible.map { peer ->
+            val url = photos[peer.userId]
+            if (url.isNullOrBlank()) peer else peer.copy(profilePictureUrl = url)
+        }
 
-        peers.value = eligible
-        return Result.success(eligible)
+        peers.value = withPhotos
+        com.rotd.havenpad.media.ProfilePhotoLoader.prefetch(
+            withPhotos.map { it.profilePictureUrl } + SessionManager.currentUser.value?.profilePictureUrl
+        )
+        return Result.success(withPhotos)
     }
 
     private suspend fun ensureLandlordTenantConnections(
@@ -359,7 +367,15 @@ class ApartmentChatRepositoryImpl(
         val remote = ChatClient.listMessages(listingId, peerUserId, after).getOrNull() ?: return
         mergeRemoteMessages(listingId, peerUserId, remote)
         ChatClient.markDelivered(listingId, peerUserId)
-        hydrateMissingAttachments(remote)
+        val newest = messagesByKey.value[key].orEmpty().takeLast(NEWEST_ATTACHMENT_WINDOW)
+        hydrateMissingAttachments(newest)
+    }
+
+    override suspend fun ensureAttachment(attachmentId: String): ByteArray? {
+        attachments.load(attachmentId)?.let { return it }
+        val bytes = ChatClient.downloadAttachment(attachmentId).getOrNull() ?: return null
+        attachments.save(attachmentId, bytes)
+        return bytes
     }
 
     private suspend fun hydrateMissingAttachments(messages: List<ApartmentChatMessage>) {
@@ -498,5 +514,6 @@ class ApartmentChatRepositoryImpl(
 
     private companion object {
         const val CONNECTIONS_KEY = "apartment_chat_connections"
+        const val NEWEST_ATTACHMENT_WINDOW = 12
     }
 }

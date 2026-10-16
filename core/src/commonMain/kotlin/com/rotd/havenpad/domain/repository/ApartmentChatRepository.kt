@@ -71,6 +71,9 @@ interface ApartmentChatRepository {
 
     fun loadAttachment(attachmentId: String): ByteArray?
 
+    /** Disk cache, or a download if this attachment is not on the device yet. */
+    suspend fun ensureAttachment(attachmentId: String): ByteArray?
+
     /**
      * Recipient has the conversation payload (inbox/thread opened as receiver).
      * SENT → DELIVERED for incoming messages.

@@ -1,6 +1,7 @@
 package com.rotd.havenpad.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -12,12 +13,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -26,6 +28,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.rotd.havenpad.network.SessionManager
 import com.rotd.havenpad.theme.HavenPadTheme
 
 /**
@@ -109,20 +112,17 @@ fun HavenPadAppBar(
                     }
                 }
                 if (showProfile) {
+                    val user by SessionManager.currentUser.collectAsState()
                     IconButton(onClick = { onProfileClick?.invoke() }) {
-                        Box(
+                        UserPhoto(
+                            imageUrl = user?.profilePictureUrl,
+                            fallback = photoInitials(user?.fullName ?: user?.email ?: "?"),
                             modifier = Modifier
                                 .size(36.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = "Profile",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                                .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape),
+                            background = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
                     }
                 }
             }

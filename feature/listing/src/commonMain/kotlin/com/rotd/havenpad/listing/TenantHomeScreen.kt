@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rotd.havenpad.PropertyListing
@@ -72,7 +73,6 @@ private enum class TenantHomePopup {
     LISTING
 }
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TenantHomeScreen(
     selectedTab: HavenPadNavTab = HavenPadNavTab.HOME,
@@ -153,7 +153,7 @@ fun TenantHomeScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = "Find your next keja",
+                            text = "Zero Stress, Maximum Flex.",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -257,44 +257,12 @@ fun TenantHomeScreen(
                 }
 
                 item {
-                    Surface(
+                    GlassmorphicSearchField(
+                        query = state.searchQuery,
+                        placeholder = "Search your crib",
                         onClick = openSearch,
-                        enabled = !showShimmer,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.large,
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = state.searchQuery.ifBlank {
-                                    "Search by area, university, or style"
-                                },
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = if (state.searchQuery.isBlank()) {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-                            Text(
-                                text = "Search",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
+                        enabled = !state.isRefreshing
+                    )
                 }
 
                 item {

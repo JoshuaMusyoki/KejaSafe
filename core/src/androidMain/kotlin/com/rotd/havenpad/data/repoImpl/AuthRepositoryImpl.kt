@@ -223,6 +223,18 @@ class AuthRepositoryImpl(
         return profiles.updateProfilePicture(url).onSuccess { commitSession(it) }
     }
 
+    override suspend fun uploadProfilePhoto(bytes: ByteArray, fileName: String): Result<User> {
+        return com.rotd.havenpad.network.AuthClient.uploadProfilePhoto(
+            com.rotd.havenpad.ProfilePhotoRequest(
+                imageBase64 = kotlin.io.encoding.Base64.encode(bytes),
+                fileName = fileName,
+            )
+        ).onSuccess { user ->
+            user.profilePictureUrl?.let { profiles.updateProfilePicture(it) }
+            commitSession(user)
+        }
+    }
+
     override suspend fun submitKyc(
         documentType: String,
         documentNumber: String,

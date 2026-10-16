@@ -64,9 +64,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -102,12 +104,17 @@ import com.rotd.havenpad.media.rememberMediaExport
 import com.rotd.havenpad.domain.chat.replySnippet
 import com.rotd.havenpad.domain.chat.ChatTimelineItem
 import com.rotd.havenpad.domain.chat.buildChatTimeline
+import com.rotd.havenpad.components.UserPhoto
+import com.rotd.havenpad.components.photoInitials
 import com.rotd.havenpad.network.SessionManager
 import com.rotd.havenpad.theme.HavenPadDashboardColors as HavenPadWebChatColors
 import com.rotd.havenpad.theme.LocalEmojiFontFamily
 import com.rotd.havenpad.theme.ProvideEmojiFont
 import havenpad.feature.chat.generated.resources.Res
 import havenpad.feature.chat.generated.resources.haven_pad_logo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.painterResource
 
 /**
@@ -140,6 +147,8 @@ fun HavenPadWebChatLayout(
     onCallLog: (CallLogEntry) -> Unit = {},
     onMessageLog: (CallLogEntry) -> Unit = {},
     onDeleteCall: (CallLogEntry) -> Unit = {},
+    onLoadOlder: () -> Unit = {},
+    fetchAttachment: suspend (String) -> ByteArray? = { loadAttachment(it) },
 ) {
     ProvideEmojiFont {
     Row(
@@ -188,6 +197,8 @@ fun HavenPadWebChatLayout(
                     onCancelReply = onCancelReply,
                     onUnpin = onUnpin,
                     onClose = onCloseChat,
+                    onLoadOlder = onLoadOlder,
+                    fetchAttachment = fetchAttachment,
                 )
             } else {
                 HavenPadEmptyChatPane(
@@ -357,11 +368,13 @@ fun HavenPadWebSidebar(
     onOpenLanding: () -> Unit = {},
     onLogout: () -> Unit = {}
 ) {
-    val user = SessionManager.currentUser.value
+    val user by SessionManager.currentUser.collectAsState()
     val signedIn = user != null
     val userName = user?.fullName?.ifBlank { null } ?: user?.email ?: "Guest"
     val userRole = user?.role?.name?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "Browsing"
-    val initial = userName.firstOrNull()?.uppercase() ?: "K"
+    LaunchedEffect(user?.profilePictureUrl) {
+        com.rotd.havenpad.media.ProfilePhotoLoader.load(user?.profilePictureUrl)
+    }
 
     Column(
         modifier = modifier
@@ -404,20 +417,13 @@ fun HavenPadWebSidebar(
                 .border(BorderStroke(1.dp, HavenPadWebChatColors.CardBorder), RoundedCornerShape(12.dp))
                 .padding(10.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(HavenPadWebChatColors.EmeraldAccent),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = initial,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-            }
+            UserPhoto(
+                imageUrl = user?.profilePictureUrl,
+                fallback = photoInitials(userName),
+                modifier = Modifier.size(36.dp),
+                background = HavenPadWebChatColors.EmeraldAccent,
+                contentColor = Color.White,
+            )
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -833,21 +839,13 @@ fun HavenPadPeerCard(
             .clickable(onClick = onClick)
             .padding(12.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(46.dp)
-                .clip(CircleShape)
-                .background(HavenPadWebChatColors.InputBg)
-                .clickable(onClick = onProfileClick),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = initials,
-                color = HavenPadWebChatColors.EmeraldPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
-            )
-        }
+        UserPhoto(
+            imageUrl = peer.profilePictureUrl,
+            fallback = initials,
+            modifier = Modifier.size(46.dp).clickable(onClick = onProfileClick),
+            background = HavenPadWebChatColors.InputBg,
+            contentColor = HavenPadWebChatColors.EmeraldPrimary,
+        )
 
         Spacer(modifier = Modifier.width(12.dp))
 
@@ -914,19 +912,29 @@ fun HavenPadThreadPanel(
     onCancelReply: () -> Unit,
     onUnpin: (ApartmentChatMessage) -> Unit,
     onClose: () -> Unit,
+    onLoadOlder: () -> Unit = {},
+    fetchAttachment: suspend (String) -> ByteArray? = { loadAttachment(it) },
 ) {
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     val export = rememberMediaExport()
     var preview by remember { mutableStateOf<ChatMediaPreview?>(null) }
     var previewNote by remember { mutableStateOf<String?>(null) }
     val timeline = remember(state.messages) {
         buildChatTimeline(state.messages, nowMillis = platformEpochMillis())
     }
+    val anchored = remember(timeline) { timeline.asReversed() }
 
-    LaunchedEffect(timeline.size) {
-        if (timeline.isNotEmpty()) {
-            listState.scrollToItem(timeline.lastIndex)
-        }
+    KeepLatestAndLoadHistory(
+        listState = listState,
+        newestKey = (anchored.firstOrNull() as? ChatTimelineItem.Bubble)?.message?.id,
+        hasMoreOlder = state.hasMoreOlder,
+        isLoadingOlder = state.isLoadingOlder,
+        isInitialLoading = state.isInitialLoading,
+        onLoadOlder = onLoadOlder,
+    )
+    LaunchedEffect(peer.profilePictureUrl) {
+        com.rotd.havenpad.media.ProfilePhotoLoader.load(peer.profilePictureUrl)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -941,6 +949,14 @@ fun HavenPadThreadPanel(
                 .border(BorderStroke(1.dp, HavenPadWebChatColors.CardBorder))
                 .padding(horizontal = 20.dp, vertical = 14.dp)
         ) {
+            UserPhoto(
+                imageUrl = peer.profilePictureUrl,
+                fallback = photoInitials(peer.displayName),
+                modifier = Modifier.size(40.dp),
+                background = HavenPadWebChatColors.InputBg,
+                contentColor = HavenPadWebChatColors.EmeraldPrimary,
+            )
+            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = peer.displayName,
@@ -958,9 +974,18 @@ fun HavenPadThreadPanel(
             }
         }
 
+        state.pinnedMessage?.let { pinned ->
+            PinnedMessageBanner(
+                message = pinned,
+                onUnpin = { onUnpin(pinned) },
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+            )
+        }
+
         // Timeline Messages
         LazyColumn(
             state = listState,
+            reverseLayout = true,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
@@ -968,16 +993,8 @@ fun HavenPadThreadPanel(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            state.pinnedMessage?.let { pinned ->
-                item(key = "pinned_${pinned.id}") {
-                    PinnedMessageBanner(
-                        message = pinned,
-                        onUnpin = { onUnpin(pinned) },
-                    )
-                }
-            }
             items(
-                items = timeline,
+                items = anchored,
                 key = { item ->
                     when (item) {
                         is ChatTimelineItem.DayHeader -> "header_${item.dayKey}"
@@ -1015,18 +1032,27 @@ fun HavenPadThreadPanel(
                             message = item.message,
                             isMine = isMine,
                             peerName = peer.displayName,
+                            peerPhotoUrl = peer.profilePictureUrl,
                             loadAttachment = loadAttachment,
+                            fetchAttachment = fetchAttachment,
                             onLongPress = { onMessageLongPress(item.message) },
                             onReply = { onMessageReply(item.message) },
                             onOpenAttachment = {
-                                val opened = item.message.toMediaPreview(loadAttachment)
-                                if (opened != null) {
-                                    previewNote = null
-                                    preview = opened
+                                scope.launch {
+                                    val opened = item.message.toMediaPreview(fetchAttachment)
+                                    if (opened != null) {
+                                        previewNote = null
+                                        preview = opened
+                                    }
                                 }
                             },
                         )
                     }
+                }
+            }
+            if (state.isLoadingOlder) {
+                item(key = "older_shimmer") {
+                    ChatBubbleShimmerRow(mine = false)
                 }
             }
         }
@@ -1081,8 +1107,8 @@ private class ChatMediaPreview(
     val image: ImageBitmap?,
 )
 
-private fun ApartmentChatMessage.toMediaPreview(
-    loadAttachment: (String) -> ByteArray?,
+private suspend fun ApartmentChatMessage.toMediaPreview(
+    loadAttachment: suspend (String) -> ByteArray?,
 ): ChatMediaPreview? {
     if (!isImage() && !isPdf()) return null
     val id = attachmentId ?: return null
@@ -1090,11 +1116,16 @@ private fun ApartmentChatMessage.toMediaPreview(
     val name = fileName?.takeIf { it.isNotBlank() } ?: if (isPdf()) "document.pdf" else "photo.jpg"
     val mime = mimeType?.takeIf { it.isNotBlank() }
         ?: if (isPdf()) "application/pdf" else mimeForImageName(name)
+    val image = if (isImage()) {
+        withContext(Dispatchers.Default) { bytes.decodeToImageBitmap() }
+    } else {
+        null
+    }
     return ChatMediaPreview(
         fileName = name,
         mimeType = mime,
         bytes = bytes,
-        image = if (isImage()) bytes.decodeToImageBitmap() else null,
+        image = image,
     )
 }
 
@@ -1184,7 +1215,9 @@ fun HavenPadMessageBubbleRow(
     message: ApartmentChatMessage,
     isMine: Boolean,
     peerName: String,
+    peerPhotoUrl: String? = null,
     loadAttachment: (String) -> ByteArray?,
+    fetchAttachment: suspend (String) -> ByteArray? = { loadAttachment(it) },
     onLongPress: () -> Unit = {},
     onReply: () -> Unit = {},
     onOpenAttachment: () -> Unit = {},
@@ -1193,21 +1226,19 @@ fun HavenPadMessageBubbleRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
     ) {
+        val mine by SessionManager.currentUser.collectAsState()
+        val photoUrl = if (isMine) mine?.profilePictureUrl else peerPhotoUrl
+        LaunchedEffect(photoUrl) {
+            com.rotd.havenpad.media.ProfilePhotoLoader.load(photoUrl)
+        }
         if (!isMine) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(HavenPadWebChatColors.InputBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = peerName.firstOrNull()?.uppercase() ?: "K",
-                    color = HavenPadWebChatColors.EmeraldPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            UserPhoto(
+                imageUrl = photoUrl,
+                fallback = photoInitials(peerName),
+                modifier = Modifier.size(34.dp),
+                background = HavenPadWebChatColors.InputBg,
+                contentColor = HavenPadWebChatColors.EmeraldPrimary,
+            )
             Spacer(modifier = Modifier.width(10.dp))
         }
 
@@ -1295,6 +1326,7 @@ fun HavenPadMessageBubbleRow(
                             ChatImageThumb(
                                 attachmentId = message.attachmentId,
                                 loadAttachment = loadAttachment,
+                                fetchAttachment = fetchAttachment,
                             )
                         }
                         val caption = cleanMessageText(message.content)
@@ -1312,6 +1344,7 @@ fun HavenPadMessageBubbleRow(
                         fileName = message.fileName?.takeIf { it.isNotBlank() } ?: "PDF",
                         textColor = HavenPadWebChatColors.TextWhite,
                         loadAttachment = loadAttachment,
+                        fetchAttachment = fetchAttachment,
                     )
                     else -> ChatMessageText(
                         text = cleanMessageText(message.content),
@@ -1325,6 +1358,16 @@ fun HavenPadMessageBubbleRow(
                 MessageReactionChips(reactions = message.reactions)
             }
         }
+        }
+        if (isMine) {
+            Spacer(modifier = Modifier.width(10.dp))
+            UserPhoto(
+                imageUrl = photoUrl,
+                fallback = photoInitials(mine?.fullName ?: "You"),
+                modifier = Modifier.size(34.dp),
+                background = HavenPadWebChatColors.EmeraldAccent,
+                contentColor = Color.White,
+            )
         }
     }
 }

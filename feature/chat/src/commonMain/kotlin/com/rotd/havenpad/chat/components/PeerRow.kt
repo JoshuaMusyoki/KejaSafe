@@ -26,6 +26,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.rotd.havenpad.components.UserPhoto
+import com.rotd.havenpad.components.photoInitials
 import com.rotd.havenpad.chat.InboxImageThumb
 import com.rotd.havenpad.chat.InboxPeerRow
 import com.rotd.havenpad.chat.PeerConnectAction
@@ -56,20 +58,13 @@ fun PeerRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                .clickable(onClick = onProfileClick),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.Person,
-                contentDescription = "View profile",
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
+        UserPhoto(
+            imageUrl = peer.profilePictureUrl,
+            fallback = photoInitials(peer.displayName),
+            modifier = Modifier.size(44.dp).clickable(onClick = onProfileClick),
+            background = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+            contentColor = MaterialTheme.colorScheme.primary,
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = peer.displayName,

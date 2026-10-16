@@ -128,6 +128,8 @@ fun Application.module() {
         }
     }
 
+    AuthService.shrinkStoredAvatars()
+
     routing {
         get("/") {
             call.respondText("Welcome to HavenPad API — interactive docs at /swagger")
@@ -394,6 +396,23 @@ fun Application.module() {
                     call.respond(updated)
                 } else {
                     call.respond(HttpStatusCode.BadRequest, "Could not update profile (username may be taken)")
+                }
+            }
+
+            post("/user/profile/photo") {
+                val principal = call.principal<JWTPrincipal>()
+                val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                val request = call.receive<com.rotd.havenpad.ProfilePhotoRequest>()
+                val updated = try {
+                    AuthService.saveProfilePhoto(userId, request.fileName, request.imageBase64)
+                } catch (error: IllegalArgumentException) {
+                    call.respond(HttpStatusCode.BadRequest, error.message ?: "Could not save that photo")
+                    return@post
+                }
+                if (updated != null) {
+                    call.respond(updated)
+                } else {
+                    call.respond(HttpStatusCode.NotFound, "User not found")
                 }
             }
 
@@ -996,6 +1015,11 @@ fun Application.module() {
                     } catch (e: IllegalStateException) {
                         call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid connection")
                     }
+                }
+
+                post("/profile-photos") {
+                    val request = call.receive<com.rotd.havenpad.domain.chat.ProfilePhotoLookupRequest>()
+                    call.respond(ApartmentChatService.profilePhotos(request.userIds))
                 }
 
                 get("/inquiries") {

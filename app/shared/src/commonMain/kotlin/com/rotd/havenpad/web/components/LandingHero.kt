@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
@@ -66,7 +67,6 @@ import havenpad.app.shared.generated.resources.Res
 import havenpad.app.shared.generated.resources.house_tour_sample
 import havenpad.app.shared.generated.resources.landing_page
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LandingHero(wide: Boolean, horizontalPadding: Dp) {
     val uriHandler = LocalUriHandler.current
@@ -86,20 +86,22 @@ fun LandingHero(wide: Boolean, horizontalPadding: Dp) {
                     HeroContent(wide = true, uriHandler = uriHandler)
                 }
 
-                // Hero Card Placeholder
-                Box(
+                // Clean Hero Card (Fixed background container artifact)
+                Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .shadow(20.dp, RoundedCornerShape(24.dp))
-                        .padding(16.dp)
+                        .shadow(16.dp, RoundedCornerShape(24.dp)),
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 ) {
-                    Column {
+                    Column(
+                        modifier = Modifier.padding(20.dp)
+                    ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(300.dp)
+                                .height(280.dp)
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant),
                             contentAlignment = Alignment.Center
@@ -111,14 +113,18 @@ fun LandingHero(wide: Boolean, horizontalPadding: Dp) {
                                 contentScale = ContentScale.Crop
                             )
 
-                            // Top right overlay
+                            // Top right live indicator overlay
                             Surface(
                                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
                                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                                shape = RoundedCornerShape(20.dp)
+                                shape = RoundedCornerShape(20.dp),
+                                shadowElevation = 4.dp
                             ) {
-                                Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color.Green))
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF22C55E)))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Live Walkthrough Active", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 }
@@ -127,22 +133,29 @@ fun LandingHero(wide: Boolean, horizontalPadding: Dp) {
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                            Column {
-                                Text("The Moringa Road Residence", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("The Moringa Road Residence", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 Text("400m from Gate A", style = MaterialTheme.typography.bodySmall, color = LandingTextSecondary)
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                Text("Ksh.5000", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = LandingBrandGreen)
+                                Text("Ksh. 5,000", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = LandingBrandGreen)
                                 Text("/month (All In)", style = MaterialTheme.typography.labelSmall, color = LandingTextSecondary)
                             }
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             LabelWithIcon("Escrow Deposit Locked", Icons.Default.Lock)
                             LabelWithIcon("Landlord Vetted (100%)", Icons.Default.VerifiedUser)
                         }
@@ -163,9 +176,21 @@ private fun HeroContent(wide: Boolean, uriHandler: UriHandler) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            HeroBadge("Campus Verified", Icons.Default.CheckCircle)
-            HeroBadge("100% Escrow Protected", Icons.Default.Shield)
-            HeroBadge("Live Tour Certified", Icons.Default.Videocam)
+            HeroBadge(
+                text = "Campus Verified",
+                icon = Icons.Default.CheckCircle,
+                backgroundColor = LandingBrandGreen
+            )
+            HeroBadge(
+                text = "100% Escrow Protected",
+                icon = Icons.Default.Verified,
+                backgroundColor = LandingBrandGreen.copy(alpha = 0.5f)
+            )
+            HeroBadge(
+                text = "Live Tour Certified",
+                icon = Icons.Default.Videocam,
+                backgroundColor = LandingBrandGreen
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))

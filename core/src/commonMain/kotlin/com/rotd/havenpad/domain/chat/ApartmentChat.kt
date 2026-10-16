@@ -20,6 +20,18 @@ data class ApartmentChatPeer(
     val peerIsLandlord: Boolean,
     /** Booking start (tenant joined / stay began), epoch millis. */
     val joinedAtMillis: Long = 0L,
+    val profilePictureUrl: String? = null,
+)
+
+@Serializable
+data class ProfilePhotoLookupRequest(
+    val userIds: List<String> = emptyList(),
+)
+
+@Serializable
+data class ProfilePhotoRef(
+    val userId: String,
+    val profilePictureUrl: String? = null,
 )
 
 @Serializable

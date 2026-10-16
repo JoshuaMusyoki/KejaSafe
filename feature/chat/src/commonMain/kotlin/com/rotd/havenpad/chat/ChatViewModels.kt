@@ -15,7 +15,9 @@ import com.rotd.havenpad.PickedImage
 import com.rotd.havenpad.network.CallLogBus
 import com.rotd.havenpad.network.LiveTourClient
 import com.rotd.havenpad.network.SessionManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +27,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 enum class ChatInboxTab { MESSAGES, PEOPLE, CALLS }
 
@@ -369,6 +374,8 @@ class ChatThreadViewModel(
     /** How many newest messages are currently visible. */
     private var visibleCount: Int = 0
     private var initialRevealDone: Boolean = false
+    private var syncFinished: Boolean = false
+    private val window = Mutex()
 
     init {
         viewModelScope.launch {
@@ -376,17 +383,39 @@ class ChatThreadViewModel(
                 _state.update { it.copy(myUserId = user?.id) }
             }
         }
-        observeJob = viewModelScope.launch {
-            chatRepository.syncConversation(peer.listingId, peer.userId)
+        observeJob = viewModelScope.launch(Dispatchers.Default) {
             chatRepository.observeMessages(peer.listingId, peer.userId).collect { messages ->
-                allMessages = messages.sortedBy { it.timestamp }
+                window.withLock {
+                    val previousTotal = allMessages.size
+                    val caughtUp = initialRevealDone && visibleCount >= previousTotal && previousTotal > 0
+                    allMessages = messages.sortedBy { it.timestamp }
+                    if (!initialRevealDone) {
+                        if (allMessages.isEmpty() && !syncFinished) {
+                            publishVisible(isInitialLoading = true)
+                            return@withLock
+                        }
+                        visibleCount = FIRST_PAGE.coerceAtMost(allMessages.size)
+                        initialRevealDone = true
+                        publishVisible(isInitialLoading = false)
+                    } else if (caughtUp) {
+                        visibleCount = allMessages.size
+                        publishVisible(isInitialLoading = false)
+                    } else {
+                        val minWindow = FIRST_PAGE.coerceAtMost(allMessages.size)
+                        if (visibleCount < minWindow) visibleCount = minWindow
+                        if (visibleCount > allMessages.size) visibleCount = allMessages.size
+                        publishVisible(isInitialLoading = false)
+                    }
+                }
+            }
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            chatRepository.syncConversation(peer.listingId, peer.userId)
+            window.withLock {
+                syncFinished = true
                 if (!initialRevealDone) {
-                    revealInitialPage()
-                } else {
-                    // Keep the user's history window; always include the newest messages.
-                    val minWindow = PAGE_SIZE.coerceAtMost(allMessages.size)
-                    if (visibleCount < minWindow) visibleCount = minWindow
-                    if (visibleCount > allMessages.size) visibleCount = allMessages.size
+                    visibleCount = FIRST_PAGE.coerceAtMost(allMessages.size)
+                    initialRevealDone = true
                     publishVisible(isInitialLoading = false)
                 }
             }
@@ -403,9 +432,9 @@ class ChatThreadViewModel(
             }
         }
         // Poll so messages from the other party appear without leaving the thread.
-        viewModelScope.launch {
-            while (true) {
-                kotlinx.coroutines.delay(4_000)
+        viewModelScope.launch(Dispatchers.Default) {
+            while (isActive) {
+                delay(4_000)
                 chatRepository.syncConversation(peer.listingId, peer.userId)
             }
         }
@@ -413,23 +442,32 @@ class ChatThreadViewModel(
 
     fun loadOlderMessages() {
         if (_state.value.isLoadingOlder || !_state.value.hasMoreOlder) return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
             _state.update { it.copy(isLoadingOlder = true) }
-            // Short delay so the top shimmer is visible before history expands.
-            kotlinx.coroutines.delay(220)
-            visibleCount = (visibleCount + PAGE_SIZE).coerceAtMost(allMessages.size)
-            publishVisible(isInitialLoading = false, isLoadingOlder = false)
+            val olderIds = window.withLock {
+                val before = visibleCount
+                val target = (visibleCount + OLDER_PAGE).coerceAtMost(allMessages.size)
+                if (target <= before) {
+                    emptyList()
+                } else {
+                    allMessages.takeLast(target).take(target - before).mapNotNull { it.attachmentId }
+                }
+            }
+            olderIds.forEach { id ->
+                runCatching { chatRepository.ensureAttachment(id) }
+            }
+            window.withLock {
+                val target = (visibleCount + OLDER_PAGE).coerceAtMost(allMessages.size)
+                visibleCount = target
+                publishVisible(isInitialLoading = false, isLoadingOlder = false)
+            }
         }
     }
 
-    private suspend fun revealInitialPage() {
-        _state.update { it.copy(isInitialLoading = true) }
-        // Brief skeleton so heavy threads don't flash a full dump.
-        kotlinx.coroutines.delay(280)
-        visibleCount = PAGE_SIZE.coerceAtMost(allMessages.size)
-        initialRevealDone = true
-        publishVisible(isInitialLoading = false)
-    }
+    suspend fun fetchAttachment(attachmentId: String): ByteArray? =
+        withContext(Dispatchers.Default) {
+            chatRepository.ensureAttachment(attachmentId)
+        }
 
     private fun publishVisible(
         isInitialLoading: Boolean,
@@ -657,6 +695,7 @@ class ChatThreadViewModel(
     }
 
     companion object {
-        private const val PAGE_SIZE = 18
+        private const val FIRST_PAGE = 10
+        private const val OLDER_PAGE = 16
     }
 }

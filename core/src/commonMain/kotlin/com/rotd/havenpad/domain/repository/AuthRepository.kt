@@ -40,6 +40,9 @@ interface AuthRepository {
 
     suspend fun updateProfilePicture(url: String): Result<User>
 
+    /** Stores a new profile photo and returns the user with the saved picture address. */
+    suspend fun uploadProfilePhoto(bytes: ByteArray, fileName: String): Result<User>
+
     suspend fun submitKyc(
         documentType: String,
         documentNumber: String,

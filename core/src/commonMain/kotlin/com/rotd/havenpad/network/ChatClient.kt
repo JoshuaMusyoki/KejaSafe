@@ -6,6 +6,8 @@ import com.rotd.havenpad.RegisterDeviceRequest
 import com.rotd.havenpad.SendApartmentChatMessageRequest
 import com.rotd.havenpad.UpsertChatConnectionRequest
 import com.rotd.havenpad.domain.chat.ApartmentChatMessage
+import com.rotd.havenpad.domain.chat.ProfilePhotoLookupRequest
+import com.rotd.havenpad.domain.chat.ProfilePhotoRef
 import com.rotd.havenpad.domain.chat.Connection
 import com.rotd.havenpad.domain.chat.ConnectionStatus
 import com.rotd.havenpad.error.AppException
@@ -108,6 +110,32 @@ object ChatClient {
         }
         if (response.status.isSuccess()) Result.success(response.body())
         else httpFailure(response, "Failed to load messages")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(AppException.from(e))
+    }
+
+    suspend fun profilePhotos(userIds: List<String>): Result<Map<String, String>> = try {
+        val ids = userIds.distinct().filter { it.isNotBlank() }
+        if (ids.isEmpty()) return Result.success(emptyMap())
+        val token = authHeader() ?: return notSignedIn()
+        val response = client.post("${AuthClient.BASE_URL}/chat/profile-photos") {
+            header(HttpHeaders.Authorization, token)
+            contentType(ContentType.Application.Json)
+            setBody(ProfilePhotoLookupRequest(ids))
+        }
+        if (response.status.isSuccess()) {
+            val refs = response.body<List<ProfilePhotoRef>>()
+            Result.success(
+                refs.mapNotNull { ref ->
+                    val url = ref.profilePictureUrl?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    ref.userId to url
+                }.toMap()
+            )
+        } else {
+            httpFailure(response, "Failed to load profile photos")
+        }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {

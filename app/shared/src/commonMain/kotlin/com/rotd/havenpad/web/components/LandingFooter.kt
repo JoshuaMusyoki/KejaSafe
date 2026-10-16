@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.HorizontalDivider
@@ -47,7 +48,20 @@ fun LandingFooter(wide: Boolean, horizontalPadding: androidx.compose.ui.unit.Dp)
         ) {
             Column(modifier = Modifier.weight(1.5f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(24.dp).clip(CircleShape).background(LandingBrandGreen))
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(LandingBrandGreen),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Home,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("HavenPad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
@@ -59,11 +73,21 @@ fun LandingFooter(wide: Boolean, horizontalPadding: androidx.compose.ui.unit.Dp)
                     modifier = Modifier.widthIn(max = 300.dp)
                 )
                 Spacer(modifier = Modifier.height(24.dp))
-                Surface(color = Color(0xFFFEF3C7), shape = RoundedCornerShape(20.dp)) {
-                    Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Verified, null, tint = Color(0xFFD97706), modifier = Modifier.size(12.dp))
+                Surface(color = Color(0xFF75906C), shape = RoundedCornerShape(20.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .padding(
+                                horizontal = 12.dp,
+                                vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Verified, null, tint = Color(0xFFE8F1E7), modifier = Modifier.size(12.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("100% Escrow Protected & Verified Housing", style = MaterialTheme.typography.labelSmall, color = Color(0xFF92400E))
+                        Text(
+                            text = "100% Escrow Protected & Verified Housing",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onBackground,
+                        )
                     }
                 }
             }
@@ -83,9 +107,9 @@ fun LandingFooter(wide: Boolean, horizontalPadding: androidx.compose.ui.unit.Dp)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("© 2025 HavenPad Inc. All rights reserved.", style = MaterialTheme.typography.labelSmall, color = LandingTextSecondary)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Shield, null, tint = LandingTextSecondary, modifier = Modifier.size(12.dp))
+                Icon(Icons.Default.Verified, null, tint = LandingTextSecondary, modifier = Modifier.size(12.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Student Protection Shield", style = MaterialTheme.typography.labelSmall, color = LandingTextSecondary)
+                Text("Developed by Rotd Tech", style = MaterialTheme.typography.labelSmall, color = LandingTextSecondary)
             }
         }
     }
