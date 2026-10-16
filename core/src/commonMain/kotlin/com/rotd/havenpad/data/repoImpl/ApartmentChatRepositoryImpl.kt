@@ -94,7 +94,6 @@ class ApartmentChatRepositoryImpl(
             .distinctBy { "${it.listingId}_${it.userId}" }
 
         ensureLandlordTenantConnections(me.id, me.role, bookingPeers)
-        peers.value = bookingPeers
 
         val matePeers = if (me.role == UserRole.STUDENT) {
             listingRepository.getApartmentMates()
@@ -108,12 +107,19 @@ class ApartmentChatRepositoryImpl(
         val inquiryPeers = ChatClient.inquiryPeers().getOrElse { emptyList() }
         val eligible = (bookingPeers + matePeers + inquiryPeers)
             .distinctBy { "${it.listingId}_${it.userId}" }
+        val previousPhotos = peers.value.associate { peer ->
+            peer.userId to peer.profilePictureUrl
+        }
         val photos = ChatClient.profilePhotos(eligible.map { it.userId }).getOrElse { emptyMap() }
         val withPhotos = eligible.map { peer ->
             val url = photos[peer.userId]
+                ?.takeIf { it.isNotBlank() }
+                ?: previousPhotos[peer.userId]
+                ?: peer.profilePictureUrl
             if (url.isNullOrBlank()) peer else peer.copy(profilePictureUrl = url)
         }
 
+        // Publish once with the full list so inquiry chats do not vanish mid-refresh.
         peers.value = withPhotos
         com.rotd.havenpad.media.ProfilePhotoLoader.prefetch(
             withPhotos.map { it.profilePictureUrl } + SessionManager.currentUser.value?.profilePictureUrl

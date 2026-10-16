@@ -231,12 +231,16 @@ private fun ProfileAvatar(
     uploading: Boolean,
     onClick: () -> Unit,
 ) {
-    var bitmap by remember(user.profilePictureUrl) {
+    var bitmap by remember {
         mutableStateOf(ProfilePhotoLoader.peek(user.profilePictureUrl))
     }
     LaunchedEffect(user.profilePictureUrl) {
-        bitmap = ProfilePhotoLoader.load(user.profilePictureUrl)
+        if (user.profilePictureUrl.isNullOrBlank()) return@LaunchedEffect
+        ProfilePhotoLoader.peek(user.profilePictureUrl)?.let { bitmap = it }
+        val loaded = ProfilePhotoLoader.load(user.profilePictureUrl) ?: return@LaunchedEffect
+        bitmap = loaded
     }
+    val shown = ProfilePhotoLoader.peek(user.profilePictureUrl) ?: bitmap
     Box(
         modifier = Modifier.size(size).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -249,7 +253,7 @@ private fun ProfileAvatar(
                 .border(4.dp, MaterialTheme.colorScheme.surface, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            val photo = bitmap
+            val photo = shown
             if (photo != null) {
                 Image(
                     bitmap = photo,

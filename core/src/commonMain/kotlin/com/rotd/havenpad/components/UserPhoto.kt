@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -37,15 +38,19 @@ fun UserPhoto(
     background: Color = MaterialTheme.colorScheme.primaryContainer,
     contentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
 ) {
-    var bitmap by remember(imageUrl) { mutableStateOf(ProfilePhotoLoader.peek(imageUrl)) }
+    // Keep the last good bitmap across brief null URL flashes during peer refresh.
+    var bitmap by remember { mutableStateOf(ProfilePhotoLoader.peek(imageUrl)) }
     LaunchedEffect(imageUrl) {
-        bitmap = ProfilePhotoLoader.load(imageUrl)
+        if (imageUrl.isNullOrBlank()) return@LaunchedEffect
+        ProfilePhotoLoader.peek(imageUrl)?.let { bitmap = it }
+        val loaded = ProfilePhotoLoader.load(imageUrl) ?: return@LaunchedEffect
+        bitmap = loaded
     }
+    val photo: ImageBitmap? = ProfilePhotoLoader.peek(imageUrl) ?: bitmap
     Box(
         modifier = modifier.clip(CircleShape).background(background),
         contentAlignment = Alignment.Center,
     ) {
-        val photo = bitmap
         if (photo != null) {
             Image(
                 bitmap = photo,
