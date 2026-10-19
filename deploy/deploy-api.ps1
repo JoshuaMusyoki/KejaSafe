@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Provisions and deploys the KejaSafe API to Cloud Run.
+    Provisions and deploys the HavenPad API to Cloud Run.
 
 .DESCRIPTION
     Run once with -Setup to create the infrastructure (Artifact Registry, Cloud SQL,
@@ -123,13 +123,13 @@ if ($Setup) {
         "gcloud", "artifacts", "repositories", "create", $Repository,
         "--repository-format=docker",
         "--location=$Region",
-        "--description=KejaSafe server images",
+        "--description=HavenPad server images",
         "--project=$ProjectId"
     )
 
     Invoke-Step -Description "Create the runtime service account" -AllowFailure -Command @(
-        "gcloud", "iam", "service-accounts", "create", "kejasafe-api",
-        "--display-name=KejaSafe API (Cloud Run)",
+        "gcloud", "iam", "service-accounts", "create", "havenpad-api",
+        "--display-name=HavenPad API (Cloud Run)",
         "--project=$ProjectId"
     )
 

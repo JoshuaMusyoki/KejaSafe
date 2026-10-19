@@ -9,7 +9,7 @@ class OnboardingTest {
         email = "amina@havenpad.app",
         username = "amina",
         fullName = "Amina Otieno",
-        password = "havenpad1",
+        password = "placeholder_secure_pass_123",
         role = role,
         phone = "0712345678",
     )
@@ -24,6 +24,7 @@ class OnboardingTest {
             major = "Computer Science",
             yearOfStudy = 3,
         )
+        println("Testing student complete details error: ${complete.onboardingError()}")
         assertNull(complete.onboardingError())
     }
 
