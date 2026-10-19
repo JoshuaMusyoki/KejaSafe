@@ -4,21 +4,25 @@ import androidx.compose.ui.graphics.ImageBitmap
 
 /**
  * Small in-memory image cache so listing cards don't re-hit the server
- * (and cancel mid-write) on every recomposition.
+ * on every recomposition.
  */
 object ImageBitmapCache {
-    private const val maxEntries = 96
-    private val entries = LinkedHashMap<String, ImageBitmap>(maxEntries, 0.75f, true)
+    private const val MAX_ENTRIES = 96
+    private val entries = mutableMapOf<String, ImageBitmap>()
 
     fun get(url: String): ImageBitmap? {
         return entries[url]
     }
 
     fun put(url: String, bitmap: ImageBitmap) {
-        entries[url] = bitmap
-        while (entries.size > maxEntries) {
-            val eldestKey = entries.keys.iterator().next()
-            entries.remove(eldestKey)
+        if (entries.containsKey(url)) {
+            entries.remove(url) // Re-insert to maintain insertion order
+        } else if (entries.size >= MAX_ENTRIES) {
+            val oldestKey = entries.keys.firstOrNull()
+            if (oldestKey != null) {
+                entries.remove(oldestKey)
+            }
         }
+        entries[url] = bitmap
     }
 }
