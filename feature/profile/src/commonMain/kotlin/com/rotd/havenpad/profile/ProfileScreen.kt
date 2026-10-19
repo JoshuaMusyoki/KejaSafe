@@ -1,7 +1,6 @@
 package com.rotd.havenpad.profile
 
 import androidx.compose.foundation.layout.Box
-import com.rotd.havenpad.media.rememberImagePickerLauncher
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,10 +17,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rotd.havenpad.User
 import com.rotd.havenpad.UserRole
 import com.rotd.havenpad.components.HavenPadFloatingNavBar
 import com.rotd.havenpad.components.HavenPadNavTab
 import com.rotd.havenpad.components.HavenPadPrimaryButton
+import com.rotd.havenpad.media.rememberImagePickerLauncher
+import com.rotd.havenpad.theme.HavenPadTheme
+import com.rotd.havenpad.theme.ScreenPreviews
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -46,6 +49,38 @@ fun ProfileScreen(
     val pickPhoto = rememberImagePickerLauncher { images ->
         images.firstOrNull()?.let(viewModel::uploadPhoto)
     }
+
+    ProfileScreenContent(
+        state = state,
+        selectedTab = selectedTab,
+        onTabSelected = onTabSelected,
+        onEditProfile = onEditProfile,
+        onOpenSettings = onOpenSettings,
+        onOpenHome = onOpenHome,
+        onOpenBookings = onOpenBookings,
+        onOpenKyc = onOpenKyc,
+        onOpenAdmin = onOpenAdmin,
+        onCreateListingClick = onCreateListingClick,
+        onRetry = { viewModel.loadProfile() },
+        onChangePhoto = pickPhoto,
+    )
+}
+
+@Composable
+fun ProfileScreenContent(
+    state: ProfileUiState,
+    selectedTab: HavenPadNavTab = HavenPadNavTab.PROFILE,
+    onTabSelected: (HavenPadNavTab) -> Unit,
+    onEditProfile: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenHome: () -> Unit = {},
+    onOpenBookings: () -> Unit = {},
+    onOpenKyc: () -> Unit = {},
+    onOpenAdmin: () -> Unit = {},
+    onCreateListingClick: (() -> Unit)? = null,
+    onRetry: () -> Unit = {},
+    onChangePhoto: () -> Unit = {},
+) {
     val isLandlord = state.user?.role == UserRole.LANDLORD || state.user?.role == UserRole.ADMIN
 
     Scaffold(
@@ -72,7 +107,7 @@ fun ProfileScreen(
                     ) {
                         Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.height(12.dp))
-                        HavenPadPrimaryButton(text = "Retry", onClick = { viewModel.loadProfile() })
+                        HavenPadPrimaryButton(text = "Retry", onClick = onRetry)
                     }
                 }
                 state.user != null -> {
@@ -85,12 +120,38 @@ fun ProfileScreen(
                         onOpenBookings = onOpenBookings,
                         onOpenHome = onOpenHome,
                         onOpenAdmin = onOpenAdmin,
-                        onChangePhoto = pickPhoto,
+                        onChangePhoto = onChangePhoto,
                         photoUploading = state.isUploadingPhoto,
                         photoMessage = state.photoMessage,
                     )
                 }
             }
         }
+    }
+}
+
+@ScreenPreviews
+@Composable
+fun ProfileScreenPreview() {
+    HavenPadTheme {
+        ProfileScreenContent(
+            state = ProfileUiState(
+                isLoading = false,
+                user = User(
+                    id = "1",
+                    username = "amina",
+                    fullName = "Amina Otieno",
+                    email = "amina@havenpad.app",
+                    role = UserRole.STUDENT,
+                ),
+            ),
+            onTabSelected = {},
+            onEditProfile = {},
+            onOpenSettings = {},
+            onOpenHome = {},
+            onOpenBookings = {},
+            onOpenKyc = {},
+            onOpenAdmin = {},
+        )
     }
 }

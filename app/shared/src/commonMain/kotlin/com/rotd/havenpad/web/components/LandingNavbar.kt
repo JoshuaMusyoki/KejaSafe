@@ -31,10 +31,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.rotd.havenpad.theme.HavenPadTheme
+import com.rotd.havenpad.theme.ScreenPreviews
 import com.rotd.havenpad.web.theme.LandingBrandGreen
 import com.rotd.havenpad.web.theme.LandingTextSecondary
 import havenpad.app.shared.generated.resources.Res
@@ -44,7 +48,6 @@ import org.jetbrains.compose.resources.painterResource
 enum class LandingTab {
     HOME, FEATURES, POLICY
 }
-
 @Composable
 fun LandingNavbar(
     onLogin: () -> Unit,
@@ -56,99 +59,140 @@ fun LandingNavbar(
     selectedTab: LandingTab? = null,
     wide: Boolean
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp
+    // Outer Box centers the navbar container horizontally on wide screens
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = if (wide) 32.dp else 16.dp, vertical = 16.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Row(
+        // Brush background gradient for the rounded floating bar
+        val navbarBrushBg = Brush.horizontalGradient(
+            colors = listOf(
+                MaterialTheme.colorScheme.surface,
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                LandingBrandGreen.copy(alpha = 0.04f)
+            )
+        )
+
+        Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = if (wide) 80.dp else 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .fillMaxWidth(if (wide) 0.88f else 1f)
+                .shadow(elevation = 6.dp, shape = RoundedCornerShape(20.dp)),
+            shape = RoundedCornerShape(20.dp),
+            color = Color.Transparent, // Transparent to let the brush background show through
+            border = BorderStroke(1.dp, LandingBrandGreen.copy(alpha = 0.15f))
         ) {
-            Row(
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { onLogoClick() }
-                    .padding(4.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxWidth()
+                    .background(navbarBrushBg)
             ) {
-                // Logo Placeholder
-                Box(
+                Row(
                     modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(LandingBrandGreen),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(horizontal = if (wide) 32.dp else 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Image(
-                        painter = painterResource(Res.drawable.haven_pad_logo),
-                        contentDescription = "HavenPad",
-                        contentScale = ContentScale.Crop,
+                    Row(
                         modifier = Modifier
-                            .fillMaxSize()
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "HavenPad",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = if (selectedTab == LandingTab.HOME) LandingBrandGreen else LandingBrandGreen // Logo is always green but maybe slightly different weight or treatment? User said highliht with green color.
-                )
-
-                if (wide) {
-                    Spacer(modifier = Modifier.width(40.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        Text(
-                            "Features",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (selectedTab == LandingTab.FEATURES) LandingBrandGreen else LandingTextSecondary,
-                            fontWeight = if (selectedTab == LandingTab.FEATURES) FontWeight.Bold else FontWeight.Medium,
-                            modifier = Modifier.clickable { onNavigateToFeatures() }
-                        )
-                        Text(
-                            "Policies & Privacy",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (selectedTab == LandingTab.POLICY) LandingBrandGreen else LandingTextSecondary,
-                            fontWeight = if (selectedTab == LandingTab.POLICY) FontWeight.Bold else FontWeight.Medium,
-                            modifier = Modifier.clickable { onNavigateToPolicy() }
-                        )
-                    }
-                }
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (wide) {
-                    OutlinedButton(
-                        onClick = onExploreListings,
-                        border = BorderStroke(1.dp, Color(0xFFE5E7EB)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onLogoClick() }
+                            .padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Search, null, tint = LandingTextSecondary, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Explore Listings", color = LandingTextSecondary)
+                        // App Logo Image Box
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(LandingBrandGreen.copy(alpha = 0.1f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(Res.drawable.haven_pad_logo),
+                                contentDescription = "HavenPad Logo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            "HavenPad",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = LandingBrandGreen
+                        )
+
+                        if (wide) {
+                            Spacer(modifier = Modifier.width(40.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                                Text(
+                                    "Features",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (selectedTab == LandingTab.FEATURES) LandingBrandGreen else LandingTextSecondary,
+                                    fontWeight = if (selectedTab == LandingTab.FEATURES) FontWeight.Bold else FontWeight.Medium,
+                                    modifier = Modifier.clickable { onNavigateToFeatures() }
+                                )
+                                Text(
+                                    "Policies & Privacy",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (selectedTab == LandingTab.POLICY) LandingBrandGreen else LandingTextSecondary,
+                                    fontWeight = if (selectedTab == LandingTab.POLICY) FontWeight.Bold else FontWeight.Medium,
+                                    modifier = Modifier.clickable { onNavigateToPolicy() }
+                                )
+                            }
+                        }
                     }
-                    Spacer(modifier = Modifier.width(16.dp))
-                }
 
-                Button(
-                    onClick = onLogin,
-                    colors = ButtonDefaults.buttonColors(containerColor = LandingBrandGreen),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(if (signedIn) "Open dashboard" else "Sign in")
-                }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (wide) {
+                            OutlinedButton(
+                                onClick = onExploreListings,
+                                border = BorderStroke(1.dp, Color(0xFFE5E7EB)),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Icon(Icons.Default.Search, null, tint = LandingTextSecondary, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Explore Listings", color = LandingTextSecondary)
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                        }
 
-                if (!wide) {
-                    IconButton(onClick = onExploreListings) {
-                        Icon(Icons.Default.Menu, null)
+                        Button(
+                            onClick = onLogin,
+                            colors = ButtonDefaults.buttonColors(containerColor = LandingBrandGreen),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(if (signedIn) "Open dashboard" else "Sign in")
+                        }
+
+                        if (!wide) {
+                            IconButton(onClick = onExploreListings) {
+                                Icon(Icons.Default.Menu, null)
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@ScreenPreviews
+@Composable
+fun LandingNavbarPreview() {
+    HavenPadTheme {
+        LandingNavbar(
+            onLogin = {},
+            wide = true,
+            onNavigateToFeatures = {},
+            onNavigateToPolicy = {},
+            onLogoClick = {},
+            onExploreListings = {},
+            selectedTab = LandingTab.HOME
+        )
     }
 }

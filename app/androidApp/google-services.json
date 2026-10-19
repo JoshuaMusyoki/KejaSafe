@@ -1,18 +1,31 @@
 {
   "project_info": {
     "project_number": "661471410260",
-    "project_id": "havenpad",
-    "storage_bucket": "havenpad.firebasestorage.app"
+    "project_id": "kejasafe",
+    "storage_bucket": "kejasafe.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:661471410260:android:e2727247e79c841f5195c1",
+        "mobilesdk_app_id": "1:661471410260:android:1d01bd5f9c41ba795195c1",
         "android_client_info": {
           "package_name": "com.rotd.havenpad"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "661471410260-5kgti21ic1g3fsk88i52d55bi8h6eomq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rotd.havenpad",
+            "certificate_hash": "ba61e8484a163128b1fa41be4c1ecfe80ba3af28"
+          }
+        },
+        {
+          "client_id": "661471410260-dqb1qm79hn0kemu1dcme75qrfctkhjtf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAbvJUFNE8nUZqH-0bVJmUuN6WU17n48ug"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "661471410260-dqb1qm79hn0kemu1dcme75qrfctkhjtf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

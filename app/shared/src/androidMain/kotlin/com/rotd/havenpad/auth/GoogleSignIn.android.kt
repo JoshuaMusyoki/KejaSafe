@@ -39,10 +39,12 @@ actual fun rememberGoogleIdTokenLauncher(
                     else onTokenState(token)
                 },
                 onFailure = { error ->
+                    println("GoogleSignIn error: ${error::class.simpleName} - ${error.message}")
+                    error.printStackTrace()
                     val message = if (error is GetCredentialCancellationException) {
-                        "Google sign-in was cancelled"
+                        "Google sign-in was cancelled or SHA-1 fingerprint is missing in Firebase."
                     } else {
-                        error.message ?: "Google sign-in failed"
+                        error.message ?: "Google sign-in failed (${error::class.simpleName})"
                     }
                     onErrorState(message)
                 },
