@@ -263,41 +263,53 @@ object AuthService {
         val token = verifier.verify(idToken) ?: return@transaction null
         val payload = token.payload
         val googleId = payload.subject
-        val email = payload.email
-        val name = payload["name"] as String
+        val email = payload.email?.trim().orEmpty()
+        if (email.isBlank()) return@transaction null
+        val name = (payload["name"] as? String)?.trim().orEmpty()
         val pictureUrl = payload["picture"] as? String
 
-        val existingUser = UsersTable.selectAll()
+        val byGoogle = UsersTable.selectAll()
             .where { UsersTable.googleId eq googleId }
             .singleOrNull()
-
-        if (existingUser != null) {
-            if (!existingUser[UsersTable.active]) throw AccountRemovedException()
-            existingUser.toUser()
-        } else {
-            val id = UUID.randomUUID().toString()
-            val username = email.substringBefore("@")
-            val assignedRole = if (role == UserRole.ADMIN) UserRole.STUDENT else role
-            UsersTable.insert {
-                it[UsersTable.id] = id
-                it[UsersTable.email] = email
-                it[UsersTable.username] = username
-                it[UsersTable.fullName] = name
-                it[UsersTable.role] = assignedRole
-                it[UsersTable.googleId] = googleId
-                it[UsersTable.profilePictureUrl] = pictureUrl
-                it[UsersTable.active] = true
-                it[UsersTable.createdAt] = System.currentTimeMillis()
-            }
-            User(
-                id = id,
-                email = email,
-                username = username,
-                fullName = name,
-                role = assignedRole,
-                profilePictureUrl = pictureUrl
-            )
+        if (byGoogle != null) {
+            if (!byGoogle[UsersTable.active]) throw AccountRemovedException()
+            return@transaction byGoogle.toUser()
         }
+
+        // Same email as an email/password account → link Google and keep that profile.
+        val byEmail = UsersTable.selectAll()
+            .where { UsersTable.email.lowerCase() eq email.lowercase() }
+            .singleOrNull()
+        if (byEmail != null) {
+            if (!byEmail[UsersTable.active]) throw AccountRemovedException()
+            val userId = byEmail[UsersTable.id]
+            UsersTable.update({ UsersTable.id eq userId }) {
+                it[UsersTable.googleId] = googleId
+                if (byEmail[UsersTable.profilePictureUrl].isNullOrBlank() && !pictureUrl.isNullOrBlank()) {
+                    it[UsersTable.profilePictureUrl] = pictureUrl
+                }
+                if (byEmail[UsersTable.fullName].isBlank() && name.isNotBlank()) {
+                    it[UsersTable.fullName] = name
+                }
+            }
+            return@transaction getUserById(userId)
+        }
+
+        val id = UUID.randomUUID().toString()
+        val username = uniqueUsername(email.substringBefore("@").ifBlank { "haven" })
+        val assignedRole = if (role == UserRole.ADMIN) UserRole.STUDENT else role
+        UsersTable.insert {
+            it[UsersTable.id] = id
+            it[UsersTable.email] = email
+            it[UsersTable.username] = username
+            it[UsersTable.fullName] = name.ifBlank { username }
+            it[UsersTable.role] = assignedRole
+            it[UsersTable.googleId] = googleId
+            it[UsersTable.profilePictureUrl] = pictureUrl
+            it[UsersTable.active] = true
+            it[UsersTable.createdAt] = System.currentTimeMillis()
+        }
+        getUserById(id)
     }
 
     fun getUserById(userId: String): User? = transaction {

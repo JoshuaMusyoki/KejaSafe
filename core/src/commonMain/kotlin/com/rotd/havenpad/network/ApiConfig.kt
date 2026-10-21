@@ -18,7 +18,7 @@ object ApiConfig {
     //const val DEV_API_BASE_URL = "http://10.8.121.71:8080"
     //const val DEV_API_BASE_URL = "http://192.168.100.3:8080"
 
-    const val DEV_API_BASE_URL = "http://10.8.120.134:8080"
+    const val DEV_API_BASE_URL = "http://10.8.122.30:8080"
     /** Reaches the dev machine through `adb reverse` on Android. */
     const val USB_API_BASE_URL = "http://127.0.0.1:8080"
 

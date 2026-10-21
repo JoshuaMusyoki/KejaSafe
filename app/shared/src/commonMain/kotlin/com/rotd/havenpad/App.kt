@@ -36,7 +36,7 @@ fun App() {
         else -> HavenPadDestination.Login
     }
 
-    KoinContext {
+    //KoinContext {
         HavenPadTheme(darkTheme = darkTheme) {
             Surface(
                 modifier = Modifier.fillMaxSize(),
@@ -52,5 +52,5 @@ fun App() {
                 SignInApprovalHost()
             }
         }
-    }
+    //}
 }

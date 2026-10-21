@@ -7,12 +7,20 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:661471410260:android:e2727247e79c841f5195c1",
+        "mobilesdk_app_id": "1:661471410260:android:1d01bd5f9c41ba795195c1",
         "android_client_info": {
-          "package_name": "com.rotd.kejasafe"
+          "package_name": "com.rotd.havenpad"
         }
       },
       "oauth_client": [
+        {
+          "client_id": "661471410260-5kgti21ic1g3fsk88i52d55bi8h6eomq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rotd.havenpad",
+            "certificate_hash": "ba61e8484a163128b1fa41be4c1ecfe80ba3af28"
+          }
+        },
         {
           "client_id": "661471410260-dqb1qm79hn0kemu1dcme75qrfctkhjtf.apps.googleusercontent.com",
           "client_type": 3

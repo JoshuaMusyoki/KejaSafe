@@ -112,7 +112,7 @@ fun ProfileScreenContent(
                 }
                 state.user != null -> {
                     ProfileDashboard(
-                        user = state.user!!,
+                        user = state.user,
                         contentPadding = padding,
                         onEditProfile = onEditProfile,
                         onOpenSettings = onOpenSettings,
