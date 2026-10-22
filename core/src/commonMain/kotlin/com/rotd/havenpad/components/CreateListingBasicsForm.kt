@@ -34,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.rotd.havenpad.CampusSuggestion
 import com.rotd.havenpad.DraftExtraCharge
 import com.rotd.havenpad.LandmarkSuggestion
 import com.rotd.havenpad.PendingListingPhoto
@@ -135,6 +137,8 @@ fun CreateListingBasicsForm(
     onProximitySelected: (String) -> Unit,
     university: String,
     onUniversityChange: (String) -> Unit,
+    campusSuggestions: List<CampusSuggestion> = emptyList(),
+    isLoadingCampuses: Boolean = false,
     modifier: Modifier = Modifier,
     showAppBar: Boolean = true,
     pricePerMonth: String = "",
@@ -214,11 +218,11 @@ fun CreateListingBasicsForm(
 
         if (onLandmarkQueryChange != null) {
             Spacer(modifier = Modifier.height(14.dp))
-            HavenPadFormField(label = "Nearby landmark") {
+            HavenPadFormField(label = "Apartment or building") {
                 HavenPadTextField(
                     value = landmarkQuery,
                     onValueChange = onLandmarkQueryChange,
-                    placeholder = "Road, market, or landmark",
+                    placeholder = "Building name, e.g. Sunrise Flats",
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.LocationOn,
@@ -228,7 +232,7 @@ fun CreateListingBasicsForm(
                     }
                 )
                 Text(
-                    text = "Suggestions appear as you type. Pick one, then say how far the house is.",
+                    text = "Type the building name (e.g. Sunrise Flats). Towns are not listed — pick a building so address, pin, and road distance fill in.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp)
@@ -281,11 +285,11 @@ fun CreateListingBasicsForm(
             }
             if (onDistanceChange != null) {
                 Spacer(modifier = Modifier.height(12.dp))
-                HavenPadFormField(label = "Distance from that landmark (meters)") {
+                HavenPadFormField(label = "Distance from main road (meters)") {
                     HavenPadTextField(
                         value = distanceMeters,
                         onValueChange = { onDistanceChange(it.filter { c -> c.isDigit() }) },
-                        placeholder = "e.g. 200"
+                        placeholder = "Filled when you pick a building"
                     )
                 }
             }
@@ -303,12 +307,56 @@ fun CreateListingBasicsForm(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        HavenPadFormField(label = "Primary University Nearby") {
-            HavenPadTextField(
-                value = university,
-                onValueChange = onUniversityChange,
-                placeholder = "e.g. Northeastern University"
+        if (campusSuggestions.isNotEmpty()) {
+            val selectedCampus = campusSuggestions.firstOrNull {
+                it.name.equals(university, ignoreCase = true)
+            } ?: campusSuggestions.first()
+            LaunchedEffect(campusSuggestions.map { it.name }, university) {
+                val inList = campusSuggestions.any { it.name.equals(university, ignoreCase = true) }
+                if (!inList) {
+                    onUniversityChange(campusSuggestions.first().name)
+                }
+            }
+            HavenPadDropdownField(
+                label = "Primary University Nearby",
+                selected = selectedCampus,
+                options = campusSuggestions,
+                onSelected = { onUniversityChange(it.name) },
+                optionLabel = { campus ->
+                    val distance = campus.distanceMeters?.let { meters ->
+                        if (meters < 1000) "$meters m" else "${meters / 1000}.${(meters % 1000) / 100} km"
+                    }
+                    if (distance != null) "${campus.name} · $distance" else campus.name
+                },
             )
+            if (isLoadingCampuses) {
+                Text(
+                    text = "Updating campuses nearby…",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        } else {
+            HavenPadFormField(label = "Primary University Nearby") {
+                HavenPadTextField(
+                    value = university,
+                    onValueChange = onUniversityChange,
+                    placeholder = if (isLoadingCampuses) {
+                        "Finding campuses nearby…"
+                    } else {
+                        "Select a building first, or type a campus"
+                    },
+                )
+                if (isLoadingCampuses) {
+                    Text(
+                        text = "Finding campuses nearby…",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
         }
 
         if (onPriceChange != null) {

@@ -143,6 +143,8 @@ fun CreateListingScreen(
                         },
                         university = state.draft.university,
                         onUniversityChange = { value -> viewModel.updateDraft { it.copy(university = value) } },
+                        campusSuggestions = state.campusSuggestions,
+                        isLoadingCampuses = state.isLoadingCampuses,
                         showAppBar = false,
                         pricePerMonth = state.draft.pricePerMonth,
                         onPriceChange = { value ->

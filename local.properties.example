@@ -15,8 +15,11 @@ PORT=8080
 HAVENPAD_HOST=0.0.0.0
 
 # ==============================================================================
-# GOOGLE PLACES & MAPS API CONFIGURATION
+# MAPBOX & GOOGLE PLACES (listing address search)
 # ==============================================================================
+# Prefer Mapbox Search Box for apartment / building suggestions in Kenya.
+MAPBOX_ACCESS_TOKEN=YOUR_MAPBOX_ACCESS_TOKEN
+# Optional fallback when Mapbox is unset.
 GOOGLE_PLACES_API_KEY=YOUR_GOOGLE_PLACES_API_KEY
 
 # ==============================================================================

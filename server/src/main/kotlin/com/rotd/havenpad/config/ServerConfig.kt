@@ -175,6 +175,13 @@ object ServerConfig {
     /** Server-side key for Places Autocomplete. Never shipped to the app. */
     val googlePlacesApiKey: String? = configValue("GOOGLE_PLACES_API_KEY")
 
+    /**
+     * Mapbox token for Search Box (apartment / building lookup) and road distance.
+     * Prefer this over Google Places when set. Never shipped to the app.
+     */
+    val mapboxAccessToken: String? = configValue("MAPBOX_ACCESS_TOKEN")
+        ?: configValue("HAVENPAD_MAPBOX_TOKEN")
+
     /** Firebase project that owns the Android app. Used by Cloud Messaging HTTP v1. */
     val fcmProjectId: String = configValue("HAVENPAD_FCM_PROJECT_ID") ?: "havenpad"
 

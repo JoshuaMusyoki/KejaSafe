@@ -1,5 +1,7 @@
 package com.rotd.havenpad.network
 
+import com.rotd.havenpad.CampusSearchResponse
+import com.rotd.havenpad.CampusSuggestion
 import com.rotd.havenpad.LandmarkDetails
 import com.rotd.havenpad.LandmarkSuggestion
 import com.rotd.havenpad.LocationProvider
@@ -56,6 +58,25 @@ object PlacesClient {
             Result.success(response.body())
         } else {
             Result.failure(AppException.from(IllegalStateException("Could not load that place")))
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(AppException.from(e))
+    }
+
+    suspend fun nearbyCampuses(latitude: Double, longitude: Double): Result<List<CampusSuggestion>> = try {
+        val token = SessionManager.token.value?.let { "Bearer $it" }
+            ?: return Result.failure(AppException.notSignedIn())
+        val response = client.get("${AuthClient.BASE_URL}/places/campuses") {
+            header(HttpHeaders.Authorization, token)
+            parameter("lat", latitude)
+            parameter("lng", longitude)
+        }
+        if (response.status.isSuccess()) {
+            Result.success(response.body<CampusSearchResponse>().campuses)
+        } else {
+            Result.success(emptyList())
         }
     } catch (e: CancellationException) {
         throw e

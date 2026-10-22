@@ -175,6 +175,60 @@ class CreateListingViewModel(
     }
 
     private var placeSearchJob: kotlinx.coroutines.Job? = null
+    private var campusSearchJob: kotlinx.coroutines.Job? = null
+
+    fun refreshNearbyCampuses(latitude: Double?, longitude: Double?) {
+        campusSearchJob?.cancel()
+        if (latitude == null || longitude == null) {
+            _state.update { it.copy(campusSuggestions = emptyList(), isLoadingCampuses = false) }
+            return
+        }
+        campusSearchJob = viewModelScope.launch {
+            val campuses = loadNearbyCampuses(latitude, longitude)
+            syncUniversityToNearbyCampuses(campuses)
+        }
+    }
+
+    private suspend fun loadNearbyCampuses(
+        latitude: Double,
+        longitude: Double,
+    ): List<com.rotd.havenpad.CampusSuggestion> {
+        _state.update { it.copy(isLoadingCampuses = true) }
+        val remote = com.rotd.havenpad.network.PlacesClient.nearbyCampuses(latitude, longitude)
+            .getOrNull()
+            .orEmpty()
+        val campuses = (if (remote.isNotEmpty()) {
+            remote
+        } else {
+            com.rotd.havenpad.KenyaCampuses.suggestionsNear(latitude, longitude, limit = 10)
+                .map { campus ->
+                    val km = com.rotd.havenpad.utils.calculateDistance(
+                        latitude, longitude, campus.latitude, campus.longitude,
+                    )
+                    com.rotd.havenpad.CampusSuggestion(
+                        name = campus.name,
+                        latitude = campus.latitude,
+                        longitude = campus.longitude,
+                        distanceMeters = (km * 1000).toInt(),
+                    )
+                }
+        })
+            // Never suggest Nairobi campuses for a pin in Chuka (etc.).
+            .filter { (it.distanceMeters ?: Int.MAX_VALUE) <= MAX_CAMPUS_DISTANCE_METERS }
+            .sortedBy { it.distanceMeters ?: Int.MAX_VALUE }
+        _state.update { it.copy(campusSuggestions = campuses, isLoadingCampuses = false) }
+        return campuses
+    }
+
+    /** Keep university in sync with the listing pin — drop far/wrong picks like JKUAT in Chuka. */
+    private fun syncUniversityToNearbyCampuses(
+        campuses: List<com.rotd.havenpad.CampusSuggestion>,
+    ) {
+        val current = _state.value.draft.university.trim()
+        val match = campuses.firstOrNull { it.name.equals(current, ignoreCase = true) }
+        if (match != null) return
+        updateDraft { it.copy(university = campuses.firstOrNull()?.name.orEmpty()) }
+    }
 
     fun onLandmarkQueryChange(value: String) {
         updateDraft {
@@ -194,11 +248,9 @@ class CreateListingViewModel(
             kotlinx.coroutines.delay(300)
             _state.update { it.copy(isSearchingPlaces = true) }
             val response = com.rotd.havenpad.network.PlacesClient.autocomplete(query).getOrNull()
-            val suggestions = when {
-                response == null || !response.configured ->
-                    com.rotd.havenpad.network.PlacesClient.deviceSuggestions(query)
-                else -> response.suggestions
-            }
+            // Building field only — skip device geocoder; it returns towns like "Chuka, Karingani".
+            val suggestions = response?.suggestions.orEmpty()
+                .filterNot { looksLikeAdminAreaSuggestion(it) }
             if (_state.value.draft.landmarkQuery.trim() != query) return@launch
             _state.update { it.copy(placeSuggestions = suggestions, isSearchingPlaces = false) }
         }
@@ -208,35 +260,55 @@ class CreateListingViewModel(
         placeSearchJob?.cancel()
         viewModelScope.launch {
             _state.update { it.copy(isSearchingPlaces = true, placeSuggestions = emptyList()) }
-            val resolved = if (suggestion.latitude != null && suggestion.longitude != null) {
+            val details = if (suggestion.latitude != null && suggestion.longitude != null) {
+                null
+            } else {
+                com.rotd.havenpad.network.PlacesClient.details(suggestion.placeId).getOrNull()
+            }
+            val resolved = if (details == null) {
                 suggestion
             } else {
-                val details = com.rotd.havenpad.network.PlacesClient.details(suggestion.placeId).getOrNull()
-                if (details == null) suggestion
-                else suggestion.copy(
+                suggestion.copy(
                     name = details.name.ifBlank { suggestion.name },
                     description = details.address.ifBlank { suggestion.description },
                     latitude = details.latitude,
                     longitude = details.longitude
                 )
             }
+            val lat = resolved.latitude
+            val lng = resolved.longitude
             _state.update { s ->
+                val filledAddress = details?.address?.takeIf { it.isNotBlank() }
+                    ?: resolved.description.takeIf { it.isNotBlank() && it != resolved.name }
+                val roadMeters = details?.distanceToRoadMeters
                 s.copy(
                     isSearchingPlaces = false,
                     placeSuggestions = emptyList(),
                     draft = s.draft.copy(
+                        title = s.draft.title.ifBlank { resolved.name },
+                        address = filledAddress ?: s.draft.address,
                         landmarkQuery = resolved.name,
                         landmarkName = resolved.name,
                         landmarkPlaceId = resolved.placeId,
-                        latitude = resolved.latitude?.toString().orEmpty(),
-                        longitude = resolved.longitude?.toString().orEmpty()
+                        latitude = lat?.toString().orEmpty(),
+                        longitude = lng?.toString().orEmpty(),
+                        distanceMeters = roadMeters?.toString()
+                            ?: s.draft.distanceMeters,
                     ),
-                    error = if (resolved.latitude == null) {
+                    error = if (lat == null) {
                         "Could not load that place. Try another suggestion."
                     } else {
                         null
-                    }
+                    },
                 )
+            }
+            if (lat != null && lng != null) {
+                campusSearchJob?.cancel()
+                val campuses = loadNearbyCampuses(lat, lng)
+                syncUniversityToNearbyCampuses(campuses)
+            } else {
+                _state.update { it.copy(campusSuggestions = emptyList()) }
+                updateDraft { it.copy(university = "") }
             }
         }
     }
@@ -276,6 +348,7 @@ class CreateListingViewModel(
                         error = null
                     )
                 }
+                refreshNearbyCampuses(listing.latitude, listing.longitude)
             }
 
             listingRepository.getListing(
@@ -473,4 +546,29 @@ class CreateListingViewModel(
                 }
         }
     }
+}
+
+/** Max distance for a campus to count as “nearby” the listing pin. */
+private const val MAX_CAMPUS_DISTANCE_METERS = 40_000
+
+/** Towns / wards / counties from geocoders — not valid apartment picks. */
+private fun looksLikeAdminAreaSuggestion(suggestion: com.rotd.havenpad.LandmarkSuggestion): Boolean {
+    val name = suggestion.name.trim()
+    val blob = "$name ${suggestion.description}".lowercase()
+    if (name.count { it == ',' } >= 2 && name.none { it.isDigit() }) return true
+    val adminWords = listOf("county", "ward", "constituency", "sub-county", "subcounty", "kenya")
+    // "Chuka, Karingani, Tharaka-Nithi Kenya" and similar locality labels
+    if (adminWords.count { blob.contains(it) } >= 1 &&
+        name.count { it == ',' } >= 1 &&
+        name.none { it.isDigit() } &&
+        !blob.contains("flat") &&
+        !blob.contains("apartment") &&
+        !blob.contains("plaza") &&
+        !blob.contains("court") &&
+        !blob.contains("tower") &&
+        !blob.contains("estate")
+    ) {
+        return true
+    }
+    return false
 }

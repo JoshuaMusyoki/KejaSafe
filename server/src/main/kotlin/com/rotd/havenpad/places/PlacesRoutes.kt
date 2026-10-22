@@ -25,4 +25,14 @@ fun Route.placesRoutes() {
             call.respond(details)
         }
     }
+
+    get("/places/campuses") {
+        val lat = call.request.queryParameters["lat"]?.toDoubleOrNull()
+        val lng = call.request.queryParameters["lng"]?.toDoubleOrNull()
+        if (lat == null || lng == null) {
+            call.respond(HttpStatusCode.BadRequest, "lat and lng are required")
+            return@get
+        }
+        call.respond(PlacesService.nearbyCampuses(lat, lng))
+    }
 }

@@ -14,12 +14,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.HomeWork
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,7 +45,6 @@ import com.rotd.havenpad.ListingPerformance
 import com.rotd.havenpad.PropertyListing
 import com.rotd.havenpad.PropertyType
 import com.rotd.havenpad.reviewRankLabel
-import com.rotd.havenpad.components.CenteredListingCardRow
 import com.rotd.havenpad.components.CenteredMarketplaceTileRow
 import com.rotd.havenpad.components.CompactListingCard
 import com.rotd.havenpad.components.HavenPadAppBar
@@ -63,6 +62,7 @@ import com.rotd.havenpad.components.MarketplaceTileCard
 import com.rotd.havenpad.components.MarketplaceTileTone
 import com.rotd.havenpad.components.NewInquiriesBadge
 import com.rotd.havenpad.components.PerformanceMetricCard
+import com.rotd.havenpad.components.TenantListingsShimmer
 import com.rotd.havenpad.components.ViewsMetricBadge
 import com.rotd.havenpad.listing.viewModel.LandlordHomeViewModel
 import com.rotd.havenpad.theme.HavenPadTheme
@@ -75,7 +75,6 @@ private enum class LandlordHomePopup {
     LISTING
 }
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun LandlordHomeScreen(
     selectedTab: HavenPadNavTab = HavenPadNavTab.HOME,
@@ -117,6 +116,13 @@ fun LandlordHomeScreen(
                 .padding(bottom = padding.calculateBottomPadding())
         ) {
             val useDialog = maxWidth >= 640.dp
+            val useWideListings = maxWidth >= 640.dp
+            val listingColumns = when {
+                maxWidth >= 1100.dp -> 4
+                maxWidth >= 900.dp -> 3
+                maxWidth >= 640.dp -> 2
+                else -> 1
+            }
             val selectedListing = selectedListingId?.let { id ->
                 state.listings.firstOrNull { it.id == id }
             }
@@ -136,7 +142,7 @@ fun LandlordHomeScreen(
                     top = HavenPadAppBarContentInset + 12.dp,
                     bottom = 8.dp
                 ),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (state.error != null && state.listings.isEmpty()) {
                     item {
@@ -182,38 +188,49 @@ fun LandlordHomeScreen(
 
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        MarketplaceSectionHeader(title = "Your Listings")
+                        Text(
+                            text = "Your Listings",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
                         Button(
                             onClick = onNavigateToCreateListing,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
                             ),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("New Listing")
+                            Icon(Icons.Default.HomeWork, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("See All")
                         }
                     }
                 }
 
                 when {
                     showShimmer -> {
-                        item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
-                            ) {
-                                repeat(2) {
-                                    Box(modifier = Modifier.width(240.dp)) {
-                                        ListingMetricShimmer()
+                        if (useWideListings) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    repeat(listingColumns.coerceAtMost(3)) {
+                                        Box(modifier = Modifier.width(240.dp)) {
+                                            ListingMetricShimmer()
+                                        }
                                     }
                                 }
                             }
+                        } else {
+                            item { TenantListingsShimmer(count = 3) }
                         }
                     }
                     showEmptyListings -> {
@@ -226,8 +243,34 @@ fun LandlordHomeScreen(
                         }
                     }
                     else -> {
-                        item {
-                            CenteredListingCardRow(
+                        if (useWideListings) {
+                            val rows = state.listings.chunked(listingColumns)
+                            items(
+                                count = rows.size,
+                                key = { index -> rows[index].joinToString("-") { it.id } }
+                            ) { rowIndex ->
+                                val row = rows[rowIndex]
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    row.forEach { listing ->
+                                        CompactListingCard(
+                                            listing = listing,
+                                            onView = {
+                                                selectedListingId = listing.id
+                                                activePopup = LandlordHomePopup.LISTING
+                                            },
+                                            trailingBadge = {
+                                                ListingStatusBadge(status = listing.status)
+                                            },
+                                            modifier = Modifier.width(240.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            items(
                                 items = state.listings,
                                 key = { it.id }
                             ) { listing ->
@@ -239,7 +282,9 @@ fun LandlordHomeScreen(
                                     },
                                     trailingBadge = {
                                         ListingStatusBadge(status = listing.status)
-                                    }
+                                    },
+                                    fullWidth = true,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
