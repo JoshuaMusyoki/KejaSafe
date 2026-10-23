@@ -1,12 +1,9 @@
 package com.rotd.havenpad.listing
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,15 +14,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -39,38 +33,34 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rotd.havenpad.PropertyListing
-import com.rotd.havenpad.reviewRankLabel
-import com.rotd.havenpad.components.CenteredMarketplaceTileRow
-import com.rotd.havenpad.components.CompactListingCard
-import com.rotd.havenpad.components.InsightCard
+import com.rotd.havenpad.components.AirbnbCategoryRow
+import com.rotd.havenpad.components.AirbnbFeaturedBanner
+import com.rotd.havenpad.components.AirbnbListingCard
 import com.rotd.havenpad.components.HavenPadAppBar
 import com.rotd.havenpad.components.HavenPadAppBarContentInset
-import com.rotd.havenpad.components.HavenPadBody
 import com.rotd.havenpad.components.HavenPadDetailPopup
 import com.rotd.havenpad.components.HavenPadErrorState
 import com.rotd.havenpad.components.HavenPadFloatingNavBar
 import com.rotd.havenpad.components.HavenPadNavTab
 import com.rotd.havenpad.components.HavenPadOfflineBanner
 import com.rotd.havenpad.components.HavenPadPrimaryButton
+import com.rotd.havenpad.components.InsightCard
 import com.rotd.havenpad.components.ListingStatusBadge
 import com.rotd.havenpad.components.MarketplaceSectionHeader
-import com.rotd.havenpad.components.MarketplaceTileCard
-import com.rotd.havenpad.components.MarketplaceTileTone
 import com.rotd.havenpad.components.TenantListingsShimmer
 import com.rotd.havenpad.listing.viewModel.TenantHomeViewModel
 import com.rotd.havenpad.rememberLocationPermissionState
+import com.rotd.havenpad.reviewRankLabel
 import com.rotd.havenpad.theme.HavenPadTheme
 import com.rotd.havenpad.utils.calculateDistance
 import org.koin.compose.viewmodel.koinViewModel
 
 private enum class TenantHomePopup {
     INSIGHT,
-    REQUEST_PROPERTY,
-    LISTING
+    REQUEST_PROPERTY
 }
 
 @Composable
@@ -88,14 +78,14 @@ fun TenantHomeScreen(
     viewModel: TenantHomeViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val currentUserId = com.rotd.havenpad.network.SessionManager.currentUser.collectAsStateWithLifecycle().value?.id
     val showShimmer = state.isLoading && state.listings.isEmpty()
     val showEmpty = !state.isLoading && state.listings.isEmpty() && state.error == null
     var activePopup by rememberSaveable { mutableStateOf<TenantHomePopup?>(null) }
-    var selectedListingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCategory by remember { mutableStateOf("All") }
+    var favoriteIds by rememberSaveable { mutableStateOf(com.rotd.havenpad.FavoriteStore.read()) }
 
     val openSearch = {
-        onNavigateToSearch(state.searchQuery, state.userLatitude, state.userLongitude)
+        viewModel.openSearchOverlay()
     }
     val locationPermission = rememberLocationPermissionState { granted ->
         if (granted) {
@@ -124,9 +114,6 @@ fun TenantHomeScreen(
                 .padding(bottom = padding.calculateBottomPadding())
         ) {
             val useDialog = maxWidth >= 640.dp
-            val selectedListing = selectedListingId?.let { id ->
-                state.listings.firstOrNull { it.id == id }
-            }
 
             val pullRefreshState = rememberPullToRefreshState()
             PullToRefreshBox(
@@ -135,222 +122,200 @@ fun TenantHomeScreen(
                 state = pullRefreshState,
                 modifier = Modifier.fillMaxSize()
             ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = HavenPadTheme.spacing.containerMarginMobile,
-                    end = HavenPadTheme.spacing.containerMarginMobile,
-                    top = HavenPadAppBarContentInset + 28.dp,
-                    bottom = 8.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = "Zero Stress, Maximum Flex.",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        HavenPadBody(
-                            text = if (showShimmer) {
-                                "Loading places near campus…"
-                            } else {
-                                "Verified student housing near campus."
-                            },
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
-
-                if (state.error != null && state.listings.isEmpty()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = HavenPadTheme.spacing.containerMarginMobile,
+                        end = HavenPadTheme.spacing.containerMarginMobile,
+                        top = HavenPadAppBarContentInset + 16.dp,
+                        bottom = 8.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // 1. Airbnb Floating Search Bar
                     item {
-                        HavenPadErrorState(
-                            message = state.error.orEmpty(),
-                            onRetry = { viewModel.refresh() }
+                        GlassmorphicSearchField(
+                            query = state.searchQuery,
+                            placeholder = "Start your search",
+                            onClick = openSearch,
+                            enabled = !state.isRefreshing
                         )
                     }
-                }
 
-                if (state.syncWarning != null && state.listings.isNotEmpty()) {
+                    // 2. Category Filter Chips Carousel
                     item {
-                        HavenPadOfflineBanner(
-                            message = state.syncWarning.orEmpty(),
-                            onRetry = { viewModel.refresh(showLoading = false) }
-                        )
-                    }
-                }
-
-                item {
-                    CenteredMarketplaceTileRow {
-                        MarketplaceTileCard(
-                            title = "Custom request",
-                            value = "New",
-                            subtitle = "Tell us what you need near campus",
-                            actionLabel = "Request",
-                            onAction = { activePopup = TenantHomePopup.REQUEST_PROPERTY },
-                            tone = MarketplaceTileTone.PRIMARY,
-                            icon = Icons.Default.Search
-                        )
-                        MarketplaceTileCard(
-                            title = "Student tip",
-                            value = "4×",
-                            subtitle = "More inquiries within 10 min walk",
-                            actionLabel = "Read",
-                            onAction = { activePopup = TenantHomePopup.INSIGHT },
-                            tone = MarketplaceTileTone.SECONDARY,
-                            icon = Icons.Default.Lightbulb
-                        )
-                    }
-                }
-
-                item {
-                    val categories = listOf("All", "Single Room", "Bedsitter", "1 Bedroom", "2 Bedroom")
-                    var selectedCategory by remember { mutableStateOf("All") }
-
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                        contentPadding = PaddingValues(vertical = 4.dp)
-                    ) {
-                        items(categories.size) { index ->
-                            val cat = categories[index]
-                            val isSelected = selectedCategory == cat
-                            Surface(
-                                onClick = {
-                                    selectedCategory = cat
-                                    if (cat == "All") viewModel.onSearchChange("")
-                                    else viewModel.onSearchChange(cat)
-                                },
-                                shape = RoundedCornerShape(20.dp),
-                                color = if (isSelected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                                },
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = cat,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) {
-                                            MaterialTheme.colorScheme.onPrimary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurface
-                                        }
-                                    )
-                                }
+                        AirbnbCategoryRow(
+                            selectedCategory = selectedCategory,
+                            onCategorySelected = { item ->
+                                selectedCategory = item.label
+                                if (item.label == "All") viewModel.onSearchChange("")
+                                else viewModel.onSearchChange(item.label)
                             }
-                        }
-                    }
-                }
-
-                item {
-                    GlassmorphicSearchField(
-                        query = state.searchQuery,
-                        placeholder = "Search your crib",
-                        onClick = openSearch,
-                        enabled = !state.isRefreshing
-                    )
-                }
-
-                item {
-                    MarketplaceSectionHeader(
-                        title = browseHeading(
-                            isLocating = state.isLocating,
-                            locationName = state.userLocationName,
-                            hasCoordinates = state.userLatitude != null,
                         )
-                    )
-                }
-
-                when {
-                    showShimmer -> {
-                        item { TenantListingsShimmer(count = 3) }
                     }
-                    showEmpty -> {
+
+                    // 3. Featured Highlight Banner Card ("Homes")
+                    item {
+                        AirbnbFeaturedBanner(
+                            title = "Homes",
+                            subtitle = "Complete places near campus",
+                            details = "Verified student housing · M-Pesa escrow",
+                            imageUrl = state.listings.firstOrNull()?.imageUrl,
+                            onClick = openSearch
+                        )
+                    }
+
+                    if (state.error != null && state.listings.isEmpty()) {
                         item {
-                            Text(
-                                text = "No houses available right now. Check back soon.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            HavenPadErrorState(
+                                message = state.error.orEmpty(),
+                                onRetry = { viewModel.refresh() }
                             )
                         }
                     }
-                    else -> {
-                        if (state.error != null) {
-                            item {
-                                Text(
-                                    text = state.error.orEmpty(),
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
 
-                        if (state.showingDistantSuggestions) {
-                            item {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(
-                                        text = "No listings found within 30km of your location.",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                    Text(
-                                        text = "Here are some suggestions around you:",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                    if (state.syncWarning != null && state.listings.isNotEmpty()) {
+                        item {
+                            HavenPadOfflineBanner(
+                                message = state.syncWarning.orEmpty(),
+                                onRetry = { viewModel.refresh(showLoading = false) }
+                            )
+                        }
+                    }
+
+                    // 4. Recently Viewed Section
+                    if (state.listings.isNotEmpty()) {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                MarketplaceSectionHeader(
+                                    title = "Recently viewed",
+                                    onAction = openSearch
+                                )
+
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    contentPadding = PaddingValues(horizontal = 2.dp)
+                                ) {
+                                    items(
+                                        items = state.visibleListings.take(6),
+                                        key = { "recent_${it.id}" }
+                                    ) { listing ->
+                                        AirbnbListingCard(
+                                            listing = listing,
+                                            distanceLabel = distanceLabel(
+                                                listing,
+                                                state.userLatitude,
+                                                state.userLongitude,
+                                                state.distancesReady
+                                            ),
+                                            isFavorite = favoriteIds.contains(listing.id),
+                                            onToggleFavorite = {
+                                                favoriteIds = if (favoriteIds.contains(listing.id)) {
+                                                    favoriteIds - listing.id
+                                                } else {
+                                                    favoriteIds + listing.id
+                                                }
+                                                com.rotd.havenpad.FavoriteStore.save(favoriteIds)
+                                            },
+                                            onView = {
+                                                onNavigateToProperty(listing.id)
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
+                    }
 
-                        items(
-                            items = state.visibleListings,
-                            key = { it.id }
-                        ) { listing ->
-                            CompactListingCard(
-                                listing = listing,
-                                distanceLabel = distanceLabel(
-                                    listing,
-                                    state.userLatitude,
-                                    state.userLongitude,
-                                    state.distancesReady
-                                ),
-                                onView = {
-                                    selectedListingId = listing.id
-                                    activePopup = TenantHomePopup.LISTING
-                                },
-                                fullWidth = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                    // 5. Main Section Header ("Homes near campus with free cancellation")
+                    item {
+                        val locationName = state.userLocationName?.takeIf { it.isNotBlank() } ?: "Campus"
+                        MarketplaceSectionHeader(
+                            title = "$locationName homes with free cancellation",
+                            onAction = openSearch
+                        )
+                    }
+
+                    when {
+                        showShimmer -> {
+                            item { TenantListingsShimmer(count = 3) }
                         }
-
-                        if (state.visibleListings.isEmpty() && state.searchQuery.isNotBlank()) {
+                        showEmpty -> {
                             item {
                                 Text(
-                                    text = "No houses match “${state.searchQuery.trim()}”.",
+                                    text = "No houses available right now. Check back soon.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
-                    }
-                }
+                        else -> {
+                            if (state.showingDistantSuggestions) {
+                                item {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(
+                                            text = "No listings found within 30km of your location.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                        Text(
+                                            text = "Here are some suggestions around you:",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
 
-                item { Spacer(modifier = Modifier.height(24.dp)) }
-            }
+                            // Horizontal scroll row matching Airbnb listings
+                            item {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    contentPadding = PaddingValues(horizontal = 2.dp)
+                                ) {
+                                    items(
+                                        items = state.visibleListings,
+                                        key = { "free_cancel_${it.id}" }
+                                    ) { listing ->
+                                        AirbnbListingCard(
+                                            listing = listing,
+                                            distanceLabel = distanceLabel(
+                                                listing,
+                                                state.userLatitude,
+                                                state.userLongitude,
+                                                state.distancesReady
+                                            ),
+                                            isFavorite = favoriteIds.contains(listing.id),
+                                            onToggleFavorite = {
+                                                favoriteIds = if (favoriteIds.contains(listing.id)) {
+                                                    favoriteIds - listing.id
+                                                } else {
+                                                    favoriteIds + listing.id
+                                                }
+                                                com.rotd.havenpad.FavoriteStore.save(favoriteIds)
+                                            },
+                                            onView = {
+                                                onNavigateToProperty(listing.id)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (state.visibleListings.isEmpty() && state.searchQuery.isNotBlank()) {
+                                item {
+                                    Text(
+                                        text = "No houses match “${state.searchQuery.trim()}”.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item { Spacer(modifier = Modifier.height(24.dp)) }
+                }
             }
 
             HavenPadAppBar(
@@ -375,6 +340,20 @@ fun TenantHomeScreen(
                     contentDescription = "Search houses"
                 )
             }
+
+            // Airbnb Search Overlay Sheet (Opens on the same page!)
+            AirbnbSearchOverlay(
+                isOpen = state.isSearchOverlayOpen,
+                onClose = viewModel::closeSearchOverlay,
+                initialDestination = state.destinationQuery.ifBlank { state.searchQuery },
+                initialDateText = state.moveInDateText,
+                initialRoommates = state.roommatesCount,
+                recentSearches = state.recentSearches,
+                onApplySearch = { dest, dates, roommates ->
+                    viewModel.applySearchFilters(dest, dates, roommates)
+                },
+                onClearAll = viewModel::clearSearchFilters
+            )
 
             when (activePopup) {
                 TenantHomePopup.INSIGHT -> {
@@ -414,41 +393,6 @@ fun TenantHomeScreen(
                         }
                     )
                 }
-                TenantHomePopup.LISTING -> selectedListing?.let { listing ->
-                    HavenPadDetailPopup(
-                        title = listing.title,
-                        onDismiss = {
-                            activePopup = null
-                            selectedListingId = null
-                        },
-                        useDialog = useDialog,
-                        content = {
-                            TenantListingPopupContent(
-                                listing = listing,
-                                userLatitude = state.userLatitude,
-                                userLongitude = state.userLongitude
-                            )
-                        },
-                        footer = {
-                            HouseSheetActions(
-                                signedIn = signedIn,
-                                canMessage = signedIn &&
-                                    listing.landlordId.isNotBlank() &&
-                                    listing.landlordId != currentUserId,
-                                onTextLandlord = {
-                                    activePopup = null
-                                    selectedListingId = null
-                                    onTextLandlord(listing)
-                                },
-                                onInspect = {
-                                    activePopup = null
-                                    selectedListingId = null
-                                    onNavigateToProperty(listing.id)
-                                },
-                            )
-                        }
-                    )
-                }
                 null -> Unit
             }
         }
@@ -467,55 +411,6 @@ fun TenantHomeScreen(
             )
         }
     }
-}
-
-@Composable
-private fun TenantListingPopupContent(
-    listing: PropertyListing,
-    userLatitude: Double?,
-    userLongitude: Double?
-) {
-    Box {
-        HousePhotoGallery(listing = listing, heroHeight = 200.dp)
-        if (listing.status == com.rotd.havenpad.ListingStatus.VERIFIED) {
-            ListingStatusBadge(
-                status = listing.status,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-            )
-        }
-    }
-    Spacer(modifier = Modifier.height(12.dp))
-    listing.pricePerMonth?.let { price ->
-        Text(
-            text = "${listing.currency} ${price.toInt()}/mo",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-    }
-    Spacer(modifier = Modifier.height(4.dp))
-    Text(
-        text = listing.title,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold
-    )
-    val distance = distanceLabel(listing, userLatitude, userLongitude, distancesReady = true)
-    val meta = listOfNotNull(listing.address, distance).joinToString(" · ")
-    Text(
-        text = meta,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    Text(
-        text = listing.reviewRankLabel(),
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 8.dp),
-    )
-    ListingReviewsPanel(listingId = listing.id)
 }
 
 private fun distanceLabel(

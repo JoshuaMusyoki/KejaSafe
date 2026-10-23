@@ -87,6 +87,9 @@ sealed interface HavenPadDestination : NavKey {
     @Serializable
     data class ListingCalendar(val listingId: String) : HavenPadDestination
 
+    @Serializable
+    data class ListingDetails(val listingId: String) : HavenPadDestination
+
     /** Landlord booking requests and approved stays. */
     @Serializable
     data object LandlordBookings : HavenPadDestination

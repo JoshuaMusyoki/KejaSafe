@@ -1,34 +1,20 @@
 package com.rotd.havenpad.listing
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,8 +25,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.rotd.havenpad.PropertyListing
 import com.rotd.havenpad.components.HavenPadOutlinedButton
 import com.rotd.havenpad.components.HavenPadPrimaryButton
@@ -92,13 +76,12 @@ internal fun PropertyListing.housePhotoUrls(): List<String> {
 internal fun HousePhotoGallery(
     listing: PropertyListing,
     modifier: Modifier = Modifier,
-    heroHeight: androidx.compose.ui.unit.Dp = 200.dp,
+    heroHeight: androidx.compose.ui.unit.Dp = 340.dp,
 ) {
     val urls = remember(listing.id, listing.photos, listing.imageUrls, listing.imageUrl) {
         listing.housePhotoUrls()
     }
     var index by remember(listing.id) { mutableIntStateOf(0) }
-    var expanded by remember(listing.id) { mutableStateOf(false) }
     val safeIndex = index.coerceIn(0, (urls.size - 1).coerceAtLeast(0))
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -106,104 +89,21 @@ internal fun HousePhotoGallery(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(heroHeight)
-                .clip(RoundedCornerShape(12.dp))
-                .clickable(enabled = urls.isNotEmpty()) { expanded = true },
-        ) {
-            ListingPhoto(
-                imageUrl = urls.getOrNull(safeIndex),
-                contentDescription = listing.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            if (urls.size > 1) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(8.dp),
-                    shape = RoundedCornerShape(50),
-                    color = Color.Black.copy(alpha = 0.55f),
-                ) {
-                    Text(
-                        text = "${safeIndex + 1} / ${urls.size}",
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    )
-                }
-            }
-        }
-        if (urls.size > 1) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                itemsIndexed(urls) { photoIndex, url ->
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable {
-                                index = photoIndex
-                                expanded = true
-                            },
-                    ) {
-                        ListingPhoto(
-                            imageUrl = url,
-                            contentDescription = "Photo ${photoIndex + 1}",
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-            }
-            Text(
-                text = "Tap a photo to view all ${urls.size}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-
-    if (expanded && urls.isNotEmpty()) {
-        HousePhotoViewer(
-            urls = urls,
-            startIndex = safeIndex,
-            title = listing.title,
-            onDismiss = { expanded = false },
-            onIndexChange = { index = it },
-        )
-    }
-}
-
-@Composable
-private fun HousePhotoViewer(
-    urls: List<String>,
-    startIndex: Int,
-    title: String,
-    onDismiss: () -> Unit,
-    onIndexChange: (Int) -> Unit,
-) {
-    var page by remember(urls, startIndex) { mutableIntStateOf(startIndex.coerceIn(0, urls.lastIndex)) }
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-                .pointerInput(page, urls.size) {
+                .clip(RoundedCornerShape(0.dp))
+                .pointerInput(urls.size) {
                     if (urls.size <= 1) return@pointerInput
                     var totalDrag = 0f
                     detectHorizontalDragGestures(
                         onDragStart = { totalDrag = 0f },
                         onDragCancel = { totalDrag = 0f },
                         onDragEnd = {
-                            val threshold = size.width * 0.18f
+                            val threshold = size.width * 0.15f
                             when {
-                                totalDrag < -threshold && page < urls.lastIndex -> {
-                                    page += 1
-                                    onIndexChange(page)
+                                totalDrag < -threshold && index < urls.lastIndex -> {
+                                    index += 1
                                 }
-                                totalDrag > threshold && page > 0 -> {
-                                    page -= 1
-                                    onIndexChange(page)
+                                totalDrag > threshold && index > 0 -> {
+                                    index -= 1
                                 }
                             }
                             totalDrag = 0f
@@ -216,71 +116,26 @@ private fun HousePhotoViewer(
                 },
         ) {
             ListingPhoto(
-                imageUrl = urls[page],
-                contentDescription = title,
+                imageUrl = urls.getOrNull(safeIndex),
+                contentDescription = listing.title,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
+                contentScale = ContentScale.Crop,
             )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "${page + 1} / ${urls.size}",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                }
-            }
             if (urls.size > 1) {
-                Row(
+                Surface(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(50),
+                    color = Color.Black.copy(alpha = 0.6f),
                 ) {
-                    IconButton(
-                        onClick = {
-                            page = (page - 1).coerceAtLeast(0)
-                            onIndexChange(page)
-                        },
-                        enabled = page > 0,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.16f)),
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                            contentDescription = "Previous photo",
-                            tint = Color.White,
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            page = (page + 1).coerceAtMost(urls.lastIndex)
-                            onIndexChange(page)
-                        },
-                        enabled = page < urls.lastIndex,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.16f)),
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = "Next photo",
-                            tint = Color.White,
-                        )
-                    }
+                    Text(
+                        text = "${safeIndex + 1} / ${urls.size}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
                 }
             }
         }

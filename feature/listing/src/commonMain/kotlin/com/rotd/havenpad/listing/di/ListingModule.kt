@@ -4,6 +4,7 @@ import com.rotd.havenpad.listing.CreateListingViewModel
 import com.rotd.havenpad.listing.viewModel.LandlordHomeViewModel
 import com.rotd.havenpad.listing.viewModel.ListingAnalyticsViewModel
 import com.rotd.havenpad.listing.viewModel.ListingCalendarViewModel
+import com.rotd.havenpad.listing.viewModel.ListingDetailsViewModel
 import com.rotd.havenpad.listing.viewModel.ListingSearchViewModel
 import com.rotd.havenpad.listing.viewModel.RequestPropertyViewModel
 import com.rotd.havenpad.listing.viewModel.TenantHomeViewModel
@@ -30,5 +31,8 @@ val listingModule = module {
             listingId = params.get<String>(),
             escrowRepository = get()
         )
+    }
+    viewModel<ListingDetailsViewModel> { params ->
+        ListingDetailsViewModel(listingId = params.get<String>())
     }
 }

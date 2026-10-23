@@ -251,6 +251,73 @@ class TenantHomeViewModel(
     fun onSearchChange(query: String) {
         _state.update { it.copy(searchQuery = query) }
     }
+
+    fun openSearchOverlay() {
+        _state.update {
+            it.copy(
+                isSearchOverlayOpen = true,
+                destinationQuery = it.searchQuery
+            )
+        }
+    }
+
+    fun closeSearchOverlay() {
+        _state.update { it.copy(isSearchOverlayOpen = false) }
+    }
+
+    fun updateSearchDestination(query: String) {
+        _state.update { it.copy(destinationQuery = query) }
+    }
+
+    fun updateMoveInDate(dateText: String?) {
+        _state.update { it.copy(moveInDateText = dateText) }
+    }
+
+    fun updateRoommatesCount(count: Int) {
+        _state.update { it.copy(roommatesCount = count.coerceAtLeast(1)) }
+    }
+
+    fun applySearchFilters(
+        destination: String,
+        dateText: String?,
+        roommates: Int
+    ) {
+        val newRecent = if (destination.isNotBlank()) {
+            val item = com.rotd.havenpad.listing.uiState.RecentSearchItem(
+                destination = destination,
+                dates = dateText ?: "Flexible",
+                guests = "$roommates roommate${if (roommates > 1) "s" else ""}"
+            )
+            listOf(item) + _state.value.recentSearches.filterNot { it.destination.equals(destination, ignoreCase = true) }
+        } else {
+            _state.value.recentSearches
+        }
+        com.rotd.havenpad.listing.uiState.RecentSearchStore.save(newRecent)
+
+        _state.update {
+            it.copy(
+                searchQuery = destination,
+                destinationQuery = destination,
+                moveInDateText = dateText,
+                roommatesCount = roommates,
+                recentSearches = newRecent,
+                isSearchOverlayOpen = false
+            )
+        }
+    }
+
+    fun clearSearchFilters() {
+        com.rotd.havenpad.listing.uiState.RecentSearchStore.save(emptyList())
+        _state.update {
+            it.copy(
+                searchQuery = "",
+                destinationQuery = "",
+                moveInDateText = null,
+                roommatesCount = 1,
+                recentSearches = emptyList()
+            )
+        }
+    }
 }
 
 private data class VisibleInputs(

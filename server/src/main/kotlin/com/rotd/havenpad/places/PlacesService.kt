@@ -14,13 +14,7 @@ import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
-import io.ktor.client.request.header
 import io.ktor.client.request.parameter
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.HttpResponse
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.SerialName
@@ -38,7 +32,6 @@ object PlacesService {
     /** Rough Kenya centroid — bias housing search without locking to Nairobi only. */
     private const val KENYA_LON = 37.9062
     private const val KENYA_LAT = -0.0236
-    private const val KENYA_BIAS_RADIUS_M = 550_000.0
 
     /** Mapbox / admin feature types that are towns, wards, or regions — not buildings. */
     private val adminFeatureTypes = setOf(
@@ -47,36 +40,31 @@ object PlacesService {
     )
 
     suspend fun autocomplete(query: String): PlaceSearchResponse {
-        // Apartment/building field only — never return towns like "Chuka, Karingani".
-        val googleBuildings = googleAutocomplete(query, preferBuildings = true)
-        if (googleBuildings.configured && googleBuildings.suggestions.isNotEmpty()) {
-            return googleBuildings
-        }
         val mapbox = ServerConfig.mapboxAccessToken
-        if (!mapbox.isNullOrBlank()) {
-            mapboxSuggest(query, mapbox, types = "poi,address")
-                ?.takeIf { it.suggestions.isNotEmpty() }
-                ?.let { return it }
+        if (mapbox.isNullOrBlank() || query.isBlank()) {
+            return PlaceSearchResponse(suggestions = emptyList(), configured = !mapbox.isNullOrBlank())
         }
-        // Street-level Google only if housing types returned nothing. Still no cities/regions.
-        val googleStreets = googleAutocomplete(query, preferBuildings = false)
-        if (googleStreets.configured && googleStreets.suggestions.isNotEmpty()) {
-            return googleStreets.copy(
-                suggestions = googleStreets.suggestions.filterNot { looksLikeAdminArea(it) },
+
+        // Search Mapbox Search Box for housing/POI/address types
+        val poiResponse = mapboxSuggest(query, mapbox, types = "poi,address,building,neighborhood")
+        if (poiResponse != null && poiResponse.suggestions.isNotEmpty()) {
+            return poiResponse
+        }
+
+        // Fallback to broader Mapbox query
+        val fallbackResponse = mapboxSuggest(query, mapbox, types = null)
+        if (fallbackResponse != null) {
+            return fallbackResponse.copy(
+                suggestions = fallbackResponse.suggestions.filterNot { looksLikeAdminArea(it) }
             )
         }
-        return PlaceSearchResponse(
-            suggestions = emptyList(),
-            configured = googleBuildings.configured ||
-                googleStreets.configured ||
-                !mapbox.isNullOrBlank(),
-        )
+
+        return PlaceSearchResponse(suggestions = emptyList(), configured = true)
     }
 
     private fun looksLikeAdminArea(suggestion: LandmarkSuggestion): Boolean {
         val blob = "${suggestion.name} ${suggestion.description}".lowercase()
         if (adminFeatureTypes.any { blob.contains(" · $it") || blob.endsWith(it) }) return true
-        // "Chuka, Karingani, Tharaka-Nithi Kenya" style geocoder / locality labels
         val commas = suggestion.name.count { it == ',' }
         if (commas >= 2 && !suggestion.name.any { it.isDigit() }) return true
         val adminWords = listOf("county", "ward", "constituency", "sub-county", "subcounty")
@@ -86,18 +74,14 @@ object PlacesService {
 
     suspend fun details(placeId: String): LandmarkDetails? {
         if (placeId.isBlank()) return null
-        if (placeId.startsWith("mb|")) {
-            val token = ServerConfig.mapboxAccessToken ?: return null
-            return mapboxRetrieve(placeId, token)
+        val token = ServerConfig.mapboxAccessToken ?: return null
+
+        val encodedId = if (placeId.startsWith("mb|")) {
+            placeId
+        } else {
+            "mb|$placeId|${UUID.randomUUID()}"
         }
-        val google = googleDetails(placeId) ?: return null
-        val token = ServerConfig.mapboxAccessToken
-        if (token.isNullOrBlank()) return google
-        val road = nearestRoad(google.longitude, google.latitude, token)
-        return google.copy(
-            distanceToRoadMeters = road?.meters,
-            roadName = road?.name,
-        )
+        return mapboxRetrieve(encodedId, token)
     }
 
     private suspend fun mapboxSuggest(
@@ -207,99 +191,8 @@ object PlacesService {
         return RoadHit(meters = best.second.roundToInt().coerceAtLeast(0), name = best.third)
     }
 
-    private suspend fun googleAutocomplete(
-        query: String,
-        preferBuildings: Boolean,
-    ): PlaceSearchResponse {
-        val key = ServerConfig.googlePlacesApiKey
-        if (key.isNullOrBlank()) {
-            return PlaceSearchResponse(configured = false)
-        }
-
-        val response = client.post("https://places.googleapis.com/v1/places:autocomplete") {
-            header("X-Goog-Api-Key", key)
-            contentType(ContentType.Application.Json)
-            setBody(
-                GoogleAutocompleteRequest(
-                    input = query,
-                    includedRegionCodes = listOf("KE"),
-                    // At most five Table A/B types. Invalid or >5 types make Google reject the call.
-                    includedPrimaryTypes = if (preferBuildings) {
-                        listOf(
-                            "apartment_building",
-                            "apartment_complex",
-                            "condominium_complex",
-                            "housing_complex",
-                            "premise",
-                        )
-                    } else {
-                        listOf(
-                            "street_address",
-                            "route",
-                            "premise",
-                            "subpremise",
-                            "point_of_interest",
-                        )
-                    },
-                    locationBias = GoogleLocationBias(
-                        circle = GoogleCircle(
-                            center = GoogleLatLng(latitude = KENYA_LAT, longitude = KENYA_LON),
-                            radius = KENYA_BIAS_RADIUS_M,
-                        )
-                    ),
-                    languageCode = "en"
-                )
-            )
-        }
-        if (!response.status.isSuccess()) {
-            return PlaceSearchResponse(configured = false, suggestions = emptyList())
-        }
-        val body = response.body<GoogleAutocompleteResponse>()
-        val suggestions = body.suggestions.mapNotNull { suggestion ->
-            val prediction = suggestion.placePrediction ?: return@mapNotNull null
-            val name = prediction.structuredFormat?.mainText?.text
-                ?.ifBlank { null }
-                ?: prediction.text?.text
-                ?: return@mapNotNull null
-            val secondary = prediction.structuredFormat?.secondaryText?.text.orEmpty()
-            val placeId = prediction.placeId.ifBlank { prediction.place.substringAfterLast('/') }
-            if (placeId.isBlank()) return@mapNotNull null
-            LandmarkSuggestion(
-                placeId = placeId,
-                name = name,
-                description = secondary.ifBlank { prediction.text?.text.orEmpty() }
-            )
-        }
-        return PlaceSearchResponse(suggestions = suggestions, configured = true)
-    }
-
-    private suspend fun googleDetails(placeId: String): LandmarkDetails? {
-        val key = ServerConfig.googlePlacesApiKey ?: return null
-        if (placeId.isBlank()) return null
-        val response: HttpResponse = client.get("https://places.googleapis.com/v1/places/$placeId") {
-            header("X-Goog-Api-Key", key)
-            header("X-Goog-FieldMask", "id,displayName,formattedAddress,location")
-        }
-        if (!response.status.isSuccess()) return null
-        val place = response.body<GooglePlace>()
-        val location = place.location ?: return null
-        val name = place.displayName?.text?.ifBlank { null } ?: place.formattedAddress
-        return LandmarkDetails(
-            placeId = place.id.ifBlank { placeId },
-            name = name,
-            address = place.formattedAddress,
-            latitude = location.latitude,
-            longitude = location.longitude
-        )
-    }
-
-    /**
-     * Campuses near a listing pin. Uses Google Places (and Mapbox when set) so
-     * towns outside the curated Nairobi list still get real university suggestions.
-     */
     suspend fun nearbyCampuses(latitude: Double, longitude: Double): CampusSearchResponse {
         val remote = mutableListOf<CampusSuggestion>()
-        remote += googleNearbyUniversities(latitude, longitude)
         val mapbox = ServerConfig.mapboxAccessToken
         if (!mapbox.isNullOrBlank()) {
             remote += mapboxNearbyUniversities(latitude, longitude, mapbox)
@@ -329,51 +222,8 @@ object PlacesService {
         val campuses = merged.values
             .sortedBy { it.distanceMeters ?: Int.MAX_VALUE }
             .take(10)
-        val configured = !ServerConfig.googlePlacesApiKey.isNullOrBlank() ||
-            !ServerConfig.mapboxAccessToken.isNullOrBlank()
+        val configured = !ServerConfig.mapboxAccessToken.isNullOrBlank()
         return CampusSearchResponse(campuses = campuses, configured = configured || campuses.isNotEmpty())
-    }
-
-    private suspend fun googleNearbyUniversities(
-        latitude: Double,
-        longitude: Double,
-    ): List<CampusSuggestion> {
-        val key = ServerConfig.googlePlacesApiKey ?: return emptyList()
-        val response = client.post("https://places.googleapis.com/v1/places:searchNearby") {
-            header("X-Goog-Api-Key", key)
-            header(
-                "X-Goog-FieldMask",
-                "places.id,places.displayName,places.location,places.formattedAddress",
-            )
-            contentType(ContentType.Application.Json)
-            setBody(
-                GoogleNearbySearchRequest(
-                    includedTypes = listOf("university"),
-                    maxResultCount = 10,
-                    rankPreference = "DISTANCE",
-                    locationRestriction = GoogleLocationRestriction(
-                        circle = GoogleCircle(
-                            center = GoogleLatLng(latitude = latitude, longitude = longitude),
-                            radius = 25_000.0,
-                        )
-                    ),
-                )
-            )
-        }
-        if (!response.status.isSuccess()) return emptyList()
-        val body = response.body<GoogleNearbySearchResponse>()
-        return body.places.mapNotNull { place ->
-            val location = place.location ?: return@mapNotNull null
-            val name = place.displayName?.text?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            val km = calculateDistance(latitude, longitude, location.latitude, location.longitude)
-            CampusSuggestion(
-                name = name,
-                latitude = location.latitude,
-                longitude = location.longitude,
-                distanceMeters = (km * 1000).roundToInt(),
-                placeId = place.id.takeIf { it.isNotBlank() },
-            )
-        }
     }
 
     private suspend fun mapboxNearbyUniversities(
@@ -487,91 +337,4 @@ private data class MapboxTileProperties(
 @Serializable
 private data class MapboxTilequeryMeta(
     val distance: Double? = null,
-)
-
-@Serializable
-private data class GoogleCircle(
-    val center: GoogleLatLng,
-    val radius: Double
-)
-
-@Serializable
-private data class GoogleLocationBias(
-    val circle: GoogleCircle
-)
-
-@Serializable
-private data class GoogleAutocompleteRequest(
-    val input: String,
-    val includedRegionCodes: List<String> = listOf("KE", "ke"),
-    val includedPrimaryTypes: List<String>? = null,
-    val locationBias: GoogleLocationBias,
-    val languageCode: String = "en"
-)
-
-@Serializable
-private data class GoogleAutocompleteResponse(
-    val suggestions: List<GoogleSuggestion> = emptyList()
-)
-
-@Serializable
-private data class GoogleSuggestion(
-    val placePrediction: GooglePlacePrediction? = null
-)
-
-@Serializable
-private data class GooglePlacePrediction(
-    val placeId: String = "",
-    val place: String = "",
-    val text: GoogleText? = null,
-    val structuredFormat: GoogleStructuredFormat? = null
-)
-
-@Serializable
-private data class GoogleStructuredFormat(
-    val mainText: GoogleText? = null,
-    val secondaryText: GoogleText? = null
-)
-
-@Serializable
-private data class GoogleText(val text: String = "")
-
-@Serializable
-private data class GooglePlace(
-    val id: String = "",
-    val formattedAddress: String = "",
-    val displayName: GoogleText? = null,
-    val location: GoogleLatLng? = null
-)
-
-@Serializable
-private data class GoogleLatLng(
-    val latitude: Double = 0.0,
-    val longitude: Double = 0.0
-)
-
-@Serializable
-private data class GoogleNearbySearchRequest(
-    val includedTypes: List<String>,
-    val maxResultCount: Int = 10,
-    val rankPreference: String = "DISTANCE",
-    val locationRestriction: GoogleLocationRestriction,
-)
-
-@Serializable
-private data class GoogleLocationRestriction(
-    val circle: GoogleCircle,
-)
-
-@Serializable
-private data class GoogleNearbySearchResponse(
-    val places: List<GoogleNearbyPlace> = emptyList(),
-)
-
-@Serializable
-private data class GoogleNearbyPlace(
-    val id: String = "",
-    val formattedAddress: String = "",
-    val displayName: GoogleText? = null,
-    val location: GoogleLatLng? = null,
 )

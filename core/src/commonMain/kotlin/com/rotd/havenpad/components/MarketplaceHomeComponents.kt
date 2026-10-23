@@ -14,21 +14,27 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -36,6 +42,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,13 +54,14 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.rotd.havenpad.ListingStatus
 import com.rotd.havenpad.PropertyListing
-import com.rotd.havenpad.reviewRankLabel
 import com.rotd.havenpad.PropertyType
+import com.rotd.havenpad.reviewRankLabel
 
 enum class MarketplaceTileTone {
     PRIMARY,
@@ -338,15 +346,307 @@ fun MarketplaceSectionHeader(
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
         )
-        if (actionLabel != null && onAction != null) {
+        if (onAction != null) {
+            Surface(
+                onClick = onAction,
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(36.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = actionLabel ?: "See all",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        } else if (actionLabel != null) {
             Text(
                 text = actionLabel,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.clickable(onClick = onAction)
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+data class AirbnbCategoryItem(
+    val label: String,
+    val iconText: String,
+    val propertyType: PropertyType? = null
+)
+
+val DefaultAirbnbCategories = listOf(
+    AirbnbCategoryItem("All", "🌐"),
+    AirbnbCategoryItem("Single Room", "🛏️", PropertyType.SINGLE_ROOM),
+    AirbnbCategoryItem("Bedsitter", "🛋️", PropertyType.BEDSITTER),
+    AirbnbCategoryItem("1 Bedroom", "🏢", PropertyType.ONE_BEDROOM),
+    AirbnbCategoryItem("2 Bedroom", "🏘️", PropertyType.TWO_BEDROOM),
+    AirbnbCategoryItem("3 Bedroom", "🏰", PropertyType.THREE_BEDROOM),
+    AirbnbCategoryItem("Maisonette", "🏠", PropertyType.MAISONETTE)
+)
+
+@Composable
+fun AirbnbCategoryRow(
+    selectedCategory: String,
+    onCategorySelected: (AirbnbCategoryItem) -> Unit,
+    modifier: Modifier = Modifier,
+    categories: List<AirbnbCategoryItem> = DefaultAirbnbCategories
+) {
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+    ) {
+        items(categories) { item ->
+            val isSelected = selectedCategory == item.label
+            val scheme = MaterialTheme.colorScheme
+            Surface(
+                onClick = { onCategorySelected(item) },
+                shape = RoundedCornerShape(24.dp),
+                color = if (isSelected) {
+                    scheme.surface
+                } else {
+                    scheme.surfaceVariant.copy(alpha = 0.5f)
+                },
+                border = BorderStroke(
+                    width = if (isSelected) 2.dp else 1.dp,
+                    color = if (isSelected) scheme.onSurface else scheme.outlineVariant.copy(alpha = 0.5f)
+                ),
+                shadowElevation = if (isSelected) 2.dp else 0.dp,
+                modifier = Modifier.height(40.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = item.iconText,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = item.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = scheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AirbnbFeaturedBanner(
+    title: String = "Homes",
+    subtitle: String = "Complete places for students",
+    details: String = "M-Pesa escrow · Verified near campus",
+    imageUrl: String? = null,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(22.dp),
+        color = scheme.surface,
+        shadowElevation = 2.dp,
+        border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.5f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(
+                modifier = Modifier.weight(1f).padding(end = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("🏠", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = scheme.onSurface
+                    )
+                }
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = scheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = details,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(16.dp))
+            ) {
+                ListingPhoto(
+                    imageUrl = imageUrl,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AirbnbListingCard(
+    listing: PropertyListing,
+    onView: () -> Unit,
+    modifier: Modifier = Modifier,
+    distanceLabel: String? = null,
+    isFavorite: Boolean = false,
+    onToggleFavorite: (() -> Unit)? = null,
+    cardWidth: Dp = 220.dp
+) {
+    val scheme = MaterialTheme.colorScheme
+    val priceText = listing.pricePerMonth?.let {
+        "${listing.currency} ${it.toInt()}/mo"
+    } ?: "Price on request"
+
+    val ratingVal = if (listing.reviewPercent > 0) {
+        val stars = (listing.reviewPercent / 20.0)
+        "★ " + (kotlin.math.round(stars * 10.0) / 10.0).toString()
+    } else {
+        "★ New"
+    }
+
+    val typeLabel = listing.propertyType?.let { compactTypeLabel(it) } ?: "Housing"
+    val meta = listOfNotNull(typeLabel, distanceLabel).joinToString(" · ")
+
+    Column(
+        modifier = modifier
+            .width(cardWidth)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onView)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp)
+                .clip(RoundedCornerShape(18.dp))
+        ) {
+            ListingPhoto(
+                imageUrl = listing.imageUrl,
+                contentDescription = listing.title,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Top Left Badge: Guest favorite or Verified
+            if (listing.status == ListingStatus.VERIFIED || listing.reviewPercent >= 80) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color.White.copy(alpha = 0.92f),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = null,
+                            tint = Color(0xFFE51D53),
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = if (listing.reviewPercent >= 80) "Guest favorite" else "Verified",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                    }
+                }
+            }
+
+            // Top Right Favorite Heart Button
+            Surface(
+                onClick = { onToggleFavorite?.invoke() },
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.9f),
+                shadowElevation = 2.dp,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(10.dp)
+                    .size(32.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Favorite",
+                        tint = if (isFavorite) Color(0xFFE51D53) else Color.DarkGray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Column(
+            modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = listing.address.ifBlank { listing.title },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = scheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Text(
+                text = "$meta · $ratingVal",
+                style = MaterialTheme.typography.bodyMedium,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Text(
+                text = priceText,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = scheme.primary
             )
         }
     }

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -45,9 +46,9 @@ data class HavenPadNavItem(
 )
 
 val DefaultHavenPadNavItems = listOf(
-    HavenPadNavItem(HavenPadNavTab.HOME, "Home", Icons.Default.Home),
-    HavenPadNavItem(HavenPadNavTab.CHAT, "Chat", Icons.AutoMirrored.Filled.Chat),
+    HavenPadNavItem(HavenPadNavTab.HOME, "Explore", Icons.Default.Search),
     HavenPadNavItem(HavenPadNavTab.BILLS, "Bills", Icons.Default.Payments),
+    HavenPadNavItem(HavenPadNavTab.CHAT, "Messages", Icons.AutoMirrored.Filled.Chat),
     HavenPadNavItem(HavenPadNavTab.PROFILE, "Profile", Icons.Default.Person)
 )
 
@@ -91,13 +92,12 @@ fun HavenPadFloatingNavBar(
     val barColor = colors.surface
     val barBorder = colors.outlineVariant.copy(alpha = 0.55f)
     val inactive = colors.onSurfaceVariant
-    val activeLabel = colors.onSurface
     val pillShape = RoundedCornerShape(40.dp)
 
-    // Landlord FAB shrinks the pill; keep item padding tight so "Profile" stays on one line.
+    // Landlord FAB shrinks the pill; keep item padding tight so labels stay readable.
     val hasFab = onCreateListingClick != null
-    val itemHorizontalPadding = if (hasFab) 2.dp else 6.dp
-    val pillHorizontalPadding = if (hasFab) 4.dp else 8.dp
+    val itemHorizontalPadding = if (hasFab) 2.dp else 4.dp
+    val pillHorizontalPadding = if (hasFab) 4.dp else 6.dp
 
     Row(
         modifier = modifier
@@ -112,7 +112,7 @@ fun HavenPadFloatingNavBar(
                 .clip(pillShape)
                 .background(barColor)
                 .border(1.dp, barBorder, pillShape)
-                .padding(horizontal = pillHorizontalPadding, vertical = 10.dp),
+                .padding(horizontal = pillHorizontalPadding, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -123,16 +123,16 @@ fun HavenPadFloatingNavBar(
                         .weight(1f)
                         .clip(RoundedCornerShape(20.dp))
                         .clickable { onTabSelected(item.tab) }
-                        .padding(horizontal = itemHorizontalPadding, vertical = 4.dp),
+                        .padding(horizontal = itemHorizontalPadding, vertical = 2.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(34.dp)
                             .clip(CircleShape)
                             .background(
-                                if (selected) colors.primary
+                                if (selected) colors.primary.copy(alpha = 0.14f)
                                 else colors.surface
                             ),
                         contentAlignment = Alignment.Center
@@ -140,15 +140,15 @@ fun HavenPadFloatingNavBar(
                         Icon(
                             imageVector = item.icon,
                             contentDescription = item.label,
-                            tint = if (selected) colors.onPrimary else inactive,
+                            tint = if (selected) colors.primary else inactive,
                             modifier = Modifier.size(20.dp)
                         )
                     }
                     Text(
                         text = item.label,
-                        color = if (selected) activeLabel else inactive,
+                        color = if (selected) colors.primary else inactive,
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                         letterSpacing = 0.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -162,7 +162,7 @@ fun HavenPadFloatingNavBar(
         if (onCreateListingClick != null) {
             Box(
                 modifier = Modifier
-                    .size(52.dp)
+                    .size(50.dp)
                     .clip(CircleShape)
                     .background(colors.primary)
                     .clickable(onClick = onCreateListingClick),

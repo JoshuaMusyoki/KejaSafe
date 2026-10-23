@@ -46,6 +46,7 @@ import com.rotd.havenpad.listing.LandlordBookingsScreen
 import com.rotd.havenpad.listing.LandlordHomeScreen
 import com.rotd.havenpad.listing.ListingAnalyticsScreen
 import com.rotd.havenpad.listing.ListingCalendarScreen
+import com.rotd.havenpad.listing.ListingDetailsScreen
 import com.rotd.havenpad.listing.ListingSearchScreen
 import com.rotd.havenpad.listing.RequestPropertyScreen
 import com.rotd.havenpad.listing.TenantHomeScreen
@@ -380,7 +381,7 @@ fun HavenPadNavHost(
                     selectedTab = HavenPadNavTab.HOME,
                     onTabSelected = ::switchMainTab,
                     onNavigateToProperty = { id ->
-                        requireSignIn { openDetail(HavenPadDestination.ListingCalendar(id)) }
+                        requireSignIn { openDetail(HavenPadDestination.ListingDetails(id)) }
                     },
                     onNavigateToProfile = { switchMainTab(HavenPadNavTab.PROFILE) },
                     onNavigateToSearch = { query, lat, lng ->
@@ -407,7 +408,7 @@ fun HavenPadNavHost(
                     selectedTab = HavenPadNavTab.HOME,
                     onTabSelected = ::switchMainTab,
                     onNavigateToProperty = { id ->
-                        requireSignIn { openDetail(HavenPadDestination.ListingCalendar(id)) }
+                        requireSignIn { openDetail(HavenPadDestination.ListingDetails(id)) }
                     },
                     onNavigateToProfile = { switchMainTab(HavenPadNavTab.PROFILE) },
                     onNavigateToSearch = { query, lat, lng ->
@@ -483,6 +484,13 @@ fun HavenPadNavHost(
                     onBack = ::goBack
                 )
             }
+        }
+
+        entry<HavenPadDestination.ListingDetails> { destination ->
+            ListingDetailsScreen(
+                listingId = destination.listingId,
+                onBack = ::goBack
+            )
         }
 
         entry<HavenPadDestination.PropertyDetails> { destination ->

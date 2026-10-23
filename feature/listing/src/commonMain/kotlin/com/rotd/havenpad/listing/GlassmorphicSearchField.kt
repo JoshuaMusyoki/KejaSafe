@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -22,55 +24,49 @@ import androidx.compose.ui.unit.dp
 fun GlassmorphicSearchField(
     modifier: Modifier = Modifier,
     query: String,
-    placeholder: String = "Search your crib",
+    placeholder: String = "Start your search",
     onClick: () -> Unit,
     enabled: Boolean = true
 ) {
+    val scheme = MaterialTheme.colorScheme
     Surface(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        // Glassmorphism effect: translucent background layer
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.25f),
-        // Soft border to simulate glass edge reflection
+        shape = CircleShape,
+        color = scheme.surface,
+        shadowElevation = 3.dp,
         border = BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+            color = scheme.outlineVariant.copy(alpha = 0.5f)
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 20.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Search,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                contentDescription = "Search",
+                tint = scheme.onSurface,
+                modifier = Modifier.size(22.dp)
             )
 
             Text(
                 text = query.ifBlank { placeholder },
                 style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (query.isBlank()) FontWeight.Medium else FontWeight.SemiBold,
                 color = if (query.isBlank()) {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    scheme.onSurfaceVariant
                 } else {
-                    MaterialTheme.colorScheme.onSurface
+                    scheme.onSurface
                 },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
-            )
-
-            Text(
-                text = "Search",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1
             )
         }
     }

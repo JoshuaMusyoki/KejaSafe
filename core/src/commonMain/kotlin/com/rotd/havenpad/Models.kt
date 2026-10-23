@@ -438,6 +438,9 @@ data class PropertyListing(
     val reviewCount: Int = 0,
     /** 1 is the best-reviewed house. Empty when this house has no reviews yet. */
     val landlordRank: Int? = null,
+    val allowsCohabiting: Boolean = true,
+    val cohabitingPricePerMonth: Double? = null,
+    val favoritesCount: Int = 0,
 )
 
 fun PropertyListing.reviewRankLabel(): String = when {
@@ -586,7 +589,10 @@ data class ListingBooking(
     val escrowState: EscrowState? = null,
     val escrowTransactionId: String? = null,
     /** Only visible to the landlord when HELD_IN_ESCROW to give to student. */
-    val escrowVerificationOtp: String? = null
+    val escrowVerificationOtp: String? = null,
+    val occupantsCount: Int = 1,
+    val isCohabiting: Boolean = false,
+    val cohabitingConfirmed: Boolean? = null
 )
 
 @Serializable
@@ -600,7 +606,9 @@ data class BookListingRequest(
     /** When true, booking waits for an auto-matched roommate before landlord review. */
     val seekingRoommate: Boolean = false,
     /** Optional monthly budget ceiling (KES) used for match scoring. */
-    val budgetMax: Double? = null
+    val budgetMax: Double? = null,
+    val occupantsCount: Int = 1,
+    val isCohabiting: Boolean = false
 )
 
 @Serializable
@@ -975,6 +983,39 @@ data class FollowUpReviewRequest(
 data class PinChatMessageRequest(
     val pinned: Boolean,
 )
+
+@Serializable
+data class FavoriteWrapper(val ids: List<String> = emptyList())
+
+object FavoriteStore {
+    private const val KEY = "settings.favorite_listing_ids_v2"
+
+    fun read(): Set<String> {
+        val wrapper = com.rotd.havenpad.storage.JsonCache.get(KEY, FavoriteWrapper.serializer())
+        return wrapper?.ids?.toSet() ?: emptySet()
+    }
+
+    fun save(ids: Set<String>) {
+        com.rotd.havenpad.storage.JsonCache.put(KEY, FavoriteWrapper(ids.toList()), FavoriteWrapper.serializer())
+    }
+}
+
+fun PropertyListing.toSharePosterText(): String = buildString {
+    append("${title}\n")
+    append("Location: $address\n")
+    pricePerMonth?.let {
+        append("Price: $currency ${it.toInt()} / month\n")
+    }
+    propertyType?.let {
+        append("Type: ${it.name.replace('_', ' ').lowercase()}\n")
+    }
+    if (reviewPercent > 0) {
+        append("Rating: ${reviewPercent / 20.0} (${reviewCount} reviews)\n")
+    }
+    append("\nVerified Student Housing near Campus\n")
+    append("Protected by M-Pesa Escrow & Verified Landlord Compliance\n")
+    append("\nShared via HavenPad")
+}
 
 /** Sync a Connect / Accept / Reject between two users. */
 @Serializable
