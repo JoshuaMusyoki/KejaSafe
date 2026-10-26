@@ -57,7 +57,10 @@ jobs:
     name: Publish to Firebase App Distribution
     needs: test-and-build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (secrets.FIREBASE_APP_ID != '')
+    if: github.event_name == 'push'
+    env:
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_SERVICE_ACCOUNT_KEJASAFE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEJASAFE }}
 
     steps:
       - uses: actions/checkout@v4
@@ -69,10 +72,11 @@ jobs:
           path: app/androidApp/build/outputs/bundle/release/
 
       - name: Upload to Firebase App Distribution
+        if: env.FIREBASE_APP_ID != ''
         uses: wzieba/firebase-distribution-github-action@v1
         with:
           appId: ${{ secrets.FIREBASE_APP_ID }}
-          serviceAccountJson: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEJASAFE || secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          serviceAccountJson: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEJASAFE }}
           file: app/androidApp/build/outputs/bundle/release/*.aab
           groups: testers
           releaseNotes: "Automatic CI release build from GitHub Actions (${{ github.sha }})"
@@ -81,7 +85,9 @@ jobs:
     name: Publish to Google Play Store
     needs: test-and-build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON != '')
+    if: github.event_name == 'push'
+    env:
+      PLAY_STORE_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
 
     steps:
       - uses: actions/checkout@v4
@@ -93,6 +99,7 @@ jobs:
           path: app/androidApp/build/outputs/bundle/release/
 
       - name: Publish to Google Play (Internal Track)
+        if: env.PLAY_STORE_SERVICE_ACCOUNT_JSON != ''
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
