@@ -1,5 +1,5 @@
 # Automatically builds release bundles and publishes to Firebase App Distribution
-# and Google Play Console after tests pass.
+# and Google Play Console after tests pass (single-job to bypass artifact storage limits).
 name: Deploy Android
 
 on:
@@ -12,10 +12,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-and-build:
-    name: Run Tests & Build Release
+  deploy:
+    name: Test, Build & Publish Android
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_SERVICE_ACCOUNT_KEJASAFE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEJASAFE }}
+      PLAY_STORE_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
 
     steps:
       - uses: actions/checkout@v4
@@ -46,31 +50,6 @@ jobs:
       - name: Build Android Release App Bundle (.aab)
         run: ./gradlew :app:androidApp:bundleRelease --no-daemon --stacktrace
 
-      - name: Upload Release AAB Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-release-bundle-${{ github.sha }}
-          path: app/androidApp/build/outputs/bundle/release/*.aab
-          retention-days: 14
-
-  publish-firebase:
-    name: Publish to Firebase App Distribution
-    needs: test-and-build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    env:
-      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
-      FIREBASE_SERVICE_ACCOUNT_KEJASAFE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEJASAFE }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download Release AAB Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: android-release-bundle-${{ github.sha }}
-          path: app/androidApp/build/outputs/bundle/release/
-
       - name: Upload to Firebase App Distribution
         if: env.FIREBASE_APP_ID != ''
         uses: wzieba/firebase-distribution-github-action@v1
@@ -80,23 +59,6 @@ jobs:
           file: app/androidApp/build/outputs/bundle/release/*.aab
           groups: testers
           releaseNotes: "Automatic CI release build from GitHub Actions (${{ github.sha }})"
-
-  publish-playstore:
-    name: Publish to Google Play Store
-    needs: test-and-build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    env:
-      PLAY_STORE_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download Release AAB Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: android-release-bundle-${{ github.sha }}
-          path: app/androidApp/build/outputs/bundle/release/
 
       - name: Publish to Google Play (Internal Track)
         if: env.PLAY_STORE_SERVICE_ACCOUNT_JSON != ''
