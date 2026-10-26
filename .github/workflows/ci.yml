@@ -54,16 +54,6 @@ jobs:
           --no-daemon
           --stacktrace
 
-      - name: Publish the test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ github.sha }}
-          path: |
-            **/build/reports/tests/
-            **/build/test-results/
-          retention-days: 7
-
   android:
     name: Android app
     needs: test
@@ -91,13 +81,6 @@ jobs:
       # can be shared for manual testing.
       - name: Assemble the debug APK
         run: ./gradlew :app:androidApp:assembleDebug --no-daemon --stacktrace
-
-      - name: Upload the debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: androidApp-debug-${{ github.sha }}
-          path: app/androidApp/build/outputs/apk/debug/*.apk
-          retention-days: 14
 
   server-image:
     name: Server jar
