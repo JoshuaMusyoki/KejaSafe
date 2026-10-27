@@ -1,0 +1,198 @@
+package com.rotd.havenpad.web.components
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.rotd.havenpad.theme.HavenPadTheme
+import com.rotd.havenpad.theme.ScreenPreviews
+import com.rotd.havenpad.web.theme.LandingBrandGreen
+import com.rotd.havenpad.web.theme.LandingTextSecondary
+import havenpad.app.shared.generated.resources.Res
+import havenpad.app.shared.generated.resources.haven_pad_logo
+import org.jetbrains.compose.resources.painterResource
+
+enum class LandingTab {
+    HOME, FEATURES, POLICY
+}
+@Composable
+fun LandingNavbar(
+    onLogin: () -> Unit,
+    onNavigateToFeatures: () -> Unit,
+    onNavigateToPolicy: () -> Unit,
+    onLogoClick: () -> Unit = {},
+    onExploreListings: () -> Unit = onLogin,
+    signedIn: Boolean = false,
+    selectedTab: LandingTab? = null,
+    wide: Boolean
+) {
+    // Outer Box centers the navbar container horizontally on wide screens
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = if (wide) 32.dp else 16.dp, vertical = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // Brush background gradient for the rounded floating bar
+        val navbarBrushBg = Brush.horizontalGradient(
+            colors = listOf(
+                MaterialTheme.colorScheme.surface,
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                LandingBrandGreen.copy(alpha = 0.04f)
+            )
+        )
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(if (wide) 0.88f else 1f)
+                .shadow(elevation = 6.dp, shape = RoundedCornerShape(20.dp)),
+            shape = RoundedCornerShape(20.dp),
+            color = Color.Transparent, // Transparent to let the brush background show through
+            border = BorderStroke(1.dp, LandingBrandGreen.copy(alpha = 0.15f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(navbarBrushBg)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = if (wide) 32.dp else 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onLogoClick() }
+                            .padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // App Logo Image Box
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(LandingBrandGreen.copy(alpha = 0.1f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(Res.drawable.haven_pad_logo),
+                                contentDescription = "HavenPad Logo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            "HavenPad",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = LandingBrandGreen
+                        )
+
+                        if (wide) {
+                            Spacer(modifier = Modifier.width(40.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                                Text(
+                                    "Features",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (selectedTab == LandingTab.FEATURES) LandingBrandGreen else LandingTextSecondary,
+                                    fontWeight = if (selectedTab == LandingTab.FEATURES) FontWeight.Bold else FontWeight.Medium,
+                                    modifier = Modifier.clickable { onNavigateToFeatures() }
+                                )
+                                Text(
+                                    "Policies & Privacy",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (selectedTab == LandingTab.POLICY) LandingBrandGreen else LandingTextSecondary,
+                                    fontWeight = if (selectedTab == LandingTab.POLICY) FontWeight.Bold else FontWeight.Medium,
+                                    modifier = Modifier.clickable { onNavigateToPolicy() }
+                                )
+                            }
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (wide) {
+                            OutlinedButton(
+                                onClick = onExploreListings,
+                                border = BorderStroke(1.dp, Color(0xFFE5E7EB)),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Icon(Icons.Default.Search, null, tint = LandingTextSecondary, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Explore Listings", color = LandingTextSecondary)
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                        }
+
+                        Button(
+                            onClick = onLogin,
+                            colors = ButtonDefaults.buttonColors(containerColor = LandingBrandGreen),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(if (signedIn) "Open dashboard" else "Sign in")
+                        }
+
+                        if (!wide) {
+                            IconButton(onClick = onExploreListings) {
+                                Icon(Icons.Default.Menu, null)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@ScreenPreviews
+@Composable
+fun LandingNavbarPreview() {
+    HavenPadTheme {
+        LandingNavbar(
+            onLogin = {},
+            wide = true,
+            onNavigateToFeatures = {},
+            onNavigateToPolicy = {},
+            onLogoClick = {},
+            onExploreListings = {},
+            selectedTab = LandingTab.HOME
+        )
+    }
+}

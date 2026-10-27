@@ -4,4 +4,4 @@
 // host serves the page. deploy/deploy-web.ps1 overwrites this file in the release bundle
 // with the deployed API URL, because Firebase Hosting and Cloud Run are different hosts.
 //
-// window.KEJASAFE_API_BASE_URL = "https://api.kejasafe.co.ke";
+// window.HAVENPAD_API_BASE_URL = "https://api.havenpad.co.ke";

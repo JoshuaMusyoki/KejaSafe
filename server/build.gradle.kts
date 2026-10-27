@@ -3,13 +3,18 @@ plugins {
     alias(libs.plugins.ktor)
 }
 
-group = "com.rotd.kejasafe"
+group = "com.rotd.havenpad"
 version = "1.0.0"
 
 application {
-    mainClass = "com.rotd.kejasafe.ApplicationKt"
+    mainClass = "com.rotd.havenpad.ApplicationKt"
 }
 
 dependencies {
     api(project(":core"))
+    implementation(libs.ktorServerWebsockets)
+    implementation(libs.ktorClientOkhttp)
+    implementation(libs.googleAuthOauth)
+    implementation(libs.ktorClientContentNegotiation)
+    implementation(libs.ktorSerializationKotlinxJson)
 }

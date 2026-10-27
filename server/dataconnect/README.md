@@ -32,7 +32,7 @@ Then in the Android app:
 
 1. `createUserProfileDataSource()` → `SqlConnectUserProfileDataSource()`
 2. Uncomment Cloud SQL blocks in `SqlConnectUserProfileDataSource`
-3. `DataConnectRuntime.cloudEnabled = true` in `KejaSafeApplication`
+3. `DataConnectRuntime.cloudEnabled = true` in `HavenPadApplication`
 
 ## Auth note
 

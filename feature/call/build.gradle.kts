@@ -5,7 +5,7 @@ plugins {
 
 kotlin {
     android {
-        namespace = "com.rotd.kejasafe.feature.call"
+        namespace = "com.rotd.havenpad.feature.call"
     }
 
     sourceSets {
@@ -15,7 +15,7 @@ kotlin {
             implementation(libs.androidxLifecycleViewmodelCompose)
         }
         androidMain.dependencies {
-            implementation(libs.livekitAndroid)
+            implementation(libs.webRtc)
             implementation(libs.accompanistPermissions)
         }
     }

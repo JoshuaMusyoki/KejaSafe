@@ -24,7 +24,7 @@ Create a project at https://cloud.livekit.io and copy the URL + API key/secret.
 ## Platforms
 
 - **Android:** LiveKit Android SDK (`io.livekit:livekit-android`) + runtime CAMERA/RECORD_AUDIO prompts
-- **iOS:** Info.plist camera/mic strings + `app/iosApp/Podfile` for LiveKit Swift. UI/nav/watermark work today; media uses `StubLiveTourMediaSession` until you bridge LiveKit Room into `LiveTourMediaSession.ios.kt` after `pod install`
+- **iOS:** After `cd app/iosApp && pod install`, open `iosApp.xcworkspace`. Live tours use the same WebRTC offer/answer path as Android and the website (`LiveKitWebRTC`). Google sign-in needs an iOS OAuth client id in `Info.plist` (`GIDClientID`) plus the reversed client id URL scheme. Alerts while the app is open are local notifications; killed-app push is not set up.
 
 ## Watermark
 

@@ -1,0 +1,47 @@
+# Local Properties Template for HavenPad / KejaSafe
+# Copy this file to `local.properties` in the project root for local testing.
+# `local.properties` is git-ignored and won't be committed to version control.
+
+# Android SDK Path (Set automatically by Android Studio)
+sdk.dir=C\:\\Users\\YourUsername\\AppData\\Local\\Android\\Sdk
+
+# ==============================================================================
+# SERVER LOCAL CONFIGURATION & ADMIN CREDENTIALS
+# ==============================================================================
+HAVENPAD_ADMIN_EMAIL=admin@havenpad.app
+HAVENPAD_ADMIN_PASSWORD=HavenPadAdmin1
+HAVENPAD_JWT_SECRET=havenpad-local-jwt-secret-key-123
+PORT=8080
+HAVENPAD_HOST=0.0.0.0
+
+# ==============================================================================
+# MAPBOX & GOOGLE PLACES (listing address search)
+# ==============================================================================
+# Prefer Mapbox Search Box for apartment / building suggestions in Kenya.
+MAPBOX_ACCESS_TOKEN=YOUR_MAPBOX_ACCESS_TOKEN
+# Optional fallback when Mapbox is unset.
+GOOGLE_PLACES_API_KEY=YOUR_GOOGLE_PLACES_API_KEY
+
+# ==============================================================================
+# M-PESA DARAJA CONFIGURATION (LOCAL TESTING)
+# ==============================================================================
+# Environment: 'sandbox' for Safaricom test environment, 'production' for live Safaricom API.
+MPESA_ENV=sandbox
+
+# Daraja Consumer Key & Secret (From Developer Portal: https://developer.safaricom.co.ke)
+MPESA_CONSUMER_KEY=YOUR_CONSUMER_KEY
+MPESA_CONSUMER_SECRET=YOUR_CONSUMER_SECRET
+
+# Shortcode (Paybill/Till Number) and Passkey (Lipa na M-Pesa Online)
+MPESA_BUSINESS_SHORT_CODE=174379
+MPESA_PASSKEY=YOUR_PASSKEY
+
+# STK Push Command ID: CustomerPayBillOnline (Paybill) or CustomerBuyGoodsOnline (Till)
+MPESA_COMMAND_ID=CustomerPayBillOnline
+
+# Public HTTPS Callback URL: Must be accessible from Safaricom servers.
+# For local dev, run `ngrok http 8080` and paste your HTTPS tunnel URL here:
+MPESA_CALLBACK_URL=https://your-ngrok-subdomain.ngrok-free.app/mpesa/callback
+
+# Optional Callback Token to validate incoming Safaricom POST requests
+MPESA_CALLBACK_SECRET_TOKEN=my_secret_token_123
