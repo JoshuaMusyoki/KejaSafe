@@ -7,7 +7,7 @@ plugins {
     `java-gradle-plugin`
 }
 
-group = "com.kejasafe.convention"
+group = "com.havenpad.convention"
 
 val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
 
@@ -44,68 +44,68 @@ gradlePlugin {
     plugins {
         register("rotdAndroidLibrary") {
             id = "rotd.android.library"
-            implementationClass = "com.kejasafe.AndroidLibraryConventionPlugin"
+            implementationClass = "com.havenpad.AndroidLibraryConventionPlugin"
         }
 
         register("rotdAndroidApplication") {
             id = "rotd.android.application"
-            implementationClass = "com.kejasafe.AndroidApplicationConventionPlugin"
+            implementationClass = "com.havenpad.AndroidApplicationConventionPlugin"
         }
         register("rotdAndroidRoom") {
             id = "rotd.android.room"
-            implementationClass = "com.kejasafe.AndroidRoomConventionPlugin"
+            implementationClass = "com.havenpad.AndroidRoomConventionPlugin"
         }
         register("rotdAndroidKoin") {
             id = "rotd.android.koin"
-            implementationClass = "com.kejasafe.AndroidKoinConventionPlugin"
+            implementationClass = "com.havenpad.AndroidKoinConventionPlugin"
         }
         register("rotdAndroidLibraryCompose") {
             id = "rotd.android.library.compose"
-            implementationClass = "com.kejasafe.AndroidLibraryComposeConventionPlugin"
+            implementationClass = "com.havenpad.AndroidLibraryComposeConventionPlugin"
         }
         register("rotdAndroidApplicationFirebase") {
             id = "rotd.android.application.firebase"
-            implementationClass = "com.kejasafe.AndroidApplicationFirebaseConventionPlugin"
+            implementationClass = "com.havenpad.AndroidApplicationFirebaseConventionPlugin"
         }
         register("rotdAndroidLibraryFirebase") {
             id = "rotd.android.library.firebase"
-            implementationClass = "com.kejasafe.AndroidLibraryFirebaseConventionPlugin"
+            implementationClass = "com.havenpad.AndroidLibraryFirebaseConventionPlugin"
         }
         register("rotdAndroidNetwork") {
             id = "rotd.android.network"
-            implementationClass = "com.kejasafe.AndroidNetworkConventionPlugin"
+            implementationClass = "com.havenpad.AndroidNetworkConventionPlugin"
         }
         register("rotdAndroidFeature") {
             id = "rotd.android.feature"
-            implementationClass = "com.kejasafe.AndroidFeatureConventionPlugin"
+            implementationClass = "com.havenpad.AndroidFeatureConventionPlugin"
         }
         register("rotdAndroidCompose") {
             id = "rotd.android.compose"
-            implementationClass = "com.kejasafe.AndroidComposeConventionPlugin"
+            implementationClass = "com.havenpad.AndroidComposeConventionPlugin"
         }
         register("rotdAndroidFirebase") {
             id = "rotd.android.firebase"
-            implementationClass = "com.kejasafe.AndroidFirebaseConventionPlugin"
+            implementationClass = "com.havenpad.AndroidFirebaseConventionPlugin"
         }
         register("rotdAndroidPresentationExtras") {
             id = "rotd.android.presentation.extras"
-            implementationClass = "com.kejasafe.AndroidPresentationExtrasConventionPlugin"
+            implementationClass = "com.havenpad.AndroidPresentationExtrasConventionPlugin"
         }
         register("rotdKotlinMultiplatformLibrary") {
             id = "rotd.kotlin.multiplatform.library"
-            implementationClass = "com.kejasafe.KotlinMultiplatformLibraryConventionPlugin"
+            implementationClass = "com.havenpad.KotlinMultiplatformLibraryConventionPlugin"
         }
         register("rotdKotlinMultiplatformRoom") {
             id = "rotd.kotlin.multiplatform.room"
-            implementationClass = "com.kejasafe.KotlinMultiplatformRoomConventionPlugin"
+            implementationClass = "com.havenpad.KotlinMultiplatformRoomConventionPlugin"
         }
         register("rotdKotlinSerialization") {
             id = "rotd.kotlin.serialization"
-            implementationClass = "com.kejasafe.KotlinSerializationConventionPlugin"
+            implementationClass = "com.havenpad.KotlinSerializationConventionPlugin"
         }
         register("rotdServerLibrary") {
             id = "rotd.server.library"
-            implementationClass = "com.kejasafe.AndroidLibraryServerConventionPlugin"
+            implementationClass = "com.havenpad.AndroidLibraryServerConventionPlugin"
         }
     }
 }

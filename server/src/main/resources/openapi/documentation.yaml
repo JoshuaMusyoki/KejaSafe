@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
-  title: KejaSafe API
+  title: HavenPad API
   version: 1.0.0
   description: |
-    Backend for KejaSafe — verified student housing, escrowed rent and community
+    Backend for havenpad — verified student housing, escrowed rent and community
     stories. Tenants browse listings without an account; everything else needs the
     JWT returned by `/auth/login` or `/auth/register`, sent as `Authorization: Bearer <token>`.
 servers:

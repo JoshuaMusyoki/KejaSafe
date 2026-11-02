@@ -5,7 +5,7 @@ plugins {
     `kotlin-dsl`
 }
 
-group = "com.rotd.kejasafe.buildlogic"
+group = "com.rotd.havenpad.buildlogic"
 
 val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
 

@@ -10,5 +10,20 @@
 	<string>KejaSafe needs camera access for live house tours with landlords.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>KejaSafe needs microphone access for live house tour audio.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>HavenPad uses your location to show houses near you.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>HavenPad saves chat and listing photos to your photo library.</string>
+	<key>GIDClientID</key>
+	<string></string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.PASTE_REVERSED_IOS_CLIENT_ID</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

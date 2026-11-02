@@ -1,4 +1,4 @@
-# KejaSafe API image, used for local Docker and for Cloud Run.
+# HavenPad API image, used for local Docker and for Cloud Run.
 #
 # The Gradle build needs the Android SDK (the :core module is multiplatform), so the
 # jar is built on the host and only the artifact is copied in:

@@ -1,14 +1,17 @@
-# CocoaPods for KejaSafe iOS (LiveKit live tours)
+# CocoaPods for HavenPad iOS.
+# Google sign-in and live-tour video both need this install.
 platform :ios, '15.0'
 use_frameworks!
 
 target 'iosApp' do
   pod 'LiveKit', '~> 2.6'
+  pod 'GoogleSignIn', '~> 8.0'
 end
 
 # After editing:
 #   cd app/iosApp && pod install
-# Then open iosApp.xcworkspace and build.
+# Then open iosApp.xcworkspace (not the .xcodeproj) and build.
 #
-# Kotlin side still uses StubLiveTourMediaSession until a Swift bridge
-# (Room.connect / VideoView) is wired into LiveTourMediaSession.ios.kt.
+# Live tours use LiveKit's WebRTC (LiveKitWebRTC) and the same offer/answer
+# signaling as Android and the website. Put the iOS OAuth client id in
+# Info.plist as GIDClientID, and the reversed client id in CFBundleURLSchemes.

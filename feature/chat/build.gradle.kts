@@ -5,7 +5,7 @@ plugins {
 
 kotlin {
     android {
-        namespace = "com.rotd.kejasafe.feature.chat"
+        namespace = "com.rotd.havenpad.feature.chat"
     }
 
     sourceSets {

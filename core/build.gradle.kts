@@ -6,15 +6,20 @@ plugins {
 
 kotlin {
     android {
-        namespace = "com.rotd.kejasafe.core"
+        namespace = "com.rotd.havenpad.core"
+        androidResources.enable = true
     }
 
     sourceSets {
+        commonMain.dependencies {
+            implementation(libs.kotlinxDatetime)
+        }
         androidMain.dependencies {
             implementation(project.dependencies.platform(libs.firebaseBom))
             implementation(libs.firebaseAuth)
             implementation(libs.firebaseDataconnect)
             implementation(libs.kotlinxCoroutinesPlayServices)
+            implementation(libs.playServicesLocation)
             implementation(libs.androidxBiometric)
             implementation(libs.androidxSecurityCrypto)
             implementation(libs.androidxFragmentKtx)

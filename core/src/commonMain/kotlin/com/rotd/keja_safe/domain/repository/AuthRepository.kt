@@ -1,11 +1,11 @@
 package com.rotd.keja_safe.domain.repository
 
-import com.rotd.kejasafe.domain.chat.User
+import com.rotd.havenpad.domain.chat.User
 import kotlinx.coroutines.flow.Flow
 
 /**
  * Legacy Stawi/chat auth surface (Firestore-oriented).
- * KejaSafe app auth uses [com.rotd.kejasafe.domain.repository.AuthRepository].
+ * HavenPad app auth uses [com.rotd.havenpad.domain.repository.AuthRepository].
  * Phone OTP requires an Activity on Android; kept as [Any] so commonMain compiles.
  */
 interface AuthRepository {

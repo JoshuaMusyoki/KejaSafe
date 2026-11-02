@@ -1,0 +1,1149 @@
+package com.rotd.havenpad
+
+import com.auth0.jwt.JWT
+import com.auth0.jwt.algorithms.Algorithm
+import com.rotd.havenpad.admin.adminRoutes
+import com.rotd.havenpad.auth.AccountRemovedException
+import com.rotd.havenpad.auth.AuthService
+import com.rotd.havenpad.auth.DeviceSignInService
+import com.rotd.havenpad.chat.ApartmentChatService
+import com.rotd.havenpad.community.PlatformStatsService
+import com.rotd.havenpad.config.ServerConfig
+import com.rotd.havenpad.db.initDatabase
+import com.rotd.havenpad.kyc.KycService
+import com.rotd.havenpad.listing.ListingService
+import com.rotd.havenpad.listing.LiveTourService
+import com.rotd.havenpad.listing.reviewRoutes
+import com.rotd.havenpad.listing.StoryService
+import com.rotd.havenpad.listing.propertyRequestRoutes
+import com.rotd.havenpad.payment.mpesaCallbackRoutes
+import com.rotd.havenpad.places.placesRoutes
+import com.rotd.havenpad.push.PushService
+import com.rotd.havenpad.rent.RentService
+import com.rotd.havenpad.rent.escrowRoutes
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.PartData
+import io.ktor.http.content.forEachPart
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.Application
+import io.ktor.server.application.call
+import io.ktor.server.application.install
+import io.ktor.server.auth.Authentication
+import io.ktor.server.auth.authenticate
+import io.ktor.server.auth.jwt.JWTPrincipal
+import io.ktor.server.auth.jwt.jwt
+import io.ktor.server.auth.principal
+import io.ktor.server.engine.embeddedServer
+import io.ktor.server.http.content.staticFiles
+import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.plugins.swagger.swaggerUI
+import io.ktor.server.request.receive
+import io.ktor.server.request.receiveMultipart
+import io.ktor.server.response.header
+import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytes
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.delete
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.put
+import io.ktor.server.routing.route
+import io.ktor.server.routing.routing
+import io.ktor.server.websocket.WebSockets
+import io.ktor.utils.io.readRemaining
+import kotlinx.io.readByteArray
+import kotlinx.serialization.json.Json
+
+fun main() {
+    initDatabase()
+    AuthService.ensureBootstrapAdmin()
+    ListingService.purgeSyntheticBookings()
+    embeddedServer(
+        Netty,
+        port = ServerConfig.port,
+        host = ServerConfig.host,
+        module = Application::module
+    ).start(wait = true)
+}
+
+fun Application.module() {
+    install(ContentNegotiation) {
+        json(Json {
+            prettyPrint = true
+            isLenient = true
+            // Send every field, so clients and the OpenAPI examples see full payloads.
+            encodeDefaults = true
+        })
+    }
+
+    install(WebSockets)
+
+    install(CallLogging)
+
+    // The Compose web client is served from a different origin than the API.
+    install(CORS) {
+        allowMethod(HttpMethod.Get)
+        allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Put)
+        allowMethod(HttpMethod.Delete)
+        allowMethod(HttpMethod.Options)
+        allowHeader(HttpHeaders.Authorization)
+        allowHeader(HttpHeaders.ContentType)
+        allowHeader(HttpHeaders.Accept)
+        exposeHeader(HttpHeaders.ContentDisposition)
+        if (ServerConfig.allowedOrigins.isEmpty()) {
+            anyHost()
+        } else {
+            ServerConfig.allowedOrigins.forEach { origin ->
+                allowHost(origin, schemes = listOf("http", "https"))
+            }
+        }
+    }
+
+    val jwtSecret = ServerConfig.jwtSecret
+    val jwtIssuer = ServerConfig.jwtIssuer
+    val jwtAudience = ServerConfig.jwtAudience
+
+    install(Authentication) {
+        jwt("auth-jwt") {
+            realm = "HavenPad Server"
+            verifier(
+                JWT.require(Algorithm.HMAC256(jwtSecret))
+                    .withAudience(jwtAudience)
+                    .withIssuer(jwtIssuer)
+                    .build()
+            )
+            validate { credential ->
+                val userId = credential.payload.getClaim("userId").asString().orEmpty()
+                if (userId.isNotEmpty() && AuthService.isActive(userId)) {
+                    JWTPrincipal(credential.payload)
+                } else null
+            }
+        }
+    }
+
+    AuthService.shrinkStoredAvatars()
+
+    routing {
+        get("/") {
+            call.respondText("Welcome to HavenPad API — interactive docs at /swagger")
+        }
+
+        get("/health") {
+            call.respond(mapOf("status" to "ok"))
+        }
+
+        // Interactive API docs; the raw contract lives in resources/openapi/documentation.yaml.
+        swaggerUI(path = "swagger", swaggerFile = "openapi/documentation.yaml")
+
+        staticFiles("/uploads", ListingService.uploadRoot)
+
+        // Community stories: public to read, students/landlords write their own.
+        get("/stories") {
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 12
+            call.respond(StoryService.getStories(limit))
+        }
+
+        get("/stats") {
+            call.respond(PlatformStatsService.getStats())
+        }
+
+        // Safaricom Daraja STK callback (must be public / no JWT)
+        mpesaCallbackRoutes()
+
+        route("/auth") {
+            get("/google-client") {
+                call.respond(GoogleClientConfig(clientId = ServerConfig.googleClientId))
+            }
+
+            post("/register") {
+                val request = call.receive<RegistrationRequest>()
+                if (request.role == UserRole.ADMIN) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        "Choose student, landlord, or agent. Admin accounts are issued by the HavenPad team."
+                    )
+                    return@post
+                }
+                val user = try {
+                    AuthService.registerUser(request)
+                } catch (e: IllegalArgumentException) {
+                    call.respond(HttpStatusCode.BadRequest, e.message ?: "Check the form and try again")
+                    return@post
+                }
+                if (user != null) {
+                    val token = AuthService.generateToken(user)
+                    call.respond(AuthResponse(token, user))
+                } else {
+                    call.respond(HttpStatusCode.BadRequest, "User already exists")
+                }
+            }
+
+            post("/login") {
+                val request = call.receive<LoginRequest>()
+                try {
+                    val user = AuthService.loginUser(request.identifier, request.password)
+                    if (user != null) {
+                        call.respond(
+                            DeviceSignInService.begin(
+                                user,
+                                request.deviceId,
+                                request.deviceName,
+                                request.platform,
+                            )
+                        )
+                    } else {
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            "Wrong username/email or password. If you only had a Firebase account, register again on this server."
+                        )
+                    }
+                } catch (e: AccountRemovedException) {
+                    call.respond(HttpStatusCode.Forbidden, e.message ?: "Account removed")
+                }
+            }
+
+            post("/google") {
+                val request = call.receive<GoogleAuthRequest>()
+                try {
+                    val user = AuthService.authenticateWithGoogle(request.idToken, request.role)
+                    if (user != null) {
+                        call.respond(
+                            DeviceSignInService.begin(
+                                user,
+                                request.deviceId,
+                                request.deviceName,
+                                request.platform,
+                            )
+                        )
+                    } else {
+                        call.respond(HttpStatusCode.Unauthorized, "Google authentication failed")
+                    }
+                } catch (e: AccountRemovedException) {
+                    call.respond(HttpStatusCode.Forbidden, e.message ?: "Account removed")
+                }
+            }
+
+            get("/sign-in/{id}") {
+                val id = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                call.respond(DeviceSignInService.poll(id))
+            }
+        }
+
+        // Public browse endpoints (tenants can view housing without auth, auth still accepted)
+        get("/listings") {
+            val lat = call.request.queryParameters["lat"]?.toDoubleOrNull()
+            val lng = call.request.queryParameters["lng"]?.toDoubleOrNull()
+            call.respond(ListingService.getBrowseListings(lat, lng))
+        }
+
+        get("/listings/{id}") {
+            val id = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val listing = ListingService.getListing(id)
+            if (listing != null) call.respond(listing)
+            else call.respond(HttpStatusCode.NotFound, "Listing not found")
+        }
+
+        get("/listings/{id}/reviews") {
+            val id = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            try {
+                call.respond(com.rotd.havenpad.listing.ReviewService.listingPage(id))
+            } catch (e: IllegalStateException) {
+                call.respond(HttpStatusCode.NotFound, e.message ?: "House not found")
+            }
+        }
+
+        authenticate("auth-jwt") {
+            placesRoutes()
+
+            route("/kyc") {
+                post("/submit") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val submission = call.receive<KycSubmission>().copy(userId = userId)
+
+                    KycService.submitKyc(submission)
+                    call.respond(HttpStatusCode.OK, "KYC submitted successfully")
+                }
+
+                post("/landlord") {
+                    val userId = call.principal<JWTPrincipal>()
+                        ?.payload?.getClaim("userId")?.asString().orEmpty()
+                    if (userId.isBlank()) {
+                        call.respond(HttpStatusCode.Unauthorized, "Sign in first")
+                        return@post
+                    }
+                    val request = call.receive<LandlordKycRequest>()
+                    try {
+                        call.respond(KycService.submitLandlordKyc(userId, request))
+                    } catch (e: IllegalArgumentException) {
+                        call.respondText(
+                            text = e.message ?: "Could not save documents",
+                            contentType = ContentType.Text.Plain,
+                            status = HttpStatusCode.BadRequest,
+                        )
+                    }
+                }
+
+                post("/student") {
+                    val userId = call.principal<JWTPrincipal>()
+                        ?.payload?.getClaim("userId")?.asString().orEmpty()
+                    if (userId.isBlank()) {
+                        call.respond(HttpStatusCode.Unauthorized, "Sign in first")
+                        return@post
+                    }
+                    val request = call.receive<StudentKycRequest>()
+                    try {
+                        call.respond(KycService.submitStudentKyc(userId, request))
+                    } catch (e: IllegalArgumentException) {
+                        call.respondText(
+                            text = e.message ?: "Could not save the student ID",
+                            contentType = ContentType.Text.Plain,
+                            status = HttpStatusCode.BadRequest,
+                        )
+                    }
+                }
+
+                get("/mine") {
+                    val userId = call.principal<JWTPrincipal>()
+                        ?.payload?.getClaim("userId")?.asString().orEmpty()
+                    call.respond(KycService.getMine(userId))
+                }
+
+                get("/file/{kind}") {
+                    val userId = call.principal<JWTPrincipal>()
+                        ?.payload?.getClaim("userId")?.asString().orEmpty()
+                    val kind = call.parameters["kind"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val file = KycService.readFile(userId, kind)
+                    if (file == null) call.respond(HttpStatusCode.NotFound, "Document not found")
+                    else call.respondBytes(file.first, ContentType.parse(file.second))
+                }
+
+                get("/status") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val status = KycService.getKycStatus(userId)
+                    call.respond(mapOf("status" to status))
+                }
+            }
+
+            adminRoutes()
+            reviewRoutes()
+
+            route("/stories") {
+                post {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val request = call.receive<PostStoryRequest>()
+                    try {
+                        call.respond(HttpStatusCode.Created, StoryService.postStory(userId, request))
+                    } catch (e: IllegalArgumentException) {
+                        // Plain text so clients can show the reason as-is.
+                        call.respondText(
+                            text = e.message ?: "Could not post story",
+                            contentType = ContentType.Text.Plain,
+                            status = HttpStatusCode.BadRequest
+                        )
+                    }
+                }
+
+                get("/mine") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(StoryService.getStoriesByAuthor(userId))
+                }
+
+                delete("/{id}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val storyId = call.parameters["id"]
+                        ?: return@delete call.respond(HttpStatusCode.BadRequest, "Missing story id")
+                    if (StoryService.deleteStory(storyId, userId)) {
+                        call.respond(HttpStatusCode.OK, mapOf("message" to "Story removed"))
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, "Story not found or not yours")
+                    }
+                }
+            }
+
+            get("/user/profile") {
+                val principal = call.principal<JWTPrincipal>()
+                val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                val user = AuthService.getUserById(userId)
+                if (user != null) {
+                    call.respond(user)
+                } else {
+                    call.respond(HttpStatusCode.NotFound, "User not found")
+                }
+            }
+
+            put("/user/profile") {
+                val principal = call.principal<JWTPrincipal>()
+                val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                val request = call.receive<UpdateProfileRequest>()
+                if (request.fullName.isBlank() || request.username.isBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, "Name and username are required")
+                    return@put
+                }
+                val updated = AuthService.updateProfile(userId, request)
+                if (updated != null) {
+                    call.respond(updated)
+                } else {
+                    call.respond(HttpStatusCode.BadRequest, "Could not update profile (username may be taken)")
+                }
+            }
+
+            post("/user/profile/photo") {
+                val principal = call.principal<JWTPrincipal>()
+                val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                val request = call.receive<com.rotd.havenpad.ProfilePhotoRequest>()
+                val updated = try {
+                    AuthService.saveProfilePhoto(userId, request.fileName, request.imageBase64)
+                } catch (error: IllegalArgumentException) {
+                    call.respond(HttpStatusCode.BadRequest, error.message ?: "Could not save that photo")
+                    return@post
+                }
+                if (updated != null) {
+                    call.respond(updated)
+                } else {
+                    call.respond(HttpStatusCode.NotFound, "User not found")
+                }
+            }
+
+            route("/rent") {
+                get("/bills") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val bills = RentService.getBillsForUser(userId)
+                    call.respond(bills)
+                }
+
+                post("/pay") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val request = call.receive<PaymentRequest>()
+                    try {
+                        val result = RentService.initiateBillPayment(
+                            billId = request.billId,
+                            payerUserId = userId,
+                            phoneNumber = request.phoneNumber,
+                            amountKes = request.amount.takeIf { it > 0 }?.toLong()
+                        )
+                        call.respond(HttpStatusCode.Accepted, BillPaymentResponse(
+                            billId = result["billId"].orEmpty(),
+                            checkoutRequestId = result["checkoutRequestId"].orEmpty(),
+                            message = result["message"].orEmpty()
+                        ))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.message ?: "Payment failed")))
+                    }
+                }
+
+                post("/generate") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val request = call.receive<GenerateBillRequest>()
+                    try {
+                        val bill = RentService.generateBillFromBooking(userId, request)
+                        call.respond(HttpStatusCode.Created, bill)
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not generate bill")
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not generate bill")
+                    }
+                }
+
+                post("/bills/{billId}/request-payment") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val billId = call.parameters["billId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing bill id")
+                    try {
+                        val bill = RentService.requestPayment(billId, userId)
+                        call.respond(bill)
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not request payment")
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not request payment")
+                    }
+                }
+
+                put("/bills/{billId}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val billId = call.parameters["billId"]
+                        ?: return@put call.respond(HttpStatusCode.BadRequest, "Missing bill id")
+                    val request = call.receive<UpdateBillRequest>()
+                    try {
+                        val bill = RentService.updateBill(billId, userId, request)
+                        call.respond(bill)
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not update bill")
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not update bill")
+                    }
+                }
+
+                get("/bills/{billId}/pdf") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val billId = call.parameters["billId"]
+                        ?: return@get call.respond(HttpStatusCode.BadRequest, "Missing bill id")
+                    try {
+                        val bytes = RentService.buildBillPdf(billId, userId)
+                        call.response.header(
+                            HttpHeaders.ContentDisposition,
+                            "inline; filename=\"havenpad-invoice-$billId.pdf\""
+                        )
+                        call.respondBytes(bytes, ContentType.Application.Pdf)
+                    } catch (e: IllegalStateException) {
+                        println("Bill PDF not found for $billId: ${e.message}")
+                        call.respond(HttpStatusCode.NotFound, e.message ?: "Bill not found")
+                    } catch (e: Exception) {
+                        println("Bill PDF failed for $billId: ${e.message}")
+                        e.printStackTrace()
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            e.message?.take(200) ?: "Could not generate invoice PDF"
+                        )
+                    }
+                }
+            }
+
+            route("/listings") {
+                post {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val request = call.receive<CreateListingRequest>()
+                    if (request.title.isBlank() || request.address.isBlank()) {
+                        call.respond(HttpStatusCode.BadRequest, "Title and address are required")
+                        return@post
+                    }
+                    try {
+                        val listing = ListingService.createListing(userId, request)
+                        call.respond(HttpStatusCode.Created, listing)
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.Forbidden, e.message ?: "You cannot post a house yet")
+                    }
+                }
+
+                put("/{id}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.parameters["id"] ?: return@put call.respond(HttpStatusCode.BadRequest)
+                    val request = call.receive<CreateListingRequest>()
+                    if (request.title.isBlank() || request.address.isBlank()) {
+                        call.respond(HttpStatusCode.BadRequest, "Title and address are required")
+                        return@put
+                    }
+                    val listing = ListingService.updateListing(listingId, userId, request)
+                    if (listing != null) call.respond(listing)
+                    else call.respond(HttpStatusCode.NotFound, "Listing not found or not owned by you")
+                }
+
+                get("/{id}/analytics") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val analytics = ListingService.getListingAnalytics(listingId, userId)
+                    if (analytics != null) call.respond(analytics)
+                    else call.respond(HttpStatusCode.NotFound, "Listing not found or not owned by you")
+                }
+
+                get("/{id}/calendar") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString()
+                    val listingId = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val year = call.request.queryParameters["year"]?.toIntOrNull()
+                    val month = call.request.queryParameters["month"]?.toIntOrNull()
+                    // Tenant calendar opens count as real views for landlord dashboards.
+                    ListingService.recordListingView(listingId, userId)
+                    val calendar = ListingService.getListingCalendar(listingId, year, month)
+                    if (calendar != null) call.respond(calendar)
+                    else call.respond(HttpStatusCode.NotFound, "Listing not found")
+                }
+
+                post("/{id}/book") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val request = call.receive<BookListingRequest>()
+                    try {
+                        val booking = ListingService.bookListing(listingId, userId, request)
+                        call.respond(HttpStatusCode.Created, booking)
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not book")
+                    }
+                }
+
+                post("/bookings/{bookingId}/approve") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val bookingId = call.parameters["bookingId"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        val booking = ListingService.approveBooking(bookingId, userId)
+                        call.respond(booking)
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not approve")
+                    }
+                }
+
+                post("/bookings/{bookingId}/decline") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val bookingId = call.parameters["bookingId"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        val booking = ListingService.declineBooking(bookingId, userId)
+                        call.respond(booking)
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not decline")
+                    }
+                }
+
+                get("/roommate-matches/{matchId}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val matchId = call.parameters["matchId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val match = ListingService.getRoommateMatch(matchId, userId)
+                    if (match != null) call.respond(match)
+                    else call.respond(HttpStatusCode.NotFound, "Match not found")
+                }
+
+                post("/roommate-matches/{matchId}/approve") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val matchId = call.parameters["matchId"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(ListingService.approveRoommateMatch(matchId, userId))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not approve match")
+                    }
+                }
+
+                post("/roommate-matches/{matchId}/decline") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val matchId = call.parameters["matchId"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(ListingService.declineRoommateMatch(matchId, userId))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not decline match")
+                    }
+                }
+
+                post("/{id}/live-tours") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<CreateLiveTourRequest>()
+                    try {
+                        call.respond(HttpStatusCode.Created, LiveTourService.createTour(listingId, userId, body))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not request live tour")
+                    }
+                }
+
+                post("/{id}/live-tours/direct") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<DirectLiveTourRequest>()
+                    try {
+                        val session = LiveTourService.startDirectTour(
+                            listingId = listingId,
+                            callerId = userId,
+                            peerUserId = body.peerUserId,
+                            mediaType = body.mediaType,
+                        )
+                        PushService.notifyTour(session)
+                        call.respond(HttpStatusCode.Created, session)
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not start live call")
+                    }
+                }
+
+                get("/mine/bookings") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(ListingService.getMyBookings(userId))
+                }
+
+                get("/mine/apartment-mates") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(ListingService.getConfirmedApartmentMates(userId))
+                }
+
+                get("/mine") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(ListingService.getListingsForLandlord(userId))
+                }
+
+                get("/mine/performance") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(ListingService.getPerformance(userId))
+                }
+
+                get("/mine/requests") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(ListingService.getIncomingRequests(userId))
+                }
+
+                post("/{id}/photos") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+
+                    if (!ListingService.isOwnedBy(listingId, userId)) {
+                        call.respond(HttpStatusCode.Forbidden, "Not your listing")
+                        return@post
+                    }
+
+                    val uploaded = mutableListOf<ListingPhotoResponse>()
+                    val multipart = call.receiveMultipart()
+                    multipart.forEachPart { part ->
+                        when (part) {
+                            is PartData.FileItem -> {
+                                val name = part.originalFileName
+                                    ?: "photo_${System.currentTimeMillis()}.jpg"
+                                val bytes = part.provider().readRemaining().readByteArray()
+                                try {
+                                    uploaded += ListingService.addPhoto(listingId, name, bytes)
+                                } catch (e: IllegalArgumentException) {
+                                    // skip invalid part
+                                }
+                            }
+                            else -> Unit
+                        }
+                        part.dispose()
+                    }
+
+                    if (uploaded.isEmpty()) {
+                        call.respond(HttpStatusCode.BadRequest, "No valid photos uploaded")
+                    } else {
+                        call.respond(HttpStatusCode.Created, uploaded)
+                    }
+                }
+
+                delete("/{id}/photos/{photoId}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.parameters["id"]
+                        ?: return@delete call.respond(HttpStatusCode.BadRequest)
+                    val photoId = call.parameters["photoId"]
+                        ?: return@delete call.respond(HttpStatusCode.BadRequest)
+                    val deleted = ListingService.deletePhoto(listingId, photoId, userId)
+                    if (deleted) {
+                        call.respond(HttpStatusCode.OK, mapOf("message" to "Photo removed"))
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, "Photo not found or not your listing")
+                    }
+                }
+            }
+
+            route("/live-tours") {
+                get("/mine") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(LiveTourService.openToursForTenant(userId))
+                }
+
+                get("/incoming") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val ring = LiveTourService.incomingRing(userId)
+                    call.respond(if (ring == null) emptyList() else listOf(ring))
+                }
+
+                get("/history") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(LiveTourService.callHistory(userId))
+                }
+
+                post("/{sessionId}/hide") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        LiveTourService.hideCall(userId, sessionId)
+                        call.respond(mapOf("ok" to true))
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.NotFound, e.message ?: "Call not found")
+                    }
+                }
+
+                get("/{sessionId}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val tour = LiveTourService.getTour(sessionId, userId)
+                    if (tour != null) call.respond(tour)
+                    else call.respond(HttpStatusCode.NotFound, "Live tour not found")
+                }
+
+                post("/{sessionId}/ring") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.ring(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respondText(
+                            text = e.message ?: "Could not ring",
+                            status = HttpStatusCode.BadRequest
+                        )
+                    }
+                }
+
+                post("/{sessionId}/joined") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.markJoined(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respondText(
+                            text = e.message ?: "Could not join tour",
+                            status = HttpStatusCode.BadRequest
+                        )
+                    }
+                }
+
+                post("/{sessionId}/confirm") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.confirmTour(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respondText(
+                            text = e.message ?: "Could not confirm tour",
+                            status = HttpStatusCode.BadRequest
+                        )
+                    }
+                }
+
+                post("/{sessionId}/reschedule") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<RescheduleLiveTourRequest>()
+                    try {
+                        call.respond(LiveTourService.rescheduleTour(sessionId, userId, body))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not reschedule tour")
+                    }
+                }
+
+                post("/{sessionId}/token") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.issueToken(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not issue LiveKit token")
+                    }
+                }
+
+                get("/{sessionId}/rtc") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.rtcRoom(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not load call")
+                    }
+                }
+
+                post("/{sessionId}/rtc/offer") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<RtcSessionDescription>()
+                    try {
+                        LiveTourService.saveOffer(sessionId, userId, body)
+                        call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not save offer")
+                    }
+                }
+
+                post("/{sessionId}/rtc/answer") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<RtcSessionDescription>()
+                    try {
+                        LiveTourService.saveAnswer(sessionId, userId, body)
+                        call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not save answer")
+                    }
+                }
+
+                post("/{sessionId}/rtc/ice") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<RtcIceCandidate>()
+                    try {
+                        LiveTourService.addIce(sessionId, userId, body)
+                        call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not save ICE candidate")
+                    }
+                }
+
+                post("/{sessionId}/end") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val sessionId = call.parameters["sessionId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    try {
+                        call.respond(LiveTourService.endTour(sessionId, userId))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not end tour")
+                    }
+                }
+            }
+
+            escrowRoutes()
+            propertyRequestRoutes()
+
+            get("/sign-in/incoming") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                call.respond(DeviceSignInService.incoming(userId) ?: SignInPrompt(challengeId = ""))
+            }
+
+            post("/sign-in/{id}/approve") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val id = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                try {
+                    DeviceSignInService.approve(userId, id)
+                    call.respond(mapOf("ok" to true))
+                } catch (e: IllegalStateException) {
+                    call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not allow that sign-in")
+                }
+            }
+
+            post("/sign-in/{id}/deny") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val id = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                try {
+                    DeviceSignInService.deny(userId, id)
+                    call.respond(mapOf("ok" to true))
+                } catch (e: IllegalStateException) {
+                    call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not block that sign-in")
+                }
+            }
+
+            post("/devices/hello") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val body = call.receive<com.rotd.havenpad.DeviceHelloRequest>()
+                DeviceSignInService.remember(userId, body.deviceId, body.deviceName, body.platform)
+                call.respond(mapOf("ok" to true))
+            }
+
+            get("/devices/mine") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val current = call.request.queryParameters["deviceId"].orEmpty()
+                call.respond(DeviceSignInService.list(userId, current))
+            }
+
+            post("/devices") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val body = call.receive<RegisterDeviceRequest>()
+                if (body.token.isBlank()) {
+                    return@post call.respond(HttpStatusCode.BadRequest, "Missing token")
+                }
+                PushService.register(userId, body)
+                call.respond(mapOf("ok" to true))
+            }
+
+            post("/devices/remove") {
+                val userId = call.principal<JWTPrincipal>()
+                    ?.payload?.getClaim("userId")?.asString().orEmpty()
+                val body = call.receive<RegisterDeviceRequest>()
+                PushService.unregister(userId, body.token)
+                call.respond(mapOf("ok" to true))
+            }
+
+            route("/chat") {
+                get("/connections") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    call.respond(ApartmentChatService.listConnections(userId))
+                }
+
+                post("/connections") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val body = call.receive<UpsertChatConnectionRequest>()
+                    try {
+                        call.respond(ApartmentChatService.upsertConnection(userId, body))
+                    } catch (e: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid connection")
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid connection")
+                    }
+                }
+
+                post("/profile-photos") {
+                    val request = call.receive<com.rotd.havenpad.domain.chat.ProfilePhotoLookupRequest>()
+                    call.respond(ApartmentChatService.profilePhotos(request.userIds))
+                }
+
+                get("/inquiries") {
+                    val userId = call.principal<JWTPrincipal>()
+                        ?.payload?.getClaim("userId")?.asString().orEmpty()
+                    call.respond(ApartmentChatService.inquiryPeers(userId))
+                }
+
+                get("/messages") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.request.queryParameters["listingId"].orEmpty()
+                    val peerUserId = call.request.queryParameters["peerUserId"].orEmpty()
+                    val after = call.request.queryParameters["after"]?.toLongOrNull() ?: 0L
+                    if (listingId.isBlank() || peerUserId.isBlank()) {
+                        return@get call.respond(
+                            HttpStatusCode.BadRequest,
+                            "listingId and peerUserId required"
+                        )
+                    }
+                    try {
+                        call.respond(
+                            ApartmentChatService.listMessages(userId, listingId, peerUserId, after)
+                        )
+                    } catch (e: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.Forbidden, e.message ?: "Forbidden")
+                    }
+                }
+
+                post("/messages") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val body = call.receive<SendApartmentChatMessageRequest>()
+                    try {
+                        val saved = ApartmentChatService.sendMessage(userId, body)
+                        PushService.notifyChat(saved)
+                        call.respond(HttpStatusCode.Created, saved)
+                    } catch (e: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not send")
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not send")
+                    }
+                }
+
+                post("/messages/delivered") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.request.queryParameters["listingId"].orEmpty()
+                    val peerUserId = call.request.queryParameters["peerUserId"].orEmpty()
+                    if (listingId.isBlank() || peerUserId.isBlank()) {
+                        return@post call.respond(HttpStatusCode.BadRequest)
+                    }
+                    ApartmentChatService.markDelivered(userId, listingId, peerUserId)
+                    call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                }
+
+                post("/messages/read") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val listingId = call.request.queryParameters["listingId"].orEmpty()
+                    val peerUserId = call.request.queryParameters["peerUserId"].orEmpty()
+                    if (listingId.isBlank() || peerUserId.isBlank()) {
+                        return@post call.respond(HttpStatusCode.BadRequest)
+                    }
+                    ApartmentChatService.markRead(userId, listingId, peerUserId)
+                    call.respond(HttpStatusCode.OK, mapOf("ok" to true))
+                }
+
+                post("/messages/{messageId}/react") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val messageId = call.parameters["messageId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<com.rotd.havenpad.ReactToChatMessageRequest>()
+                    try {
+                        call.respond(ApartmentChatService.reactToMessage(userId, messageId, body))
+                    } catch (e: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not react")
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.NotFound, e.message ?: "Message not found")
+                    }
+                }
+
+                post("/messages/{messageId}/pin") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val messageId = call.parameters["messageId"]
+                        ?: return@post call.respond(HttpStatusCode.BadRequest)
+                    val body = call.receive<com.rotd.havenpad.PinChatMessageRequest>()
+                    try {
+                        call.respond(ApartmentChatService.setMessagePinned(userId, messageId, body))
+                    } catch (e: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, e.message ?: "Could not pin")
+                    } catch (e: IllegalStateException) {
+                        call.respond(HttpStatusCode.NotFound, e.message ?: "Message not found")
+                    }
+                }
+
+                delete("/messages/{messageId}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val messageId = call.parameters["messageId"]
+                        ?: return@delete call.respond(HttpStatusCode.BadRequest)
+                    val deleted = ApartmentChatService.deleteMessage(userId, messageId)
+                    if (deleted != null) {
+                        call.respond(deleted)
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, "Message not found")
+                    }
+                }
+
+                get("/attachments/{attachmentId}") {
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("userId")?.asString() ?: ""
+                    val attachmentId = call.parameters["attachmentId"]
+                        ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val bytes = ApartmentChatService.loadAttachment(userId, attachmentId)
+                    if (bytes != null) {
+                        call.respondBytes(bytes, ContentType.Application.OctetStream)
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, "Attachment not found")
+                    }
+                }
+            }
+        }
+    }
+}

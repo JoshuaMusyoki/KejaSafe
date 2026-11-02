@@ -1,4 +1,4 @@
-rootProject.name = "KejaSafe"
+rootProject.name = "HavenPad"
 
 pluginManagement {
     includeBuild("build-logic")

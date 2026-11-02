@@ -7,10 +7,10 @@ plugins {
 
 dependencies {
     implementation(project(":app:shared"))
-    // Used in KejaSafeApplication to clear Firebase Auth on cold start.
-    // (core holds auth as implementation, so it is not leaked to this module.)
     implementation(libs.firebaseAuth)
     implementation(libs.androidxFragmentKtx)
+    implementation(libs.androidxWorkRuntimeKtx)
+    implementation(libs.androidxCoreKtx)
 }
 
 configurations.configureEach {
@@ -29,10 +29,10 @@ configurations.configureEach {
 }
 
 android {
-    namespace = "com.rotd.kejasafe"
+    namespace = "com.rotd.havenpad"
 
     defaultConfig {
-        applicationId = "com.rotd.kejasafe"
+        applicationId = "com.rotd.havenpad"
         versionCode = 1
         versionName = "1.0"
     }
