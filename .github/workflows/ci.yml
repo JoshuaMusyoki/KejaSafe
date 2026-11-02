@@ -87,7 +87,7 @@ jobs:
         uses: wzieba/firebase-distribution-github-action@v1
         with:
           appId: ${{ secrets.FIREBASE_APP_ID }}
-          serviceAccountJson: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEJASAFE }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEJASAFE }}
           file: app/androidApp/build/outputs/bundle/release/*.aab
           groups: testers
           releaseNotes: "Automatic CI release build from GitHub Actions (${{ github.sha }})"
